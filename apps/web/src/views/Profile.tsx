@@ -15,7 +15,7 @@ import './profile/Profile.css'
 export default function Profile({ onNavigate }) {
   const {
     isLoading, error, message, initials, displayName, age, bloodType, location,
-    emergencyCard, qrMiniatureUrl, profileForm, setProfileForm, handleSaveProfile,
+    emergencyCard, profileForm, setProfileForm, handleSaveProfile,
     isSaving, isEditingProfile, setIsEditingProfile
   } = useProfileState() as any
 
@@ -53,7 +53,7 @@ export default function Profile({ onNavigate }) {
       </div>
 
       <div className="ph-cards-row">
-        <EmergencyCard emergencyCard={emergencyCard} qrMiniatureUrl={qrMiniatureUrl} onNavigate={onNavigate} />
+        <EmergencyCard emergencyCard={emergencyCard} onNavigate={onNavigate} />
         <button className="ph-consultation-card" onClick={() => onNavigate('consultation')} type="button">
           <div className="ph-consultation-card__icon"><BriefcaseMedical size={32} /></div>
           <div className="ph-consultation-card__content">

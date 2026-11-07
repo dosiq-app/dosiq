@@ -1,9 +1,9 @@
 /**
- * EmergencyCard — Resumo do cartão de emergência com QR miniatura.
+ * EmergencyCard — Resumo do cartão de emergência; o QR vive só no cartão completo (spec 074 D2).
  */
 import { Phone } from 'lucide-react'
 
-export default function EmergencyCard({ emergencyCard, qrMiniatureUrl, onNavigate }) {
+export default function EmergencyCard({ emergencyCard, onNavigate }) {
   if (!emergencyCard) {
     return (
       <div className="ph-emergency-card">
@@ -56,7 +56,6 @@ export default function EmergencyCard({ emergencyCard, qrMiniatureUrl, onNavigat
               </a>
             </div>
           )}
-          {qrMiniatureUrl && <div className="ph-emergency-card__qr"><img src={qrMiniatureUrl} alt="QR" className="ph-emergency-card__qr-image" /></div>}
         </div>
       </div>
       <button className="ph-emergency-card__action" onClick={() => onNavigate('emergency')} type="button">Ver Cartão Completo →</button>
