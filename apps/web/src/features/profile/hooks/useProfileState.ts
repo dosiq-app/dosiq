@@ -7,7 +7,6 @@ import { createProfileRepository } from '@dosiq/core'
 import { parseLocalDate, getSaoPauloTime } from '@utils/dateUtils'
 import { validateUserProfile } from '@schemas/userProfileSchema'
 import { emergencyCardService } from '@features/emergency/services/emergencyCardService'
-import QRCode from 'qrcode'
 
 // Repositório canônico de perfil (@dosiq/core) — fonte única web↔mobile.
 const profileRepo = createProfileRepository({ client: supabase, getUserId })
@@ -56,7 +55,6 @@ export function useProfileState() {
   const [emergencyCard, setEmergencyCard] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [qrMiniatureUrl, setQrMiniatureUrl] = useState(null)
   const [isEditingProfile, setIsEditingProfile] = useState(false)
   const [profileForm, setProfileForm] = useState({ display_name: '', birth_date: '', city: '', state: '' })
   const [isSaving, setIsSaving] = useState(false)
@@ -106,30 +104,6 @@ export function useProfileState() {
     })
   }, [loadProfile])
 
-  useEffect(() => {
-    if (!emergencyCard) {
-      startTransition(() => {
-        setQrMiniatureUrl(null)
-      })
-      return
-    }
-    const generateQR = async () => {
-      try {
-        const payload = { v: '1', n: displayName, bt: emergencyCard.blood_type || '', a: emergencyCard.allergies?.join(', ') || '' }
-        const qrString = btoa(encodeURIComponent(JSON.stringify(payload)).replace(/%([0-9A-F]{2})/g, (m, p1) => String.fromCharCode(parseInt(p1, 16))))
-        const url = await QRCode.toDataURL(qrString, { width: 100, margin: 1, errorCorrectionLevel: 'L' })
-        startTransition(() => {
-            setQrMiniatureUrl(url)
-        })
-      } catch {
-        startTransition(() => {
-            setQrMiniatureUrl(null)
-        })
-      }
-    }
-    generateQR()
-  }, [emergencyCard, displayName])
-
   const handleSaveProfile = async (e) => {
     e.preventDefault()
     const validation = validateUserProfile(profileForm)
@@ -144,7 +118,7 @@ export function useProfileState() {
   }
 
   return {
-    user, settings, emergencyCard, isLoading, error, qrMiniatureUrl, isEditingProfile, setIsEditingProfile,
+    user, settings, emergencyCard, isLoading, error, isEditingProfile, setIsEditingProfile,
     profileForm, setProfileForm, isSaving, message, displayName, initials, age, location, handleSaveProfile,
   }
 }

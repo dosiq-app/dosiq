@@ -112,7 +112,18 @@
 }
 
 /* Info section */
+.qr-cut-warning {
+  font-size: 0.875rem;
+  color: var(--warning-text, #92400e);
+  text-align: center;
+  margin: 0;
+  max-width: 320px;
+}
+
 .qr-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   background: var(--info-bg, #eff6ff);
   border: 1px solid var(--info-border, #bfdbfe);
   border-radius: 8px;
@@ -133,8 +144,14 @@
     display: none;
   }
 
-  .qr-info {
+  .qr-info,
+  .qr-cut-warning {
     display: none;
+  }
+
+  /* FR-008: a instrução de uso sai no papel, em preto (P&B) */
+  .qr-hint {
+    color: #000;
   }
 
   .emergency-qr-code {

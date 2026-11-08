@@ -90,13 +90,6 @@ vi.mock('@features/emergency/services/emergencyCardService', () => {
   }
 })
 
-// Mocks para qrcode
-vi.mock('qrcode', () => ({
-  default: {
-    toDataURL: vi.fn(() => Promise.resolve('data:image/png;base64,mock')),
-  },
-}))
-
 import Profile from '@/views/Profile'
 
 describe('Profile', () => {
@@ -138,6 +131,19 @@ describe('Profile', () => {
 
     fireEvent.click(screen.getByText('Histórico de Doses'))
     expect(onNavigate).toHaveBeenCalledWith('health-history')
+  })
+
+  it('074 D2: widget do cartão não gera QR e navega para o cartão completo', async () => {
+    const onNavigate = vi.fn()
+    render(<Profile onNavigate={onNavigate} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Ver Cartão Completo →')).toBeInTheDocument()
+    })
+    expect(screen.queryByAltText('QR')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Ver Cartão Completo →'))
+    expect(onNavigate).toHaveBeenCalledWith('emergency')
   })
 
   it('abre modal de exportacao ao clicar', async () => {

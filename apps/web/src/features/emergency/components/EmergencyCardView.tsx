@@ -31,33 +31,15 @@ function MedicationsSection({ activeMedications }) {
       {activeMedications.length > 0 ? (
         <ul className="medications-list">
           {activeMedications.map((med, index) => {
-            const medicineLike = {
-              dosage_unit: med.dosageUnit,
-              dosage_per_pill: med.dosagePerPill,
-              units_per_ml: med.unitsPerMl,
-            }
-            const doseStr =
-              med.dosagePerIntake != null
-                ? formatIntakeDose(med.dosagePerIntake, med.intakeUnit, medicineLike)
-                : null
-            const pillDosageStr = formatConcentration(med.dosagePerPill, med.dosageUnit) || null
-            // 073/F-12: a contagem de tomadas some hoje em toda cadência não-diária —
-            // um semanal de 2 aplicações imprimia só "Semanal". Tomadas e cadência são
-            // informações independentes: quem toma 2x num dia de aplicação precisa ler isso
-            // no cartão de emergência.
-            const cadenceStr = med.frequency
-              ? formatFrequencyLabel(med.frequency, med.intervalDays)
-              : null
-            const dosesStr = med.dosesPerDay != null ? `${med.dosesPerDay}x` : null
-            const frequencyStr =
-              med.frequency === 'diário' && dosesStr
-                ? `${dosesStr} ao dia`
-                : [dosesStr, cadenceStr].filter(Boolean).join(' — ') || null
+            // 074 RC3 E-5: a linha sai do core — a mesma que o QR usa (AP-339). Tomadas e
+            // cadência seguem independentes (073/F-12).
+            const { name, strength: pillDosageStr, dose: doseStr, frequency: frequencyStr } =
+              formatEmergencyMedLine(med)
 
             return (
               <li key={med.protocolId || index} className="medication-item">
                 <span className="med-name">
-                  {med.name}
+                  {name}
                   {pillDosageStr && <span className="med-dosage"> — {pillDosageStr}</span>}
                 </span>
                 <div className="med-detail">
@@ -104,12 +86,31 @@ function ContactsSection({ contacts }) {
 import { useDashboard } from '@dashboard/hooks/useDashboardContext'
 import { emergencyCardService } from '@features/emergency/services/emergencyCardService'
 import { BLOOD_TYPE_LABELS } from '@schemas/emergencyCardSchema'
-import { formatFrequencyLabel } from '@schemas/protocolSchema'
-import { formatIntakeDose, formatConcentration, isProtocolVigentOn } from '@dosiq/core'
+import { formatEmergencyMedLine, isProtocolVigentOn, createProfileRepository } from '@dosiq/core'
+import { supabase, getUserId } from '@shared/utils/supabase'
 import { useLocalToday } from '@shared/hooks/useLocalToday'
 import { parseISO } from '@utils/dateUtils'
 import EmergencyQRCode from './EmergencyQRCode'
 import './EmergencyCard.css'
+
+const profileRepo = createProfileRepository({ client: supabase, getUserId })
+
+/**
+ * Nome impresso no cartão (074 RC3 E-2): `display_name` → `user_metadata.name` → omitido.
+ * NUNCA e-mail (cartão é lido por estranhos) nem "Paciente" (FR-013). Offline/erro ⇒ omitido.
+ */
+async function loadCardName(): Promise<string | null> {
+  try {
+    const profile = await profileRepo.getProfile()
+    const fromProfile = profile?.display_name?.trim()
+    if (fromProfile) return fromProfile
+    const { data } = await supabase.auth.getUser()
+    const fromMeta = data?.user?.user_metadata?.name
+    return typeof fromMeta === 'string' && fromMeta.trim() ? fromMeta.trim() : null
+  } catch {
+    return null
+  }
+}
 
 /**
  * Visualização do Cartão de Emergência.
@@ -128,6 +129,7 @@ export default function EmergencyCardView({ data, onEdit }) {
   const [cardData, setCardData] = useState(data || null)
   const [isLoading, setIsLoading] = useState(!data)
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
+  const [personName, setPersonName] = useState<string | null>(null)
 
   // ===== CONTEXT (R-010: Hook Order) =====
   const { medicines, protocols, isLoading: isDashboardLoading } = useDashboard()
@@ -216,6 +218,17 @@ export default function EmergencyCardView({ data, onEdit }) {
     }
   }, [data])
 
+  /** Nome da pessoa do cartão (FR-013) — falha não bloqueia o cartão. */
+  useEffect(() => {
+    let cancelled = false
+    loadCardName().then((n) => {
+      if (!cancelled) setPersonName(n)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   /**
    * Monitora status de conexão.
    */
@@ -278,6 +291,7 @@ export default function EmergencyCardView({ data, onEdit }) {
       {/* Cabeçalho do Cartão */}
       <header className="emergency-card-header">
         <h1 className="emergency-title"><Siren size={32} /> CARTÃO DE EMERGÊNCIA</h1>
+        {personName && <p className="emergency-person-name">{personName}</p>}
         <p className="emergency-subtitle">Informações médicas críticas</p>
       </header>
 
@@ -307,6 +321,7 @@ export default function EmergencyCardView({ data, onEdit }) {
         <EmergencyQRCode
           cardData={cardData}
           medications={activeMedications}
+          name={personName}
           lastUpdated={cardData.last_updated}
         />
       </section>

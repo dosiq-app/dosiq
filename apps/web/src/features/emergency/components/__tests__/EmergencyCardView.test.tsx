@@ -18,6 +18,34 @@ const mocks = vi.hoisted(() => ({
     isLoading: false,
   },
   qrProps: null as any,
+  profile: { display_name: 'Maria de Souza' } as any,
+  profileError: null as any,
+  userMetaName: null as any,
+}))
+
+// 074 E-2: o nome vem do repositório de perfil do core (select existente), nunca do e-mail.
+vi.mock('@dosiq/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@dosiq/core')>()
+  return {
+    ...actual,
+    createProfileRepository: () => ({
+      getProfile: async () => {
+        if (mocks.profileError) throw mocks.profileError
+        return mocks.profile
+      },
+    }),
+  }
+})
+
+vi.mock('@shared/utils/supabase', () => ({
+  supabase: {
+    auth: {
+      getUser: vi.fn(async () => ({
+        data: { user: { email: 'segredo@exemplo.com', user_metadata: { name: mocks.userMetaName } } },
+      })),
+    },
+  },
+  getUserId: vi.fn(async () => 'u1'),
 }))
 
 vi.mock('@dashboard/hooks/useDashboardContext', () => ({
@@ -72,6 +100,9 @@ describe('EmergencyCardView — 073 (cartão de emergência)', () => {
       isLoading: false,
     }
     mocks.qrProps = null
+    mocks.profile = { display_name: 'Maria de Souza' }
+    mocks.profileError = null
+    mocks.userMetaName = null
   })
 
   afterEach(() => {
@@ -174,5 +205,28 @@ describe('EmergencyCardView — 073 (cartão de emergência)', () => {
     renderCard()
 
     expect(screen.getByText(/Nenhum medicamento ativo/)).toBeInTheDocument()
+  })
+
+  it('074 PO-5: nome do perfil no topo e repassado ao QR', async () => {
+    renderCard()
+    expect(await screen.findByText('Maria de Souza')).toBeInTheDocument()
+    expect(mocks.qrProps.name).toBe('Maria de Souza')
+  })
+
+  it('074 E-2: sem display_name cai no user_metadata.name', async () => {
+    mocks.profile = { display_name: null }
+    mocks.userMetaName = 'Ana Lima'
+    renderCard()
+    expect(await screen.findByText('Ana Lima')).toBeInTheDocument()
+  })
+
+  it('074 FR-013: sem nome ⇒ omitido — nunca e-mail nem "Paciente"; erro de rede não derruba o cartão', async () => {
+    mocks.profileError = new Error('offline')
+    renderCard()
+    await act(async () => {})
+    expect(screen.queryByText(/segredo@exemplo.com/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Paciente/)).not.toBeInTheDocument()
+    expect(mocks.qrProps.name).toBeNull()
+    expect(screen.getByText(/CARTÃO DE EMERGÊNCIA/)).toBeInTheDocument()
   })
 })

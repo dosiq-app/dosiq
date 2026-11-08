@@ -173,6 +173,25 @@ export {
   doseToMl,
 } from './doseUnit'
 
+// Cartão de emergência — montador único do texto do QR (spec 074)
+export {
+  formatEmergencyMedLine,
+  buildEmergencyQrText,
+  normalizeQrText,
+  encodeEmergencyQrFragment,
+  decodeEmergencyQrFragment,
+  EMERGENCY_QR_BASE_URL,
+  EMERGENCY_QR_DATA_BITS,
+  EMERGENCY_QR_MAX_MODULES,
+} from './emergencyQrText'
+export type {
+  EmergencyMedication,
+  EmergencyMedLine,
+  EmergencyContact,
+  EmergencyQrInput,
+  EmergencyQrText,
+} from './emergencyQrText'
+
 // Date presentation PT-BR (Fase 2)
 export {
   formatDatePtBR,

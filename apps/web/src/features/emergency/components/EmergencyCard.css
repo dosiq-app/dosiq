@@ -455,6 +455,13 @@
   opacity: 0.9;
 }
 
+/* 074 FR-013: a pessoa identificada no topo do cartão (tela e impressão) */
+.emergency-person-name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0.25rem 0;
+}
+
 /* Sections */
 .emergency-section {
   background: var(--emergency-card-bg);
@@ -805,6 +812,149 @@
 
   .contacts-grid {
     break-inside: avoid;
+  }
+}
+
+/* ============================================
+   IMPRESSÃO EM 1 FOLHA (spec 074, smoke 2026-11-07)
+   O shell do app (menu, Registrar, chatbot, cabeçalho "Voltar") não vai ao papel; o cartão vira
+   uma ficha A4 compacta em duas colunas. Vence as regras de print anteriores por vir depois.
+   ============================================ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  body:has(.er-view) .app-container > :not(.app-main),
+  body:has(.er-view) .app-main > footer,
+  body:has(.er-view) .skip-to-content,
+  body:has(.er-view) .er-header,
+  body:has(.er-view) .er-message {
+    display: none !important;
+  }
+
+  body:has(.er-view) .app-main,
+  body:has(.er-view) .er-view,
+  body:has(.er-view) .er-content {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+  }
+
+  .emergency-card-view {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3mm;
+    padding: 4mm;
+    border: 2px solid #000;
+    border-radius: 0;
+    box-shadow: none;
+    font-size: 10pt;
+  }
+
+  .emergency-card-view > .emergency-card-header,
+  .emergency-card-view > .medications-section,
+  .emergency-card-view > .notes-section,
+  .emergency-card-view > .emergency-card-footer {
+    grid-column: 1 / -1;
+  }
+
+  .emergency-card-header {
+    padding: 3mm 4mm;
+  }
+
+  .emergency-title {
+    font-size: 15pt;
+  }
+
+  .emergency-person-name {
+    font-size: 14pt;
+  }
+
+  .emergency-subtitle {
+    display: none;
+  }
+
+  .emergency-section {
+    margin: 0;
+    padding: 2.5mm 3mm;
+    border: 1px solid #000;
+    border-radius: 2mm;
+    box-shadow: none;
+    break-inside: avoid;
+  }
+
+  .section-label {
+    font-size: 8pt;
+    margin-bottom: 1mm;
+  }
+
+  .blood-type-display {
+    font-size: 22pt;
+    padding: 0;
+  }
+
+  /* medicamentos: uma linha por tratamento, duas colunas */
+  .medications-list {
+    columns: 2;
+    column-gap: 6mm;
+  }
+
+  .medication-item {
+    break-inside: avoid;
+    padding: 1mm 0;
+    font-size: 9.5pt;
+  }
+
+  .med-detail {
+    display: inline;
+    margin-left: 1.5mm;
+  }
+
+  .med-dose,
+  .med-frequency {
+    background: none !important;
+    color: #000 !important;
+    padding: 0;
+    font-size: 9pt;
+  }
+
+  .med-dose::after {
+    content: ' ·';
+  }
+
+  .contacts-grid {
+    display: block;
+  }
+
+  .contact-card {
+    padding: 1.5mm 0;
+    background: none;
+    border: none;
+    text-align: left;
+  }
+
+  .qr-section .emergency-qr-code {
+    border: none;
+    padding: 0;
+  }
+
+  .qr-section .qr-code-container {
+    display: flex;
+    align-items: center;
+    gap: 3mm;
+  }
+
+  .qr-section .qr-code-image {
+    width: 32mm;
+    height: 32mm;
+  }
+
+  .emergency-card-footer {
+    font-size: 8pt;
+    padding: 0;
+    border: none;
   }
 }
 

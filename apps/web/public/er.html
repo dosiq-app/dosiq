@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cartão de emergência | dosiq</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="referrer" content="no-referrer" />
+    <!--
+      Spec 074 D5 — leitor do QR do cartão de emergência.
+      O conteúdo vem SÓ do fragmento (#...), que o navegador nunca envia ao servidor. Esta página é
+      isolada de propósito: sem o app React, sem analytics, sem Sentry, sem requisição nenhuma com
+      os dados (INV-6). O fragmento é entrada de terceiros ⇒ só textContent, nunca innerHTML.
+      Decodificação espelha `decodeEmergencyQrFragment` do @dosiq/core (teste cruzado em
+      apps/web/src/features/emergency/__tests__/erPage.test.ts).
+    -->
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background: #ffffff;
+        color: #0f172a;
+        padding: 20px 16px 40px;
+        line-height: 1.4;
+      }
+      main { max-width: 560px; margin: 0 auto; }
+      h1 { color: #b91c1c; font-size: 28px; letter-spacing: 0.5px; }
+      .name { font-size: 24px; font-weight: 700; margin-top: 4px; }
+      section { margin-top: 18px; }
+      .label { font-size: 13px; font-weight: 700; color: #64748b; letter-spacing: 0.6px; }
+      .value { font-size: 20px; margin-top: 2px; }
+      .allergy { border: 3px solid #b91c1c; border-radius: 12px; padding: 12px 14px; }
+      .allergy .label { color: #b91c1c; }
+      .allergy .value { font-weight: 700; }
+      ul { list-style: none; }
+      li { font-size: 18px; padding: 6px 0; border-bottom: 1px solid #e2e8f0; }
+      .call {
+        display: block; margin-top: 8px; padding: 14px; border-radius: 12px; text-align: center;
+        background: #b91c1c; color: #ffffff; font-size: 20px; font-weight: 700; text-decoration: none;
+      }
+      .muted { color: #64748b; font-size: 14px; margin-top: 18px; }
+      .error { font-size: 20px; margin-top: 16px; }
+      .brand { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #2d4f2a; text-decoration: none; }
+      .brand img { width: 28px; height: 28px; }
+      .brand span { font-size: 20px; font-weight: 700; letter-spacing: 0.3px; }
+      li.cut { border-bottom: none; }
+      footer { max-width: 560px; margin: 28px auto 0; padding-top: 14px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b; }
+      footer a { color: #2d4f2a; }
+    </style>
+  </head>
+  <body>
+    <main id="card">
+      <a class="brand" href="/" aria-label="dosiq">
+        <img src="/dosiq-logo-verde.svg" alt="" width="28" height="28" />
+        <span>dosiq</span>
+      </a>
+      <h1>EMERGÊNCIA MÉDICA</h1>
+      <noscript><p class="error">Ative o JavaScript ou leia o cartão impresso.</p></noscript>
+    </main>
+    <footer>
+      Cartão gerado pelo dosiq, app de controle de medicamentos. Os dados vêm do QR e não são
+      enviados a nenhum servidor.
+      <br /><a href="/politica-de-privacidade">Política de privacidade</a> ·
+      <a href="/termos-de-uso">Termos de uso</a>
+    </footer>
+    <script>
+      ;(function () {
+        function decode(fragment) {
+          var raw = String(fragment || '').replace(/^#/, '')
+          if (!raw) return null
+          try {
+            var text = decodeURIComponent(raw.replace(/\+/g, ' ')).trim()
+            return text || null
+          } catch (e) {
+            return null
+          }
+        }
+
+        function el(tag, className, text) {
+          var node = document.createElement(tag)
+          if (className) node.className = className
+          if (text != null) node.textContent = text
+          return node
+        }
+
+        function field(label, value, className) {
+          var section = el('section', className)
+          section.appendChild(el('p', 'label', label))
+          section.appendChild(el('p', 'value', value))
+          return section
+        }
+
+        var root = document.getElementById('card')
+        var text = decode(window.location.hash)
+        if (!text) {
+          root.appendChild(el('p', 'error', 'QR incompleto. Leia o cartão impresso.'))
+          return
+        }
+
+        var parts = text.split(' / ')
+        var extras = []
+        for (var i = 0; i < parts.length; i += 1) {
+          var p = parts[i]
+          var m
+          if ((m = /^EMERGENCIA: (.+)$/.exec(p))) {
+            root.appendChild(el('p', 'name', m[1]))
+          } else if (p === 'EMERGENCIA MEDICA') {
+            // sem nome cadastrado: só o título
+          } else if ((m = /^SANGUE (.+)$/.exec(p))) {
+            root.appendChild(field('TIPO SANGUÍNEO', m[1]))
+          } else if ((m = /^ALERGIA: (.+)$/.exec(p))) {
+            root.appendChild(field('ALERGIAS', m[1], 'allergy'))
+          } else if ((m = /^USA: (.+)$/.exec(p))) {
+            var section = el('section')
+            section.appendChild(el('p', 'label', 'MEDICAMENTOS EM USO'))
+            var list = el('ul')
+            // itens separados por ". " antes de letra ou "+" (o "+N TRATAMENTOS NO CARTAO" do corte)
+            var meds = m[1].split(/\. (?=[A-Z+])/)
+            for (var j = 0; j < meds.length; j += 1) {
+              var cut = /^\+(\d+) TRATAMENTOS NO CARTAO$/.exec(meds[j])
+              if (cut) list.appendChild(el('li', 'cut', '+' + cut[1] + ' tratamentos no cartão impresso'))
+              else list.appendChild(el('li', null, meds[j]))
+            }
+            section.appendChild(list)
+            root.appendChild(section)
+          } else if ((m = /^AVISAR: (.+)$/.exec(p))) {
+            var contact = field('AVISAR', m[1])
+            var phone = /\+?\d[\d -]{6,}\d/.exec(m[1])
+            if (phone) {
+              var call = el('a', 'call', 'Ligar ' + phone[0])
+              call.href = 'tel:' + phone[0].replace(/[^\d+]/g, '')
+              contact.appendChild(call)
+            }
+            root.appendChild(contact)
+          } else {
+            extras.push(p)
+          }
+        }
+        for (var k = 0; k < extras.length; k += 1) root.appendChild(el('p', 'muted', extras[k]))
+        root.appendChild(el('p', 'muted', 'Confirme os dados no cartão impresso.'))
+      })()
+    </script>
+  </body>
+</html>

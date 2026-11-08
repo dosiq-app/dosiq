@@ -7,6 +7,16 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Cartão de emergência: QR legível pela câmera e PNG de carteira (spec 074)
+
+- **Web** (`Changed` + `Fixed`, **minor** 4.37.0 → **4.38.0**; feature visível nova — web = minor por feature).
+  - **QR que a câmera abre:** o QR do cartão passa a ser um link (`dosiq.app/er`) que a câmera nativa do iPhone e do Android abre direto, mostrando nome, tipo sanguíneo, alergias em destaque, medicamentos em uso com dose e cadência, contato de emergência com botão de ligar e data. Os dados ficam dentro do próprio QR (depois do `#` do link) e nunca são enviados a servidor; a página `/er` só os exibe. Sem internet, a faixa de texto impressa no cartão traz o essencial. Antes o QR era base64 de JSON, ilegível por qualquer leitor, e não trazia o telefone do contato.
+  - **Teto de tamanho:** o QR nunca passa de 57×57 módulos; acima disso a lista de medicamentos é cortada com `+N TRATAMENTOS NO CARTAO` — alergias e o primeiro contato nunca são cortados. Quando há corte, a tela avisa quantos tratamentos o QR mostra.
+  - **Nome no cartão:** o nome do perfil aparece no topo do cartão e no QR; sem nome cadastrado o campo é omitido (antes todo QR dizia "Paciente").
+  - **PNG de carteira:** "Salvar Imagem" e "Compartilhar" geram um cartão 1024×1632 px (formato CR80) com o QR e uma faixa de texto legível (nome, sangue, alergias, contato e instrução), pronto para imprimir em preto e branco. A dica de tela de bloqueio dá lugar à instrução de impressão e à Ficha Médica nativa do celular.
+  - **Perfil:** o resumo do cartão no Perfil deixa de gerar um segundo QR (diferente e menor); o botão "Ver Cartão Completo" leva ao cartão.
+- **Core:** `buildEmergencyQrText` (texto + link do QR), `encodeEmergencyQrFragment`/`decodeEmergencyQrFragment` e `formatEmergencyMedLine` (montador único do conteúdo do cartão, insumo da spec 006 no mobile). Sem consumidor mobile nesta versão.
+
 ### Estoque: próxima compra no app, toque dos avisos e fim do "estoque baixo" onde zerar é o plano (spec 105, Fatia B)
 
 - **Mobile** (`Added` + `Changed` + `Fixed`, **patch** `APP_VERSION` 0.34.5 → **0.34.6**; canal: **build de loja** — R-314: feature nova e destino novo do toque da notificação, não elegível a OTA).
