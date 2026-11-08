@@ -55,6 +55,19 @@ describe('074 — capacidade real do QR (lib qrcode sem mock)', () => {
     }
   })
 
+  it("RC6 #935: apóstrofo e símbolos crus (D'Avila, _ ! ~) não furam 57×57 na lib real", () => {
+    for (const n of [0, 4, 8, 16]) {
+      const { url, overCapacity } = buildEmergencyQrText({
+        ...card,
+        name: "Maria D'Avila_!~",
+        allergies: ["Látex D'Avila", 'Sulfa_!~'],
+        medications: meds(n),
+      })
+      expect(overCapacity).toBe(false)
+      expect({ n, ok: modules(url) <= EMERGENCY_QR_MAX_MODULES }).toEqual({ n, ok: true })
+    }
+  })
+
   it('SC-001: o QR do mesmo paciente encolhe frente ao base64(JSON) de hoje (≤ 61 onde era maior)', () => {
     const four = meds(4)
     const legacy = {

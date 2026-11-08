@@ -212,6 +212,13 @@ describe('074 D5 — link do QR (fragmento)', () => {
     }
   })
 
+  it("RC6 #935: ' ! ~ _ (que encodeURIComponent deixa crus) saem percent-encoded e voltam iguais", () => {
+    const frag = encodeEmergencyQrFragment("D'AVILA ! ~ _")
+    expect(frag).toBe('D%27AVILA+%21+%7E+%5F')
+    expect(frag).toMatch(/^[0-9A-Z $%*+\-./:]*$/)
+    expect(decodeEmergencyQrFragment(frag)).toBe("D'AVILA ! ~ _")
+  })
+
   it('decode: vazio, só # e percent inválido ⇒ null', () => {
     expect(decodeEmergencyQrFragment('')).toBeNull()
     expect(decodeEmergencyQrFragment('#')).toBeNull()

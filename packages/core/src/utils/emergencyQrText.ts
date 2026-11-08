@@ -120,9 +120,18 @@ export function encodeEmergencyQrFragment(text: string): string {
     else if (ch === '+') out += '%2B'
     else if (ch === ' ') out += '+'
     else if (ALNUM_CHAR_RE.test(ch)) out += ch
-    else out += encodeURIComponent(ch).toUpperCase()
+    // Byte a byte, explícito: `encodeURIComponent` deixa `' ! ~ _` crus (fora do alfabeto do QR),
+    // o que forçaria segmento Byte e furaria a conta de bits (RC6 #935).
+    else out += Array.from(utf8(ch), (b) => '%' + b.toString(16).toUpperCase().padStart(2, '0')).join('')
   }
   return out
+}
+
+/** UTF-8 sem `TextEncoder` (core roda também no RN): `encodeURIComponent` escapa tudo fora de ASCII. */
+function utf8(ch: string): number[] {
+  const escaped = encodeURIComponent(ch)
+  if (!escaped.startsWith('%')) return [ch.charCodeAt(0)]
+  return escaped.split('%').slice(1).map((h) => parseInt(h, 16))
 }
 
 /** Fragmento (com ou sem `#`) → texto. Inválido/vazio ⇒ `null` (a `/er` mostra "QR incompleto"). */
