@@ -11,7 +11,7 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 - **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.6 → **0.34.7**; canal: **build de loja** junto do trem v0.35 — correção 100% JS, mas o trem segura a loja).
   - Em aparelhos Xiaomi/Redmi/POCO, tocar uma região do mapa corporal (local de aplicação) nas telas de dose, simples e em lote, não escolhia nada: o toque era cancelado por qualquer deslize mínimo do dedo. A região agora é escolhida quando o dedo sobe perto de onde encostou; arrastar para rolar continua sem escolher. A lista "Escolher pela lista" não era afetada.
-  - **Entregue antes por OTA** à 0.34.4 da loja como `[0.34.4+ota.1]` (branch `hotfix/ota-0.34.4`, R-307); este build de loja absorve o OTA.
+  - **Entregue antes por OTA** à 0.34.4 da loja como `[0.34.4+ota.1]` (branch `hotfix/ota-0.34.4`, R-307); este build de loja absorve o OTA. Publicado em 2026-11-09: production group `d2fc9d7d-dd5b-4790-a4bf-82538ca90164` (android `01a1c1e3-5188-7bc7-a758-aa1fa1e50bb1`, ios `01a1c1e3-5188-7947-941b-958be4fb8f78`) a 100%; antes em preview group `a50073c4-5375-4c7a-90ed-7f26ae93a55b` (android `01a1c1dc-596a-7c5e-a22e-934be8648a8d`), smoke no POCO aprovado. Commit `59cb2522`, tag `mobile-v0.34.4-ota.1`.
 
 ### Cartão de emergência: QR legível pela câmera e PNG de carteira (spec 074)
 
