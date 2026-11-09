@@ -7,6 +7,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [0.34.4+ota.1] — Mapa corporal: toque volta a funcionar em aparelhos Xiaomi (spec 071)
+
+- **Mobile** (`Fixed`, sem bump de `APP_VERSION` — fica **0.34.4**; canal: **OTA**, R-314: 100% JS, sem nativo, sem permissão nem mudança de propósito). Em aparelhos Xiaomi/Redmi/POCO, tocar uma região do mapa corporal (local de aplicação) nas telas de dose, simples e em lote, não escolhia nada: o toque era cancelado por qualquer deslize mínimo do dedo. A região agora é escolhida quando o dedo sobe perto de onde encostou; arrastar para rolar continua sem escolher. Branch `hotfix/ota-0.34.4` (tag `mobile-v0.34.4` + `BodyMapSelector` do PR #936). **Urgente — direto a 100%** (GUIA_OTA §2): o mapa ficava inutilizável na base Xiaomi, extensa no Brasil, e o fix é local a um componente. Publicação: preview `<updateId>` · production `<updateId>` (preencher após o publish).
+
 ### Admin: painel de crescimento e do wedge GLP-1 (spec 115)
 
 - **Web/PWA** (`Added`, **minor** 4.36.0 → 4.37.0 — tela nova no bundle web, só para a conta admin; sem mudança para usuários comuns; canal mobile: nenhum). Nova tela "Crescimento & Wedge" na área de administração: novos usuários, push ativo, distribuição das classes terapêuticas dos tratamentos ativos (GLP-1/antiobesidade × outros antidiabéticos × demais classes × sem código, pelo código EphMRA da classe, não pelo nome) e adoção de titulação, biomarcador, alarme crítico, estoque e data de término — sempre em usuários distintos, com o número absoluto ao lado do percentual e a coorte dos últimos 30 dias. Tabela de contas com as plataformas em que cada conta já entrou (app iOS, app Android, web — vale também para quem saiu da conta no app), busca, filtros de plataforma e push e detalhe dos tratamentos de cada conta, sem nome comercial de medicamento.

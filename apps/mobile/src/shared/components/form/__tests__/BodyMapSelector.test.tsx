@@ -5,7 +5,7 @@ import { describe, it, expect, afterEach, jest } from '@jest/globals'
 import React from 'react'
 import { render, fireEvent } from '@testing-library/react-native'
 import { INJECTION_SITES, getInjectionSiteLabel } from '@dosiq/core'
-import BodyMapSelector from '../BodyMapSelector'
+import BodyMapSelector, { TAP_SLOP_PX } from '../BodyMapSelector'
 import InjectionSitePicker from '../InjectionSitePicker'
 
 const renderMap = (props = {}) => {
@@ -160,5 +160,47 @@ describe('InjectionSitePicker — meta de analytics (071 PR3)', () => {
     const onMetaChange = jest.fn()
     render(<InjectionSitePicker value={null} onChange={jest.fn()} defaultOpen onMetaChange={onMetaChange} />)
     expect(onMetaChange).toHaveBeenLastCalledWith({ opened: true, auto: true, input: null })
+  })
+})
+
+describe('toque com deslize (POCO/MIUI, 2026-11-09)', () => {
+  const at = (x: number, y: number) => ({ nativeEvent: { pageX: x, pageY: y } })
+
+  it('dedo que desliza poucos px ainda escolhe a região (onPressIn → onPressOut)', () => {
+    const onChange = jest.fn()
+    const { getByTestId } = render(<BodyMapSelector value={null} onChange={onChange} />)
+    const region = getByTestId('bodymap-region-coxa_e')
+    fireEvent(region, 'pressIn', at(100, 200))
+    fireEvent(region, 'pressOut', at(105, 206))
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(onChange).toHaveBeenCalledWith('coxa_e', 'map')
+  })
+
+  it('arraste além do limite (rolagem) não escolhe', () => {
+    const onChange = jest.fn()
+    const { getByTestId } = render(<BodyMapSelector value={null} onChange={onChange} />)
+    const region = getByTestId('bodymap-region-coxa_e')
+    fireEvent(region, 'pressIn', at(100, 200))
+    fireEvent(region, 'pressOut', at(100, 200 + TAP_SLOP_PX + 20))
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('toque parado não dispara duas vezes (onPressOut + onPress)', () => {
+    const onChange = jest.fn()
+    const { getByTestId } = render(<BodyMapSelector value={null} onChange={onChange} />)
+    const region = getByTestId('bodymap-region-coxa_e')
+    fireEvent(region, 'pressIn', at(100, 200))
+    fireEvent(region, 'pressOut', at(100, 200))
+    fireEvent.press(region)
+    expect(onChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('disabled: pressIn/pressOut não escolhem', () => {
+    const onChange = jest.fn()
+    const { getByTestId } = render(<BodyMapSelector value={null} onChange={onChange} disabled />)
+    const region = getByTestId('bodymap-region-coxa_e')
+    fireEvent(region, 'pressIn', at(100, 200))
+    fireEvent(region, 'pressOut', at(101, 201))
+    expect(onChange).not.toHaveBeenCalled()
   })
 })

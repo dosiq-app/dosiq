@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useRef } from 'react'
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 import { Svg, Circle, Defs, G, Line, Path, Pattern, Rect, Text as SvgText } from 'react-native-svg'
 import * as LucideIcons from 'lucide-react-native'
@@ -20,6 +20,14 @@ const { AlertTriangle, Check, ChevronDown, ChevronUp } = LucideIcons as any
 
 const FACE_LABELS = { frente: 'Frente', costas: 'Costas' }
 const DEFAULT_FACE_WIDTH = 120
+// Toque com deslize (071, smoke POCO/MIUI 2026-11-09): no Android o `onPress` do `<G>` do react-native-svg é
+// cancelado por qualquer movimento, e na MIUI o dedo real sempre desliza alguns px ⇒ mapa "morto".
+// A escolha passa a ser no `onPressOut` quando o dedo andou menos que TAP_SLOP_PX desde o `onPressIn`
+// (rolagem do lote anda mais que isso ⇒ não escolhe). `onPress` fica para leitor de tela/ativação
+// sem toque; se o `onPressOut` já escolheu, o `onPress` do mesmo toque só consome a marca.
+export const TAP_SLOP_PX = 12
+
+type PressEvt = { nativeEvent?: { pageX?: number; pageY?: number } }
 
 /**
  * Nome falado de uma região: label PT do core + estado ("Coxa (esquerda), selecionado").
@@ -52,6 +60,30 @@ function BodyMapFaceView({
   const { width: vw, height: vh } = INJECTION_BODY_MAP_VIEWBOX
   const hatchId = `bm-hatch-${face}`
   const S = BODY_MAP_SILHOUETTE
+  const startRef = useRef<{ site: string; x: number; y: number } | null>(null)
+  const handledRef = useRef(false)
+
+  const pressIn = (site: string, e: PressEvt) => {
+    handledRef.current = false
+    startRef.current = { site, x: e?.nativeEvent?.pageX ?? 0, y: e?.nativeEvent?.pageY ?? 0 }
+  }
+  const pressOut = (site: string, e: PressEvt) => {
+    const start = startRef.current
+    startRef.current = null
+    if (!start || start.site !== site) return
+    const dx = (e?.nativeEvent?.pageX ?? start.x) - start.x
+    const dy = (e?.nativeEvent?.pageY ?? start.y) - start.y
+    if (Math.hypot(dx, dy) > TAP_SLOP_PX) return
+    handledRef.current = true
+    onToggle(site, 'map')
+  }
+  const press = (site: string) => {
+    if (handledRef.current) {
+      handledRef.current = false
+      return
+    }
+    onToggle(site, 'map')
+  }
 
   return (
     <View style={styles.face}>
@@ -95,7 +127,9 @@ function BodyMapFaceView({
               testID={`bodymap-region-${region.value}`}
               accessible
               accessibilityLabel={regionName(region.value, isSelected, isLast)}
-              onPress={disabled ? undefined : () => onToggle(region.value, 'map')}
+              onPressIn={disabled ? undefined : (e: PressEvt) => pressIn(region.value, e)}
+              onPressOut={disabled ? undefined : (e: PressEvt) => pressOut(region.value, e)}
+              onPress={disabled ? undefined : () => press(region.value)}
             >
               <Path
                 d={region.path}
