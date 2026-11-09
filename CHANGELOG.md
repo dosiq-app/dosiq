@@ -7,6 +7,12 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Mapa corporal: toque volta a funcionar em aparelhos Xiaomi (spec 071)
+
+- **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.6 → **0.34.7**; canal: **build de loja** junto do trem v0.35 — correção 100% JS, mas o trem segura a loja).
+  - Em aparelhos Xiaomi/Redmi/POCO, tocar uma região do mapa corporal (local de aplicação) nas telas de dose, simples e em lote, não escolhia nada: o toque era cancelado por qualquer deslize mínimo do dedo. A região agora é escolhida quando o dedo sobe perto de onde encostou; arrastar para rolar continua sem escolher. A lista "Escolher pela lista" não era afetada.
+  - **Entregue antes por OTA** à 0.34.4 da loja como `[0.34.4+ota.1]` (branch `hotfix/ota-0.34.4`, R-307); este build de loja absorve o OTA.
+
 ### Cartão de emergência: QR legível pela câmera e PNG de carteira (spec 074)
 
 - **Web** (`Changed` + `Fixed`, **minor** 4.37.0 → **4.38.0**; feature visível nova — web = minor por feature).
