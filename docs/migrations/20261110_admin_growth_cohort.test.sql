@@ -8,7 +8,10 @@
 --   PO-SEC-1/4/5 (fixture 5 usuários, 7 pré-existentes excluídos; desfeito)`. pg_proc = 1 linha
 --   `(integer,integer,uuid[],timestamp with time zone)`; md5(prosrc) QA = a896baff719539c027db437cdfa8d09a
 --   (corpo aplicado via MCP sem os 2 comentários internos ⇒ md5 ≠ arquivo; prod deve repetir o mesmo corpo).
--- RESULTADO REGISTRADO — PROD: (preencher no T012; fixture não roda em prod)
+-- RESULTADO REGISTRADO — PROD (2026-11-10, após deploy Vercel do #937; só leitura, fixture não roda):
+--   pg_proc = 1 linha `(integer,integer,uuid[],timestamp with time zone)`; md5(prosrc) = a896baff… (= QA);
+--   prosecdef + search_path=""; EXECUTE só service_role (anon/authenticated false); EXPLAIN ANALYZE
+--   230 ms coorte v034 / 21 ms base (SC-002 < 1.500 ms); POST /rest/v1/rpc anon ⇒ 401.
 
 -- Isolamento: o QA já tem usuários. Toda chamada passa os usuários pré-existentes em
 -- p_excluded_user_ids, então os números abaixo são só da fixture (A, B, C, D, X).
