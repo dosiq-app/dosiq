@@ -5,7 +5,7 @@ vi.mock('@services/api/growthAdminService', () => ({
   growthAdminService: { load: vi.fn() },
 }))
 
-import { useGrowthAdminState, filterGrowthUsers, type GrowthUser } from '../useGrowthAdminState'
+import { useGrowthAdminState, filterGrowthUsers, isSmallSample, baselineLabel, type GrowthUser } from '../useGrowthAdminState'
 import { growthAdminService } from '@services/api/growthAdminService'
 
 const svc = growthAdminService as any
@@ -59,7 +59,7 @@ describe('filterGrowthUsers', () => {
 
 describe('useGrowthAdminState', () => {
   beforeEach(() => {
-    svc.load.mockResolvedValue({ users: USERS, excluded_count: 2 })
+    svc.load.mockResolvedValue({ base: { users: USERS, excluded_count: 2 }, cohort: null })
   })
   afterEach(() => {
     vi.clearAllMocks()
@@ -101,5 +101,64 @@ describe('useGrowthAdminState', () => {
     await act(async () => { await result.current.reload() })
     expect(result.current.error).toBeNull()
     expect(result.current.data?.excluded_count).toBe(2)
+  })
+})
+
+describe('recorte pós-v0.34 (spec 118 · PO-118-3/4)', () => {
+  const BASE = { users: USERS, excluded_count: 2, total_users: 3 }
+  const COHORT = { users: [USERS[0]], excluded_count: 2, total_users: 1 }
+  const cohortBody = { base: BASE, cohort: { key: 'v034', since: '2026-10-22T00:00:00-03:00', data: COHORT } }
+  afterEach(() => {
+    vi.clearAllMocks()
+    vi.clearAllTimers()
+  })
+
+  it('isSmallSample: 0 é vazio (false), 12 e 29 avisam, 30 e 40 não', () => {
+    expect(isSmallSample(0)).toBe(false)
+    expect(isSmallSample(12)).toBe(true)
+    expect(isSmallSample(29)).toBe(true)
+    expect(isSmallSample(30)).toBe(false)
+    expect(isSmallSample(40)).toBe(false)
+    expect(isSmallSample(undefined)).toBe(false)
+  })
+
+  it('baselineLabel formata pt-BR e some sem número', () => {
+    expect(baselineLabel(33.3)).toBe('base 33,3%')
+    expect(baselineLabel(25)).toBe('base 25%')
+    expect(baselineLabel(0)).toBe('base 0%')
+    expect(baselineLabel(null)).toBeNull()
+  })
+
+  it('modo total: sem referência; trocar de modo refaz o fetch com cohort e mostra o coorte', async () => {
+    svc.load.mockResolvedValueOnce({ base: BASE, cohort: null }).mockResolvedValueOnce(cohortBody)
+    const { result } = renderHook(() => useGrowthAdminState())
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(svc.load).toHaveBeenLastCalledWith({})
+    expect(result.current.reference).toBeNull()
+    expect(result.current.cohort).toBeNull()
+    expect(result.current.data?.total_users).toBe(3)
+
+    act(() => { result.current.setMode('v034') })
+    await waitFor(() => expect(result.current.cohort?.key).toBe('v034'))
+    expect(svc.load).toHaveBeenLastCalledWith({ cohort: 'v034' })
+    expect(result.current.data?.total_users).toBe(1)
+    expect(result.current.reference?.total_users).toBe(3)
+    expect(result.current.cohort?.label).toBe('Pós-v0.34')
+    expect(result.current.filteredUsers).toHaveLength(1)
+  })
+
+  it('resposta atrasada do modo anterior não sobrescreve o modo atual (G-2)', async () => {
+    let resolveTotal: (v: unknown) => void = () => {}
+    svc.load
+      .mockImplementationOnce(() => new Promise((res) => { resolveTotal = res }))
+      .mockResolvedValueOnce(cohortBody)
+    const { result } = renderHook(() => useGrowthAdminState())
+    await waitFor(() => expect(svc.load).toHaveBeenCalledTimes(1))
+    act(() => { result.current.setMode('v034') })
+    await waitFor(() => expect(result.current.cohort?.key).toBe('v034'))
+    await act(async () => { resolveTotal({ base: BASE, cohort: null }) })
+    expect(result.current.cohort?.key).toBe('v034')
+    expect(result.current.data?.total_users).toBe(1)
+    expect(result.current.isLoading).toBe(false)
   })
 })

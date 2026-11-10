@@ -5,14 +5,24 @@
 // Três camadas (D-RC2-1): KPIs → wedge + adoção de features → tabela de contas com drill-down.
 // 🔴 INV-5 / SC-006: todo percentual é de usuários distintos e vem com o n absoluto ao lado.
 // 🔴 INV-2: nenhum nome comercial de medicamento — o drill-down mostra nome do tratamento e classe.
+// Spec 118: seletor Base total | Pós-v0.34 recorta TODOS os blocos; no recorte cada % mostra a da base
+// ao lado (`· base X%`) e denominador < 30 ganha aviso de amostra pequena (n absoluto sempre visível).
 // Só leitura (Non-Goal 1). Os números chegam prontos da RPC; a tela só formata (a única conta local é
 // a razão "com tratamento / usuários" do KPI, sobre dois totais da própria RPC).
 
-import { Fragment } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { ArrowLeft, RefreshCw, ChevronDown, ChevronRight, Users, Pill, BellRing, Target } from 'lucide-react'
-import { FREQUENCY_LABELS } from '@dosiq/core'
+import { FREQUENCY_LABELS, GROWTH_COHORTS, type GrowthCohortKey } from '@dosiq/core'
 import { parseISO } from '@utils/dateUtils'
-import { useGrowthAdminState, type GrowthAnalytics, type GrowthTreatment, type GrowthUser } from './useGrowthAdminState'
+import {
+  useGrowthAdminState,
+  isSmallSample,
+  baselineLabel,
+  type GrowthAnalytics,
+  type GrowthMode,
+  type GrowthTreatment,
+  type GrowthUser,
+} from './useGrowthAdminState'
 import './GrowthAdmin.css'
 
 const WEDGE_LABEL: Record<GrowthTreatment['wedge'], string> = {
@@ -40,15 +50,38 @@ const fmtDate = (iso?: string | null) => (iso ? parseISO(iso).toLocaleDateString
 /** Smoke C-2/C-3: "1 tratamentos", "1 contas". */
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 const fmtPct = (pct: number) => `${Number(pct).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
+const ratioPct = (n: number, of: number) => (of ? (100 * n) / of : 0)
+
+const MODES: Array<{ key: GrowthMode; label: string }> = [
+  { key: 'total', label: 'Base total' },
+  ...(Object.keys(GROWTH_COHORTS) as GrowthCohortKey[]).map((key) => ({ key, label: GROWTH_COHORTS[key].label })),
+]
+
+/** Referência da base ao lado de um % do recorte; fora do recorte, nada. */
+function Baseline({ pct }: { pct: number | null | undefined }) {
+  const text = baselineLabel(pct)
+  return text ? <span className="growth-baseline"> · {text}</span> : null
+}
+
+/** Aviso de amostra pequena (FR-005) — só no recorte; o n absoluto sempre aparece. */
+function SampleNotice({ show, n }: { show: boolean; n: number }) {
+  if (!show || !isSmallSample(n)) return null
+  return (
+    <p className="growth-notice" role="note">
+      Amostra pequena: {plural(n, 'usuário', 'usuários')} neste recorte — leia as porcentagens com cautela.
+    </p>
+  )
+}
 
 /** Barra proporcional em CSS (D-RC2-2): largura = percentual, rótulo com o n ao lado. */
-function Bar({ label, pct, n, of, tone = 'brand', secondary }: { label: string; pct: number; n: number; of: number; tone?: string; secondary?: string }) {
+function Bar({ label, pct, n, of, tone = 'brand', secondary, basePct }: { label: string; pct: number; n: number; of: number; tone?: string; secondary?: string; basePct?: number | null }) {
   return (
     <div className="growth-bar">
       <div className="growth-bar__head">
         <span className="growth-bar__label">{label}</span>
         <span className="growth-bar__value">
           {fmtPct(pct)} <span className="growth-bar__n">({n} de {of})</span>
+          <Baseline pct={basePct} />
         </span>
       </div>
       <div className="growth-bar__track" role="presentation">
@@ -59,19 +92,23 @@ function Bar({ label, pct, n, of, tone = 'brand', secondary }: { label: string; 
   )
 }
 
-function Kpi({ icon, label, value, detail }) {
+function Kpi({ icon, label, value, detail, basePct }: { icon: ReactNode; label: string; value: ReactNode; detail: string; basePct?: number | null }) {
   return (
     <div className="growth-kpi">
       <span className="growth-kpi__label">{icon} {label}</span>
-      <span className="growth-kpi__value">{value}</span>
+      <span className="growth-kpi__value">
+        {value}
+        <Baseline pct={basePct} />
+      </span>
       <span className="growth-kpi__detail">{detail}</span>
     </div>
   )
 }
 
-function KpiHeader({ data }: { data: GrowthAnalytics }) {
+function KpiHeader({ data, reference }: { data: GrowthAnalytics; reference: GrowthAnalytics | null }) {
   const t = data.totals
   const glp1 = data.wedge.glp1_antiobesidade
+  const rt = reference?.totals
   return (
     <section className="growth-kpis" aria-label="Indicadores">
       <Kpi icon={<Users size={14} />} label="Usuários" value={t.users} detail={`+${t.new_7d} em 7 dias · +${t.new_30d} em 30 dias`} />
@@ -79,27 +116,39 @@ function KpiHeader({ data }: { data: GrowthAnalytics }) {
         icon={<Pill size={14} />}
         label="Com tratamento"
         value={t.users_with_protocols}
-        detail={`${fmtPct(t.users ? (100 * t.users_with_protocols) / t.users : 0)} dos usuários · ${plural(t.protocols, 'tratamento', 'tratamentos')}`}
+        detail={`${fmtPct(ratioPct(t.users_with_protocols, t.users))} dos usuários${rt ? ` (base ${fmtPct(ratioPct(rt.users_with_protocols, rt.users))})` : ''} · ${plural(t.protocols, 'tratamento', 'tratamentos')}`}
       />
-      <Kpi icon={<BellRing size={14} />} label="Push ativo" value={fmtPct(t.push_active_pct)} detail={`${t.push_active_users} de ${t.users} usuários`} />
+      <Kpi
+        icon={<BellRing size={14} />}
+        label="Push ativo"
+        value={fmtPct(t.push_active_pct)}
+        basePct={rt?.push_active_pct}
+        detail={`${t.push_active_users} de ${t.users} usuários`}
+      />
       <Kpi
         icon={<Target size={14} />}
         label="Wedge GLP-1"
         value={fmtPct(glp1.users_pct)}
+        basePct={reference?.wedge.glp1_antiobesidade.users_pct}
         detail={`${glp1.users} de ${t.users_with_protocols} usuários com tratamento`}
       />
     </section>
   )
 }
 
-function WedgePanel({ data }: { data: GrowthAnalytics }) {
+function WedgePanel({ data, reference }: { data: GrowthAnalytics; reference: GrowthAnalytics | null }) {
   const of = data.denominators.users_all
   const classes = data.class_distribution.slice(0, TOP_CLASSES)
+  const baseClassPct = (code: string) =>
+    reference ? (reference.class_distribution.find((c) => c.class_code === code)?.users_pct ?? 0) : null
   return (
     <section className="growth-panel" aria-labelledby="growth-wedge-title">
       <h2 id="growth-wedge-title">Wedge por classe terapêutica</h2>
       <p className="growth-panel__hint">Usuários distintos com ≥1 tratamento ativo na classe. Um usuário pode estar em mais de um grupo.</p>
-      {WEDGE_ORDER.map((bucket) => {
+      <SampleNotice show={reference !== null} n={of} />
+      {of === 0 ? (
+        <p className="growth-panel__hint">Nenhum usuário com tratamento ativo neste recorte.</p>
+      ) : WEDGE_ORDER.map((bucket) => {
         const w = data.wedge[bucket]
         return (
           <Bar
@@ -110,6 +159,7 @@ function WedgePanel({ data }: { data: GrowthAnalytics }) {
             of={of}
             tone={bucket === 'glp1_antiobesidade' ? 'brand' : bucket === 'sem_codigo' ? 'muted' : 'neutral'}
             secondary={plural(w.protocols, 'tratamento', 'tratamentos')}
+            basePct={reference?.wedge[bucket].users_pct}
           />
         )
       })}
@@ -125,7 +175,8 @@ function WedgePanel({ data }: { data: GrowthAnalytics }) {
               </span>
               <span className="growth-classes__label" title={c.label ?? undefined}>{c.label ?? (c.class_code === 'sem_codigo' ? 'Várias classes' : '—')}</span>
               <span className="growth-classes__n">
-                {c.users} usu. · {fmtPct(c.users_pct)} · {c.protocols} trat.
+                {c.users} usu. · {fmtPct(c.users_pct)}
+                <Baseline pct={baseClassPct(c.class_code)} /> · {c.protocols} trat.
               </span>
             </li>
           ))}
@@ -135,15 +186,18 @@ function WedgePanel({ data }: { data: GrowthAnalytics }) {
   )
 }
 
-function FeaturePanel({ data }: { data: GrowthAnalytics }) {
+function FeaturePanel({ data, reference }: { data: GrowthAnalytics; reference: GrowthAnalytics | null }) {
   const d = data.denominators
   return (
     <section className="growth-panel" aria-labelledby="growth-features-title">
       <h2 id="growth-features-title">Adoção de features clínicas</h2>
       <p className="growth-panel__hint">
-        Usuários com ≥1 tratamento ativo usando a feature, sobre {d.users_all} usuários com tratamento. Entre parênteses, a coorte de 30 dias.
+        Usuários com ≥1 tratamento ativo usando a feature, sobre {plural(d.users_all, 'usuário', 'usuários')} com tratamento.
       </p>
-      {data.feature_rates.map((f) => (
+      <SampleNotice show={reference !== null} n={d.users_all} />
+      {d.users_all === 0 ? (
+        <p className="growth-panel__hint">Nenhum usuário com tratamento ativo neste recorte.</p>
+      ) : data.feature_rates.map((f) => (
         <Bar
           key={f.feature}
           label={FEATURE_LABEL[f.feature] ?? f.feature}
@@ -151,7 +205,8 @@ function FeaturePanel({ data }: { data: GrowthAnalytics }) {
           n={f.users}
           of={d.users_all}
           tone={f.feature}
-          secondary={`${fmtPct(f.protocols_pct)} dos tratamentos (${f.protocols} de ${d.protocols_all}) · coorte 30d: ${fmtPct(f.cohort30.users_pct)} (${f.cohort30.users} de ${d.users_c30})`}
+          secondary={`${fmtPct(f.protocols_pct)} dos tratamentos (${f.protocols} de ${d.protocols_all})`}
+          basePct={reference ? (reference.feature_rates.find((b) => b.feature === f.feature)?.users_pct ?? 0) : null}
         />
       ))}
       <h3 className="growth-panel__subtitle">Frequências</h3>
@@ -263,13 +318,18 @@ function Skeleton() {
 
 export default function GrowthAdmin({ onBack }: { onBack?: () => void }) {
   const state = useGrowthAdminState()
-  const { data } = state
+  const { data, reference, cohort } = state
 
   return (
     <div className="growth-admin">
       <header className="growth-admin__header">
         <div>
           <h1>Crescimento &amp; Wedge</h1>
+          {cohort && (
+            <p className="growth-admin__meta growth-admin__cohort">
+              {cohort.label}: cadastros desde {parseISO(cohort.since).toLocaleDateString('pt-BR')} (horário de Brasília). Ao lado de cada %, a da base total.
+            </p>
+          )}
           {data && (
             <p className="growth-admin__meta">
               {data.excluded_count > 0 ? `${plural(data.excluded_count, 'conta interna excluída', 'contas internas excluídas')} · ` : ''}
@@ -278,6 +338,20 @@ export default function GrowthAdmin({ onBack }: { onBack?: () => void }) {
           )}
         </div>
         <div className="growth-admin__actions">
+          <div className="growth-modes" role="group" aria-label="Recorte dos dados">
+            {MODES.map((m) => (
+              <button
+                key={m.key}
+                type="button"
+                className={`growth-modes__chip${state.mode === m.key ? ' growth-modes__chip--active' : ''}`}
+                aria-pressed={state.mode === m.key}
+                onClick={() => state.setMode(m.key)}
+                disabled={state.isLoading && state.mode === m.key}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
           <button type="button" className="growth-admin__btn" onClick={state.reload} disabled={state.isLoading}>
             <RefreshCw size={16} /> Atualizar
           </button>
@@ -298,12 +372,14 @@ export default function GrowthAdmin({ onBack }: { onBack?: () => void }) {
 
       {state.isLoading && !data && <Skeleton />}
 
+      {/* RC5: na troca de modo os números antigos ficam até a resposta chegar — esmaecidos e marcados
+          como ocupados, para o chip pressionado nunca rotular números do outro recorte. */}
       {data && (
-        <div className="growth-admin__content">
-          <KpiHeader data={data} />
+        <div className={`growth-admin__content${state.isLoading ? ' growth-admin__content--stale' : ''}`} aria-busy={state.isLoading}>
+          <KpiHeader data={data} reference={reference} />
           <div className="growth-panels">
-            <WedgePanel data={data} />
-            <FeaturePanel data={data} />
+            <WedgePanel data={data} reference={reference} />
+            <FeaturePanel data={data} reference={reference} />
           </div>
 
           <section className="growth-panel growth-cohort" aria-labelledby="growth-users-title">
