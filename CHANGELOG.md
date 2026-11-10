@@ -7,6 +7,12 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Relatório e card de peso: etapa numerada pela escada (bugfix)
+
+- **Web** (`Fixed`, **patch** 4.39.0 → **4.39.1**) e **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.10 → **0.34.11**; canal: **build de loja** junto do trem v0.35 — correção 100% JS, o trem segura a loja).
+  - Em "Peso durante o tratamento" (PDF) e no card de peso do tratamento, a linha de cada etapa contava só as etapas que caíam no período: com a escada já na etapa 3, o relatório dizia "Etapa 1 (no período)" logo abaixo da escada que mostrava "Etapa 3". A numeração agora segue a posição real na escada.
+- **Core:** `MeasureStepInput.position` (opcional) alimenta `MeasureSeriesStep.index`; sem ela, mantém a contagem antiga.
+
 ### Painel Crescimento & Wedge: recorte pós-v0.34 (spec 118)
 
 - **Web** (`Added` + `Removed`, **minor** 4.38.0 → **4.39.0**; feature visível nova no painel admin — web = minor por feature; canal: deploy Vercel, **antes** da migração em prod).
