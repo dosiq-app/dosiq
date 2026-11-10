@@ -327,7 +327,7 @@ export default function GrowthAdmin({ onBack }: { onBack?: () => void }) {
           <h1>Crescimento &amp; Wedge</h1>
           {cohort && (
             <p className="growth-admin__meta growth-admin__cohort">
-              {cohort.label}: cadastros desde {parseISO(cohort.since).toLocaleDateString('pt-BR')} (horário de Brasília). Ao lado de cada %, a da base total.
+              {cohort.label}: cadastros desde {parseISO(cohort.since).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })} (horário de Brasília). Ao lado de cada %, a da base total.
             </p>
           )}
           {data && (
