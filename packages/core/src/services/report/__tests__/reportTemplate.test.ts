@@ -570,7 +570,7 @@ describe('renderReportHtml — medidas e locais de aplicação (097 C)', () => {
     expect(text).not.toContain('mediana 128×82')
   })
 
-  it('peso com muitas pesagens: primeira, última e n/mín/mediana/máx em vez da lista inteira', () => {
+  it('peso com muitas pesagens: linha única com primeira, última e mín/mediana/máx em vez da lista inteira', () => {
     const daily = Array.from({ length: 12 }, (_, i) => ({
       id: `w${i}`,
       type: 'peso',
@@ -582,9 +582,7 @@ describe('renderReportHtml — medidas e locais de aplicação (097 C)', () => {
     }))
     const html = renderReportHtml(clinical({ biomarkers: daily }))
     const text = visibleText(html)
-    expect(text).toContain('Primeira pesagem 24/09 07:00 90 kg')
-    expect(text).toContain('Última pesagem 29/09 19:00 84,5 kg')
-    expect(text).toMatch(/No período 12 84,5 87,3 90/)
+    expect(text).toContain('Primeira 24/09 90 kg · Última 29/09 84,5 kg · mínimo 84,5 · mediana 87,3 · máximo 90 kg')
     expect(text).not.toContain('26/09 07:00')
     expect(html).not.toContain('<th>Data</th><th>Peso</th></tr></thead><tbody><tr><td class="num">')
   })

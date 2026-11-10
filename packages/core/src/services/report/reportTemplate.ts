@@ -499,24 +499,24 @@ function contextTable(block: MeasureBlock): string {
 export const WEIGHT_TABLE_MAX_ROWS = 8
 
 /**
- * Peso: lista completa quando curta; senão primeira e última pesagem + n/mínimo/mediana/máximo.
+ * Peso: lista completa quando curta; senão uma linha com primeira e última pesagem + mínimo/mediana/máximo.
  * Só fatos (INV-5): nenhuma diferença ou ritmo calculado — a tendência fica no gráfico da escada.
  */
 function weightTable(block: MeasureBlock): string {
-  const row = (label: string, p: MeasureBlock['points'][number]) =>
-    `<tr><td>${label}</td><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`
   if (block.points.length <= WEIGHT_TABLE_MAX_ROWS) {
     const rows = block.points.map((p) => `<tr><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`).join('')
     return `<table><thead><tr><th>Data</th><th>Peso</th></tr></thead><tbody>${rows}</tbody></table>`
   }
+  // Linha única (smoke 10/11: duas tabelas empilhadas desalinhavam). O n já está no título do bloco.
   const first = block.points[0]
   const last = block.points[block.points.length - 1]
-  const ends = `<table><thead><tr><th></th><th>Data</th><th>Peso</th></tr></thead><tbody>${row('Primeira pesagem', first)}${row('Última pesagem', last)}</tbody></table>`
   const stat = block.byContext[0]?.stat
-  const stats = stat
-    ? `<table><thead><tr><th>Peso (kg)</th>${STAT_HEAD}</tr></thead><tbody><tr><td>No período</td>${statCells(stat, null)}</tr></tbody></table>`
-    : ''
-  return ends + stats
+  const parts = [
+    `Primeira ${dm(first.day)} ${num(first.value)} kg`,
+    `Última ${dm(last.day)} ${num(last.value)} kg`,
+    ...(stat ? [`mínimo ${num(stat.min)} · mediana ${num(stat.median)} · máximo ${num(stat.max)} kg`] : []),
+  ]
+  return `<div class="num">${parts.join(' · ')}</div>`
 }
 
 function measureBlock(block: MeasureBlock, model: ReportModel): string {
