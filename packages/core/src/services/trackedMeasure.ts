@@ -37,6 +37,20 @@ export const MEASURE_CLASS_MATRIX: ReadonlyArray<readonly [prefix: string, measu
  */
 export const WEDGE_CLASS_PREFIXES: ReadonlyArray<string> = ['A10S', 'A10X9', 'A8A']
 
+/**
+ * Recortes do painel Crescimento & Wedge (spec 118 · FR-001). `since` é o corte por data de
+ * cadastro (`auth.users.created_at >= since`), em horário de Brasília. Só a chave trafega na URL;
+ * o handler resolve a data aqui, nunca aceita data livre do cliente.
+ */
+export const GROWTH_COHORTS = {
+  v034: { label: 'Pós-v0.34', since: '2026-10-22T00:00:00-03:00' },
+} as const
+
+export type GrowthCohortKey = keyof typeof GROWTH_COHORTS
+
+/** Abaixo deste denominador o painel avisa amostra pequena (spec 118 · FR-005). */
+export const SMALL_SAMPLE_THRESHOLD = 30
+
 export type WedgeBucket = 'glp1_antiobesidade' | 'antidiabeticos_outros' | 'outras' | 'sem_codigo'
 
 /** Bucket do wedge de um código de classe (mesma regra da RPC). */

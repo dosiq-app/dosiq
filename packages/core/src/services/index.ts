@@ -117,12 +117,14 @@ export type {
 export {
   MEASURE_CLASS_MATRIX,
   WEDGE_CLASS_PREFIXES,
+  GROWTH_COHORTS,
+  SMALL_SAMPLE_THRESHOLD,
   classifyWedge,
   normalizeClassCode,
   inferMeasure,
   effectiveMeasure,
 } from './trackedMeasure'
-export type { Measure, EffectiveMeasure, WedgeBucket } from './trackedMeasure'
+export type { Measure, EffectiveMeasure, WedgeBucket, GrowthCohortKey } from './trackedMeasure'
 
 // Aritmética de dia local (YYYY-MM-DD) da série — o card da 069-B precisa das mesmas contas da ponte.
 export { shiftDay, daysBetween } from './report/reportFormat'

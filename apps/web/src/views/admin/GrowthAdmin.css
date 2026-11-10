@@ -566,3 +566,64 @@
     width: 100%;
   }
 }
+
+/* Spec 118 — seletor de recorte (chips aria-pressed, padrão MeasuresHub) */
+.growth-admin__actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.growth-modes {
+  display: inline-flex;
+  border: 1px solid var(--growth-line);
+  border-radius: 999px;
+  padding: 0.125rem;
+  background: var(--growth-card);
+}
+
+.growth-modes__chip {
+  border: 0;
+  background: transparent;
+  color: var(--growth-ink-2);
+  padding: 0.375rem 0.875rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.growth-modes__chip--active {
+  background: var(--growth-brand);
+  color: #ffffff;
+}
+
+.growth-modes__chip:focus-visible {
+  outline: 2px solid var(--growth-brand);
+  outline-offset: 2px;
+}
+
+.growth-admin__cohort {
+  color: var(--growth-brand);
+}
+
+.growth-baseline {
+  color: var(--growth-ink-2);
+  font-size: 0.75rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.growth-notice {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-warning, #d97706);
+  background: var(--color-warning-bg, #fffbeb);
+  color: var(--growth-ink);
+  font-size: 0.8125rem;
+}
+
+.growth-admin__content--stale {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}

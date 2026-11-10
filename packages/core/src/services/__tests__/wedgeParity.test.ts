@@ -1,4 +1,4 @@
-// Paridade do wedge (spec 115 · FR-010 · INV-4): a RPC get_admin_growth_analytics classifica por
+// Paridade do wedge (spec 115 · FR-010 · INV-4; spec 118: lê a migração vigente): a RPC get_admin_growth_analytics classifica por
 // prefixo de therapeutic_class_code com uma lista literal no SQL. Esta lista e WEDGE_CLASS_PREFIXES
 // do core têm de ser a mesma — senão o painel e o app discordam sobre o que é GLP-1.
 import { readFileSync } from 'node:fs'
@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WEDGE_CLASS_PREFIXES, classifyWedge, inferMeasure } from '../trackedMeasure'
 
-const MIGRATION = resolve(__dirname, '../../../../../docs/migrations/20261103_admin_growth_analytics.sql')
+const MIGRATION = resolve(__dirname, '../../../../../docs/migrations/20261110_admin_growth_cohort.sql')
 
 /** Extrai a lista marcada `-- WEDGE_CLASS_PREFIXES` do SQL (linha seguinte ao marcador). */
 function sqlWedgePrefixes(): string[] {

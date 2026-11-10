@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Painel Crescimento & Wedge: recorte pós-v0.34 (spec 118)
+
+- **Web** (`Added` + `Removed`, **minor** 4.38.0 → **4.39.0**; feature visível nova no painel admin — web = minor por feature; canal: deploy Vercel, **antes** da migração em prod).
+  - **Seletor "Base total | Pós-v0.34"** no topo do painel: o recorte pós-v0.34 (cadastro desde 22/10/2026, horário de Brasília) vale para todos os blocos — KPIs, wedge, classes, adoção de features, frequências e lista de contas. No modo pós-v0.34, cada porcentagem mostra ao lado a da base total (`· base X%`), e blocos com menos de 30 pessoas no denominador ganham um aviso de amostra pequena, sempre com o número absoluto visível.
+  - **Removido:** a coluna "coorte 30d" da adoção de features, substituída pelo recorte fixo.
+- **Backend/Infra:** função `get_admin_growth_analytics` ganha o parâmetro `p_since` (assinatura antiga removida; acesso continua só pelo servidor). Migração `20261110_admin_growth_cohort.sql`.
+
 ### Mapa corporal: toque volta a funcionar em aparelhos Xiaomi (spec 071)
 
 - **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.6 → **0.34.7**; canal: **build de loja** junto do trem v0.35 — correção 100% JS, mas o trem segura a loja).

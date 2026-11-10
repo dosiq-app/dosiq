@@ -85,8 +85,10 @@ describe('admin.ts resource=growth — resposta (PO-115-3, PO-SEC-3)', () => {
     const r = res()
     await handler(req('Bearer admin'), r)
     expect(r.statusCode).toBe(200)
-    expect(r.body).toEqual(PAYLOAD)
+    expect(r.body).toEqual({ base: PAYLOAD, cohort: null })
     expect(r.headers['cache-control']).toBe('no-store')
+    // 118: modo total = 1 chamada, sem p_since (chave omitida)
+    expect(rpc).toHaveBeenCalledTimes(1)
     expect(rpc).toHaveBeenCalledWith('get_admin_growth_analytics', { p_limit: 100, p_offset: 0, p_excluded_user_ids: [] })
   })
 
@@ -157,5 +159,51 @@ describe('GROWTH_EXCLUDED_USER_IDS (PO-115-8 / FR-009)', () => {
     expect(excludedSent()).toEqual([X, Y])
     expect(JSON.stringify(warn.mock.calls)).toContain('1')
     expect(r.statusCode).toBe(200)
+  })
+})
+
+describe('cohort=v034 (spec 118 · PO-118-1)', () => {
+  beforeEach(() => { verifyAdminAccess.mockResolvedValue({ authorized: true }) })
+  const SINCE = '2026-10-22T00:00:00-03:00'
+
+  it('2 chamadas: base só agregados (limit 1) e coorte com p_since e a paginação pedida', async () => {
+    process.env.GROWTH_EXCLUDED_USER_IDS = X
+    const r = res()
+    await handler(req('Bearer admin', { cohort: 'v034', limit: '50', offset: '10' }), r)
+    expect(r.statusCode).toBe(200)
+    expect(rpc).toHaveBeenCalledTimes(2)
+    expect(rpc).toHaveBeenCalledWith('get_admin_growth_analytics', { p_limit: 1, p_offset: 0, p_excluded_user_ids: [X] })
+    expect(rpc).toHaveBeenCalledWith('get_admin_growth_analytics', { p_limit: 50, p_offset: 10, p_excluded_user_ids: [X], p_since: SINCE })
+    expect(r.body).toEqual({ base: PAYLOAD, cohort: { key: 'v034', since: SINCE, data: PAYLOAD } })
+  })
+
+  it.each([[''], ['V034'], ['2026-01-01'], [['v034']], ['__proto__'], ['toString']])('cohort %j fora da whitelist ⇒ só base, sem p_since', async (cohort) => {
+    const r = res()
+    await handler(req('Bearer admin', { cohort }), r)
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc.mock.calls[0][1]).not.toHaveProperty('p_since')
+    expect(r.body.cohort).toBeNull()
+  })
+
+  it('1 das 2 chamadas falha (error ou throw) ⇒ 500 genérico, sem payload parcial', async () => {
+    rpc.mockResolvedValueOnce({ data: PAYLOAD, error: null }).mockResolvedValueOnce({ data: null, error: { code: '57014', message: 'timeout' } })
+    let r = res()
+    await handler(req('Bearer admin', { cohort: 'v034' }), r)
+    expect(r.statusCode).toBe(500)
+    expect(r.body).toEqual({ error: 'Falha ao carregar analytics' })
+
+    rpc.mockRejectedValueOnce(new Error('fetch failed')).mockResolvedValueOnce({ data: PAYLOAD, error: null })
+    r = res()
+    await handler(req('Bearer admin', { cohort: 'v034' }), r)
+    expect(r.statusCode).toBe(500)
+    expect(r.body).toEqual({ error: 'Falha ao carregar analytics' })
+  })
+
+  it('coorte também passa por stripForbidden', async () => {
+    rpc.mockResolvedValueOnce({ data: PAYLOAD, error: null })
+      .mockResolvedValueOnce({ data: { ...PAYLOAD, users: [{ ...PAYLOAD.users[0], push_token: 'ExponentPushToken[z]' }] }, error: null })
+    const r = res()
+    await handler(req('Bearer admin', { cohort: 'v034' }), r)
+    expect(JSON.stringify(r.body)).not.toContain('ExponentPushToken')
   })
 })
