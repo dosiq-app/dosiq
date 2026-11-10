@@ -7,11 +7,12 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
-### Relatório e card de peso: etapa numerada pela escada (bugfix)
+### Relatório e card de peso: etapa numerada pela escada + tabela de peso resumida
 
 - **Web** (`Fixed`, **patch** 4.39.0 → **4.39.1**) e **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.10 → **0.34.11**; canal: **build de loja** junto do trem v0.35 — correção 100% JS, o trem segura a loja).
   - Em "Peso durante o tratamento" (PDF) e no card de peso do tratamento, a linha de cada etapa contava só as etapas que caíam no período: com a escada já na etapa 3, o relatório dizia "Etapa 1 (no período)" logo abaixo da escada que mostrava "Etapa 3". A numeração agora segue a posição real na escada.
-- **Core:** `MeasureStepInput.position` (opcional) alimenta `MeasureSeriesStep.index`; sem ela, mantém a contagem antiga.
+  - **Tabela de peso do relatório resumida** (`Changed`, cabe no mesmo patch: ajuste de leitura de uma seção existente, sem dado novo): com até 8 pesagens no período a tabela segue listando todas; acima disso mostra a primeira e a última pesagem (data e valor) e uma linha com n, mínimo, mediana e máximo — quem se pesa todo dia gerava ~30 linhas por mês. Nenhuma diferença calculada; a tendência continua no gráfico de peso da escada.
+- **Core:** `WEIGHT_TABLE_MAX_ROWS` (8) no template do relatório; `MeasureStepInput.position` (opcional) alimenta `MeasureSeriesStep.index`; sem ela, mantém a contagem antiga.
 
 ### Painel Crescimento & Wedge: recorte pós-v0.34 (spec 118)
 

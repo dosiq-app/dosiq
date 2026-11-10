@@ -495,15 +495,37 @@ function contextTable(block: MeasureBlock): string {
   return `<table><thead><tr><th>Momento (${e(block.unit)})</th>${STAT_HEAD}</tr></thead><tbody>${rows}</tbody></table>`
 }
 
+/** Até este número de pesagens a tabela lista todas; acima, resume (quem se pesa todo dia gera ~30 linhas/mês). */
+export const WEIGHT_TABLE_MAX_ROWS = 8
+
+/**
+ * Peso: lista completa quando curta; senão primeira e última pesagem + n/mínimo/mediana/máximo.
+ * Só fatos (INV-5): nenhuma diferença ou ritmo calculado — a tendência fica no gráfico da escada.
+ */
+function weightTable(block: MeasureBlock): string {
+  const row = (label: string, p: MeasureBlock['points'][number]) =>
+    `<tr><td>${label}</td><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`
+  if (block.points.length <= WEIGHT_TABLE_MAX_ROWS) {
+    const rows = block.points.map((p) => `<tr><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`).join('')
+    return `<table><thead><tr><th>Data</th><th>Peso</th></tr></thead><tbody>${rows}</tbody></table>`
+  }
+  const first = block.points[0]
+  const last = block.points[block.points.length - 1]
+  const ends = `<table><thead><tr><th></th><th>Data</th><th>Peso</th></tr></thead><tbody>${row('Primeira pesagem', first)}${row('Última pesagem', last)}</tbody></table>`
+  const stat = block.byContext[0]?.stat
+  const stats = stat
+    ? `<table><thead><tr><th>Peso (kg)</th>${STAT_HEAD}</tr></thead><tbody><tr><td>No período</td>${statCells(stat, null)}</tr></tbody></table>`
+    : ''
+  return ends + stats
+}
+
 function measureBlock(block: MeasureBlock, model: ReportModel): string {
   const title = `<div><b>${e(block.label)}</b> <span class="mute num">· ${block.points.length} ${block.points.length === 1 ? 'medida' : 'medidas'}</span></div>`
   if (block.type === 'peso') {
-    const rows = block.points.map((p) => `<tr><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`).join('')
     const inLadder = model.ladders.some((l) => l.weightChart)
       ? '<div class="small mute">Peso por etapa: ver "Escadas de titulação".</div>'
       : ''
-    const table = `<table><thead><tr><th>Data</th><th>Peso</th></tr></thead><tbody>${rows}</tbody></table>`
-    return `<div class="mblock">${title}${table}${inLadder}</div>`
+    return `<div class="mblock">${title}${weightTable(block)}${inLadder}</div>`
   }
   if (block.type === 'pressao_arterial') {
     const rows = block.points
