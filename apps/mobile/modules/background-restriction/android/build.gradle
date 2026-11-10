@@ -13,3 +13,10 @@ android {
     versionName '0.1.0'
   }
 }
+
+dependencies {
+  // PackageManagerCompat/IntentCompat (hibernação, spec 068). Já vem transitivo do RN; explícito p/ compilar o módulo.
+  implementation 'androidx.core:core:1.13.1'
+  // getUnusedAppRestrictionsStatus devolve ListenableFuture (Guava); concurrent-futures a expõe como api.
+  implementation 'androidx.concurrent:concurrent-futures:1.2.0'
+}

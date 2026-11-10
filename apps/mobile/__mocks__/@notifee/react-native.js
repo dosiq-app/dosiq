@@ -25,6 +25,7 @@ const notifee = {
   // 082 D2: fatos de bateria do deviceProbe (só a 068 interpreta).
   isBatteryOptimizationEnabled: jest.fn(() => Promise.resolve(false)),
   getPowerManagerInfo: jest.fn(() => Promise.resolve({ activity: null })),
+  openPowerManagerSettings: jest.fn(() => Promise.resolve()),
 }
 
 const AndroidImportance = { HIGH: 4, DEFAULT: 3, LOW: 2, MIN: 1, NONE: 0 }

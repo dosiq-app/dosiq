@@ -24,6 +24,7 @@ const facts = (over: Partial<DeviceFacts> = {}): DeviceFacts => ({
   backgroundRestricted: false,
   batteryOptimized: false,
   powerManagerActivity: null,
+  hibernationEnabled: null,
   ...over,
 })
 
@@ -54,6 +55,7 @@ describe('probeDevice', () => {
       backgroundRestricted: true,
       batteryOptimized: true,
       powerManagerActivity: null,
+      hibernationEnabled: null,
     })
   })
 
@@ -79,6 +81,7 @@ describe('probeDevice', () => {
       backgroundRestricted: null,
       batteryOptimized: null,
       powerManagerActivity: null,
+      hibernationEnabled: null,
     })
   })
 

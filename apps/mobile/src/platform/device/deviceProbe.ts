@@ -17,6 +17,7 @@ import {
   isPushUsable,
 } from '@platform/alarms/alarmService'
 import { isBackgroundRestricted } from './backgroundRestriction'
+import { isAppHibernationEnabled } from './appHibernation'
 
 export interface DeviceFacts {
   /** O alarme pode aparecer: push utilizável, ou (iOS) alerta crítico autorizado (054 C-11). */
@@ -33,6 +34,8 @@ export interface DeviceFacts {
   batteryOptimized: boolean | null
   /** Android: o OEM expõe tela de gerenciamento de energia (só 068). iOS: null. */
   powerManagerActivity: string | null
+  /** Android 11+: hibernação do app ligada ("Gerenciar o app fora de uso") — só 068, nunca capacidade. */
+  hibernationEnabled: boolean | null
 }
 
 /** Executa a leitura; erro ⇒ `null` (fail-safe). @private */
@@ -76,6 +79,7 @@ export async function probeDevice(): Promise<DeviceFacts> {
     backgroundRestricted: isAndroid ? isBackgroundRestricted() : null,
     batteryOptimized: isAndroid ? await _safe(() => notifee.isBatteryOptimizationEnabled()) : null,
     powerManagerActivity: isAndroid ? ((await _safe(() => notifee.getPowerManagerInfo()))?.activity ?? null) : null,
+    hibernationEnabled: isAndroid ? await isAppHibernationEnabled() : null,
   }
 }
 
