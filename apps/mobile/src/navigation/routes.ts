@@ -79,6 +79,9 @@ export const ROUTES = {
   // upsell do dashboard (mesma rota, param `source`).
   STOCK_INITIAL_BALANCE: 'StockInitialBalance',
 
+  // Assistente anti-Doze por fabricante (spec 068) — stack RAIZ: entra pela Hoje e, no PR 2, pelo Perfil.
+  OEM_BATTERY_ASSISTANT: 'OemBatteryAssistant',
+
   // Histórico de doses (Fase X)
   DOSE_HISTORY: 'DoseHistory',
 

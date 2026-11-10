@@ -47,22 +47,12 @@ import { useCriticalAlarmToggle } from '@treatments/hooks/useCriticalAlarmToggle
 import {
   needsFullScreenIntentAccess,
   openFullScreenIntentSettings,
-  isXiaomiDevice,
 } from '@platform/alarms/alarmService'
+import { resolveOemFamily } from '@platform/device/oemFamily'
+import { getFullScreenGuide, guideToPlainText } from '@features/oemAssistant/oemBatteryGuides'
 
 /** Teto de bolas renderizadas — acima disso vira "+N" (escada longa não pode estourar a linha). */
 const EVO_DOTS_MAX = 8
-
-const XIAOMI_MSG =
-  'Você precisa de uma etapa extra para o alarme funcionar na tela bloqueada. Abra as configurações abaixo e:\n\n' +
-  '1. Escolha "Outras permissões" e ative *Sempre permitir* em:\n' +
-  '  a. "Mostrar na Tela de bloqueio"\n' +
-  '  b. "Abrir novas janelas enquanto executa em segundo plano"\n' +
-  '  c. "Exibir janelas pop-up"\n\n'+
-  'Quando terminar, pode fechar essa janela.'
-
-const GENERIC_MSG =
-  'Para o alarme funcionar na tela bloqueada, toque em <Abrir configurações> abaixo e ligue "Notificações em tela cheia".'
 
 // 085 (F-2): a lista de oferta vem do core. Antes era hardcoded aqui e o mobile não
 // enxergava mudança nenhuma de vocabulário — só o smoke perceberia.
@@ -545,7 +535,8 @@ export default function ProtocolFormBody({
   const showFullScreenGuide = useCallback(() => {
     // Checar se precisa de acesso especial de alarme em tela cheia (Android 14+ / Xiaomi)
     if (!needsFullScreenIntentAccess()) return
-    setGuideMsg(isXiaomiDevice() ? XIAOMI_MSG : GENERIC_MSG)
+    // 068 E-4/D-1: copy vem do dono único, sem marcação crua.
+    setGuideMsg(guideToPlainText(getFullScreenGuide(resolveOemFamily())))
     setGuideVisible(true)
   }, [])
   // 054 FR-008b: fluxo do toggle por plataforma/estado de permissão vive no hook.

@@ -48,6 +48,10 @@ import { subscribePendingDose } from '@navigation/navigateToDose'
 import { deriveStockAlerts, deriveSupplyNotices } from '@dashboard/hooks/_useTodayDerived'
 import { navigateCrossTab } from '@navigation/navigateCrossTab'
 import { useStockUpsell } from '@dashboard/hooks/useStockUpsell'
+import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatteryAssistant'
+import OemBatteryAssistantCard from '@features/oemAssistant/components/OemBatteryAssistantCard'
+import { pickPromoCard } from '@dashboard/utils/pickPromoCard'
+import { hasRemindableTreatment } from '@dashboard/utils/hasRemindableTreatment'
 import StockUpsellCard from '@dashboard/components/StockUpsellCard'
 import { colors, spacing, typography, borderRadius, shadows } from '@shared/styles/tokens'
 
@@ -408,6 +412,7 @@ function TodayScreenContent({
   const { nudge: dashboardNudge, dismiss: dismissNudge, handleAction: handleNudgeAction, refresh: refreshNudge } = useNudges('dashboard')
   const { enabled: stockTrackingEnabled } = useStockTracking()
   const { visible: stockUpsellVisible, dismiss: dismissStockUpsell } = useStockUpsell(data?.timezone)
+  const { visible: oemAssistantVisible, reason: oemReason, dismiss: dismissOemAssistant } = useOemBatteryAssistant({ hasTreatment: hasRemindableTreatment(protocols) })
   const [evoRefreshTick, setEvoRefreshTick] = useState(0)
   const [speedDialOpen, setSpeedDialOpen] = useState(false)
   const [measureLogOpen, setMeasureLogOpen] = useState(false)
@@ -431,6 +436,7 @@ function TodayScreenContent({
     return [...carryOver, ...todayUrgent, ...aheadImminent]
       .sort((a: any, b: any) => (a.scheduledFor || '').localeCompare(b.scheduledFor || ''))
   }, [carryOver, timeline, lookAhead])
+  const promoCard = pickPromoCard({ hasHero: priorityDoses.length > 0, nudge: otaBanner ?? dashboardNudge, stockVisible: stockUpsellVisible, oemVisible: oemAssistantVisible })
 
   const instancesByKey = useMemo(() => timeline.reduce((map: any, d: any) => {
     if (d.instanceId && d.protocol?.id && d.scheduledTime) {
@@ -497,12 +503,21 @@ function TodayScreenContent({
         />
         {/* Upsell de estoque (spec 044, F4b / T018) — nudge, não modal (R-239). Posição do
             mock: entre o card de PENDÊNCIAS e o título "Agenda de Hoje". */}
-        {stockUpsellVisible && (
+        {/* 068 D-5/E-7: no máximo 1 card promocional por render — nudge (intenção) > estoque >
+            assistente de bateria (passivo cede). */}
+        {promoCard === 'stock' && (
           <StockUpsellCard
             onActivate={() =>
               navigation?.navigate?.(ROUTES.STOCK_INITIAL_BALANCE, { source: 'upsell' })
             }
             onDismiss={dismissStockUpsell}
+          />
+        )}
+        {promoCard === 'oem' && (
+          <OemBatteryAssistantCard
+            reason={oemReason as 'restricted' | 'battery'}
+            onAdjust={() => navigation?.navigate?.(ROUTES.OEM_BATTERY_ASSISTANT)}
+            onDismiss={dismissOemAssistant}
           />
         )}
         <View style={styles.agendaHeader}>

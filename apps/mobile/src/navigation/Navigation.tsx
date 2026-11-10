@@ -28,6 +28,7 @@ import RootTabs from './RootTabs'
 import AlarmFullScreen from '../features/dose/screens/AlarmFullScreen'
 import ChatScreen from '../features/chatbot/screens/ChatScreen'
 import StockInitialBalanceScreen from '../features/stock/screens/StockInitialBalanceScreen'
+import OemBatteryAssistantScreen from '../features/oemAssistant/screens/OemBatteryAssistantScreen'
 import MedicineFormScreen from '../features/medications/screens/MedicineFormScreen'
 import OnboardingNavigator from '../features/onboarding/OnboardingNavigator'
 import ConsentResolutionScreen from '../features/consent/screens/ConsentResolutionScreen'
@@ -413,6 +414,9 @@ function NavigationTree({
               name={ROUTES.STOCK_INITIAL_BALANCE}
               component={StockInitialBalanceScreen}
             />
+            {/* Assistente anti-Doze (spec 068) — rota, não modal (D-2): sobrevive à ida às
+                Configurações do SO. Stack raiz pelo mesmo motivo do STOCK_INITIAL_BALANCE. */}
+            <Stack.Screen name={ROUTES.OEM_BATTERY_ASSISTANT} component={OemBatteryAssistantScreen} />
             {/* Ferramentas de dev (debug ou build interno `device`). Condição LITERAL de propósito:
                 o Metro dobra `__DEV__`/`EXPO_PUBLIC_*` aqui e corta o `require` do bundle da loja
                 (R-314). Espelha `DEV_TOOLS_ENABLED` (features/_dev/devTools.ts). */}

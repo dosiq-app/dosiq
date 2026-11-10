@@ -23,6 +23,7 @@ import { setSnoozeAnchors, setSnoozeAttempts, getSnoozeAttempts } from './snooze
 import { SURFACE_ID_SUFFIX } from '@platform/doseActivity/doseActivitySurfaceService'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { reassertIncapableAfterSnooze } from '@platform/device/capabilityBulletin'
+import { resolveOemFamily } from '@platform/device/oemFamily'
 import notifee, {
   AndroidImportance,
   AndroidVisibility,
@@ -32,7 +33,6 @@ import notifee, {
   IOSNotificationSetting,
 } from '@notifee/react-native'
 import { Platform, Linking } from 'react-native'
-import * as Device from 'expo-device'
 import * as Notifications from 'expo-notifications'
 import { colors } from '@shared/styles/tokens'
 import { debugLog } from '@shared/utils/debugLog'
@@ -334,9 +334,8 @@ export function needsFullScreenIntentAccess() {
  * precisam de um guia próprio, mais detalhado, vs. o genérico do Android 14+.
  */
 export function isXiaomiDevice() {
-  if (Platform.OS !== 'android') return false
-  const id = `${Device.manufacturer || ''} ${Device.brand || ''}`.toLowerCase()
-  return /xiaomi|redmi|poco/.test(id)
+  // 068 E-4/E-5: wrapper da fonte única da família de OEM (assinatura preservada).
+  return resolveOemFamily() === 'xiaomi'
 }
 
 let iosCategoriesEnsured = false
