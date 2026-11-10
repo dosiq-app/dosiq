@@ -587,6 +587,22 @@ describe('renderReportHtml — medidas e locais de aplicação (097 C)', () => {
     expect(html).not.toContain('<th>Data</th><th>Peso</th></tr></thead><tbody><tr><td class="num">')
   })
 
+  it('pressão com muitas medidas: tabela por momento em vez da lista', () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+      id: `pa${i}`,
+      type: 'pressao_arterial',
+      value: 120 + i,
+      value_secondary: 80 + (i % 3),
+      unit: 'mmHg',
+      measured_at: at(String(24 + Math.floor(i / 2)), i % 2 ? '22:30' : '07:30'),
+      context: i % 2 ? 'ao_dormir' : 'em_repouso',
+    }))
+    const html = renderReportHtml(clinical({ biomarkers: many }))
+    expect(html).toContain('<th>Momento (mmHg)</th>')
+    expect(html).not.toContain('<th>Sistólica × diastólica</th>')
+    expect(visibleText(html)).toMatch(/Em repouso 5 120×80/)
+  })
+
   it('PO-8: sem medidas, nem título nem cruzamento; o resto do documento é igual', () => {
     const without = renderReportHtml(clinical({ biomarkers: [] }))
     expect(without).not.toContain('<h2>Medidas</h2>')

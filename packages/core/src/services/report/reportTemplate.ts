@@ -496,14 +496,14 @@ function contextTable(block: MeasureBlock): string {
 }
 
 /** Até este número de pesagens a tabela lista todas; acima, resume (quem se pesa todo dia gera ~30 linhas/mês). */
-export const WEIGHT_TABLE_MAX_ROWS = 8
+export const MEASURE_LIST_MAX_ROWS = 8
 
 /**
  * Peso: lista completa quando curta; senão uma linha com primeira e última pesagem + mínimo/mediana/máximo.
  * Só fatos (INV-5): nenhuma diferença ou ritmo calculado — a tendência fica no gráfico da escada.
  */
 function weightTable(block: MeasureBlock): string {
-  if (block.points.length <= WEIGHT_TABLE_MAX_ROWS) {
+  if (block.points.length <= MEASURE_LIST_MAX_ROWS) {
     const rows = block.points.map((p) => `<tr><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`).join('')
     return `<table><thead><tr><th>Data</th><th>Peso</th></tr></thead><tbody>${rows}</tbody></table>`
   }
@@ -528,6 +528,8 @@ function measureBlock(block: MeasureBlock, model: ReportModel): string {
     return `<div class="mblock">${title}${weightTable(block)}${inLadder}</div>`
   }
   if (block.type === 'pressao_arterial') {
+    // Muitas medidas: tabela por momento (n/mín/mediana/máx, sistólica×diastólica), a régua da glicemia.
+    if (block.points.length > MEASURE_LIST_MAX_ROWS) return `<div class="mblock">${title}${contextTable(block)}</div>`
     const rows = block.points
       .map(
         (p) =>
