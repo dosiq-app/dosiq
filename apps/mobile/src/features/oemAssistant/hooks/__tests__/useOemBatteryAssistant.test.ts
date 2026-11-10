@@ -78,6 +78,28 @@ describe('useOemBatteryAssistant', () => {
     expect(result.current.powerManagerActivity).toBe('com.samsung/x')
   })
 
+  it('sonda antiga que chega por último não sobrescreve a mais nova (RC6 #939 · AP-365)', async () => {
+    mockProbe.mockResolvedValue(facts())
+    const { result } = renderHook(() => useOemBatteryAssistant())
+    await waitFor(() => expect(result.current.facts).not.toBeNull())
+
+    let resolveStale: (v: unknown) => void = () => {}
+    mockProbe
+      .mockImplementationOnce(() => new Promise((r) => { resolveStale = r }))
+      .mockResolvedValueOnce(facts({ batteryOptimized: false }))
+    let stale: Promise<unknown> = Promise.resolve()
+    await act(async () => {
+      stale = result.current.recheck()
+      await result.current.recheck()
+    })
+    await act(async () => {
+      resolveStale(facts({ batteryOptimized: true }))
+      await stale
+    })
+    expect(result.current.reason).toBeNull()
+    expect(result.current.facts?.batteryOptimized).toBe(false)
+  })
+
   it('ios ⇒ visible false sem sondar', async () => {
     RN.Platform.OS = 'ios'
     const { result } = renderHook(() => useOemBatteryAssistant())

@@ -78,6 +78,9 @@ export function useOemBatteryAssistant({ hasTreatment = true }: OemAssistantOpti
     }
   })
   const mounted = useRef(true)
+  // Foco e AppState 'active' disparam o recheck quase juntos na volta das Configurações:
+  // só a sonda mais recente aplica o resultado (RC6 #939 · AP-365).
+  const probeGen = useRef(0)
 
   const visible = dismissed === false && !!reason && hasTreatment
 
@@ -88,10 +91,11 @@ export function useOemBatteryAssistant({ hasTreatment = true }: OemAssistantOpti
       if (mounted.current) setReason(null)
       return null
     }
+    const gen = ++probeGen.current
     try {
       const probed = await probeDevice()
       const next = evaluateOemAssistant(true, family, probed)
-      if (mounted.current) {
+      if (mounted.current && gen === probeGen.current) {
         setReason(next)
         setActivity(probed.powerManagerActivity ?? null)
         setFacts({
@@ -103,7 +107,7 @@ export function useOemBatteryAssistant({ hasTreatment = true }: OemAssistantOpti
       }
       return next
     } catch {
-      if (mounted.current) {
+      if (mounted.current && gen === probeGen.current) {
         setReason(null)
         setFacts(null)
       }
