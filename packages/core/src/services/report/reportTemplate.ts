@@ -25,6 +25,7 @@ import type { VisitItem } from './reportSections/header'
 import type { InjectionSiteCard } from './reportSections/injectionSites'
 import type { DayCellState, IntakeRow } from './reportSections/intakes'
 import type { MeasureBlock, MeasurePoint, MeasureStat, MeasuresSection } from './reportSections/measures'
+import { measureStat } from './reportSections/measures'
 import type { StockRow } from './reportSections/stock'
 
 interface FlowTable {
@@ -511,7 +512,8 @@ function weightTable(block: MeasureBlock): string {
   // Variação = última − primeira: cálculo informacional, sem cor nem juízo (INV-5, emenda 2026-11-10).
   const first = block.points[0]
   const last = block.points[block.points.length - 1]
-  const stat = block.byContext[0]?.stat
+  // Sobre TODAS as pesagens, não `byContext[0]`: o banco não tem CHECK de contexto (RC5).
+  const stat = measureStat(block.points.map((p) => p.value))
   const delta = Math.round((last.value - first.value) * 10) / 10
   const signed = delta > 0 ? `+${num(delta)}` : delta < 0 ? `−${num(-delta)}` : num(0)
   const head = '<th>Peso (kg)</th><th>n</th><th>Primeira</th><th>Última</th><th>Variação</th><th>Mínimo</th><th>Mediana</th><th>Máximo</th>'
