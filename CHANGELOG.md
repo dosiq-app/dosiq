@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Android: "Alarme e bateria" fixo no Perfil + checklist com notificações sempre visíveis (spec 068, PR 2)
+
+- **Mobile** (`Added` + `Changed` + `Fixed`, **patch** `APP_VERSION` 0.34.11 → **0.34.12** (entrada no Perfil) → **0.34.13** (checklist revisada); builds internos do trem v0.35 — loja em 0.35.0; canal: **build de loja** — R-314: entrada nova de feature, mesmo sendo 100% JS).
+  - **Perfil → Avisos & Lembretes → "Alarme e bateria" (só Android):** linha fixa logo abaixo de Notificações que abre a checklist de bateria a qualquer momento, mesmo depois de "Não mostrar de novo" no card da Hoje e mesmo com tudo ajustado. O resumo mostra "Tudo certo", "Falta 1 ajuste" / "Faltam N ajustes" (em destaque âmbar) ou "Confira os ajustes de bateria", lido do aparelho na hora.
+  - **Checklist:** "Notificações ligadas" passa a aparecer sempre em primeiro (✓ quando ligadas, pendente e tocável quando desligadas — e conta no "Falta N"). Quando o aparelho não informa a bateria ou o segundo plano, o passo aparece neutro, com "Confira manualmente" e a instrução do fabricante, sem ✓ e fora da contagem.
+  - **Corrigido:** em aparelho que não informa os ajustes de bateria (ou quando a leitura falha), a tela dizia "Tudo certo" — ou ficava em branco. "Tudo certo" agora só aparece com todos os itens conferidos pelo app.
+
 ### Relatório e card de peso: etapa numerada pela escada + peso e pressão resumidos
 
 - **Web** (`Fixed`, **patch** 4.39.0 → **4.39.1**) e **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.10 → **0.34.11**; canal: **build de loja** junto do trem v0.35 — correção 100% JS, o trem segura a loja).
