@@ -13,6 +13,7 @@ const baseFacts = { notificationsAllowed: true, backgroundRestricted: false, bat
 const mockHook = {
   family: 'samsung',
   facts: { ...baseFacts } as Record<string, boolean | null> | null,
+  reason: null as string | null | undefined,
   powerManagerActivity: null as string | null,
   dismiss: jest.fn(),
 }
@@ -25,7 +26,7 @@ jest.mock('@platform/device/oemBatterySettings', () => ({
 }))
 
 beforeEach(() => {
-  Object.assign(mockHook, { family: 'samsung', facts: { ...baseFacts }, powerManagerActivity: null })
+  Object.assign(mockHook, { family: 'samsung', facts: { ...baseFacts }, reason: null, powerManagerActivity: null })
   mockOpenPower.mockResolvedValue(true)
   mockOpenApp.mockResolvedValue(true)
 })
@@ -93,8 +94,9 @@ describe('OemBatteryAssistantScreen', () => {
     expect(mockGoBack).toHaveBeenCalled()
   })
 
-  it('sondando (facts null) ⇒ sem "Pronto" falso nem cabeçalho de pendência', () => {
+  it('sondando (reason undefined) ⇒ sem "Pronto" falso nem cabeçalho de pendência', () => {
     mockHook.facts = null
+    mockHook.reason = undefined
     const { queryByText } = render(<OemBatteryAssistantScreen />)
     expect(queryByText('Pronto')).toBeNull()
     expect(queryByText('Tudo certo')).toBeNull()
@@ -107,5 +109,41 @@ describe('OemBatteryAssistantScreen', () => {
     await waitFor(() => expect(mockOpenApp).toHaveBeenCalledTimes(1))
     fireEvent.press(getByLabelText('Pausa por falta de uso desligada, feito'))
     await waitFor(() => expect(mockOpenApp).toHaveBeenCalledTimes(2))
+  })
+
+  it('G-1/G-2 — bateria não lida ⇒ notificações ✓ + passo "Confira manualmente"; nunca "Tudo certo"', () => {
+    mockHook.family = 'motorola'
+    mockHook.facts = { notificationsAllowed: true, backgroundRestricted: null, batteryOptimized: null, hibernationEnabled: null }
+    const { queryByText, getByText, getByLabelText } = render(<OemBatteryAssistantScreen />)
+    expect(queryByText('Tudo certo')).toBeNull()
+    expect(getByText(/Não conseguimos conferir/)).toBeTruthy()
+    expect(getByLabelText('Notificações ligadas, feito')).toBeTruthy()
+    expect(getByLabelText(/^Uso em segundo plano liberado, confira manualmente:/)).toBeTruthy()
+    expect(getByText('Confira manualmente')).toBeTruthy()
+    expect(getByText('Abrir configurações do app')).toBeTruthy()
+  })
+
+  it('leitura falhou (facts null, sonda terminou) ⇒ tela não fica em branco', () => {
+    mockHook.facts = null
+    const { getByText, queryByText } = render(<OemBatteryAssistantScreen />)
+    expect(queryByText('Tudo certo')).toBeNull()
+    expect(getByText('Para o alarme tocar na hora')).toBeTruthy()
+  })
+
+  it('AC-11c — gate negativo por push desligado: item de notificações ○ e tocável', async () => {
+    mockHook.facts = { ...baseFacts, notificationsAllowed: false, batteryOptimized: false }
+    const { getByLabelText, getByText } = render(<OemBatteryAssistantScreen />)
+    expect(getByText(/Falta 1 ajuste/)).toBeTruthy()
+    fireEvent.press(getByLabelText(/^Notificações ligadas, pendente:/))
+    await waitFor(() => expect(mockOpenApp).toHaveBeenCalledTimes(1))
+  })
+
+  it('AC-11b — gate negativo, tudo ✓ (xiaomi): "Tudo certo" + checklist ✓ + "Para garantir"', () => {
+    mockHook.family = 'xiaomi'
+    mockHook.facts = { ...baseFacts, batteryOptimized: false }
+    const { getByText, getByLabelText } = render(<OemBatteryAssistantScreen />)
+    expect(getByText('Tudo certo')).toBeTruthy()
+    expect(getByLabelText('Bateria sem restrição, feito')).toBeTruthy()
+    expect(getByText('Para garantir')).toBeTruthy()
   })
 })

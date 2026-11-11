@@ -10,20 +10,22 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
-const { ChevronLeft, ChevronRight, CircleCheck, Circle } = LucideIcons as any
+const { ChevronLeft, ChevronRight, CircleCheck, Circle, CircleDashed } = LucideIcons as any
 import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatteryAssistant'
-import { buildChecklist, type ChecklistItem } from '@features/oemAssistant/oemChecklist'
+import { buildChecklist, pendingLabel, summarizeChecklist, type ChecklistItem } from '@features/oemAssistant/oemChecklist'
 import { openAppDetailsSettings, openOemPowerSettings } from '@platform/device/oemBatterySettings'
 import { colors, spacing, borderRadius, typography } from '@shared/styles/tokens'
-
-function pendingLabel(pending: number): string {
-  return pending === 1 ? 'Falta 1 ajuste' : `Faltam ${pending} ajustes`
-}
 
 // A linha inteira é tocável e leva à MESMA tela do CTA principal (decisão PO 2026-11-10): o ✓/○
 // convida ao toque; quem tocar achando que marca o item já cai nas Configurações (voltar = 1 toque).
 function ChecklistRow({ item, last, onPress }: { item: ChecklistItem; last: boolean; onPress: () => void }) {
-  const label = item.done ? `${item.title}, feito` : `${item.title}, pendente: ${item.instruction}`
+  const done = item.state === 'done'
+  const manual = item.state === 'manual'
+  const label = done
+    ? `${item.title}, feito`
+    : manual
+      ? `${item.title}, confira manualmente: ${item.instruction}`
+      : `${item.title}, pendente: ${item.instruction}`
   return (
     <Pressable
       style={({ pressed }) => [styles.row, !last && styles.rowDivider, pressed && styles.rowPressed]}
@@ -32,17 +34,21 @@ function ChecklistRow({ item, last, onPress }: { item: ChecklistItem; last: bool
       accessibilityLabel={label}
       accessibilityHint="Abre as configurações do app"
     >
-      {item.done ? (
+      {done ? (
         <CircleCheck size={22} color={colors.brand.primary} strokeWidth={2} />
+      ) : manual ? (
+        // Manual: nem ✓ nem ○ — o app não leu o ajuste (INV-7 · PO 2026-11-11).
+        <CircleDashed size={22} color={colors.text.secondary} strokeWidth={2} />
       ) : (
         <Circle size={22} color={colors.text.secondary} strokeWidth={2} />
       )}
       <View style={styles.rowText}>
-        <Text style={item.done ? styles.rowTitleDone : styles.rowTitle}>{item.title}</Text>
-        {!item.done && <Text style={styles.rowInstruction}>{item.instruction}</Text>}
+        <Text style={done ? styles.rowTitleDone : styles.rowTitle}>{item.title}</Text>
+        {manual && <Text style={styles.rowTag}>Confira manualmente</Text>}
+        {!done && <Text style={styles.rowInstruction}>{item.instruction}</Text>}
       </View>
-      {/* › só no pendente: sinaliza "leva a outra tela", não "marca" (PO 2026-11-10) */}
-      {!item.done && <ChevronRight size={20} color={colors.text.secondary} style={styles.rowChevron} />}
+      {/* › só no que pede ação: sinaliza "leva a outra tela", não "marca" (PO 2026-11-10) */}
+      {!done && <ChevronRight size={20} color={colors.text.secondary} style={styles.rowChevron} />}
     </Pressable>
   )
 }
@@ -53,12 +59,15 @@ export default function OemBatteryAssistantScreen() {
 
   // 2. Context
   const navigation = useNavigation<any>()
-  const { family, facts, powerManagerActivity, dismiss } = useOemBatteryAssistant()
+  const { family, facts, reason, powerManagerActivity, dismiss } = useOemBatteryAssistant()
 
   // 3. Memos / derivados
+  // Sondando = sonda sem resposta (`reason` undefined). "Tudo certo" só com todo item medido ✓:
+  // `manual`/`unknown` nunca viram (INV-7 · 068 PR 2 G-1/G-2 · PO 2026-11-11).
   const checklist = useMemo(() => buildChecklist(family, facts), [family, facts])
-  const probing = facts === null
-  const allDone = !probing && checklist.pending === 0
+  const probing = reason === undefined
+  const summary = useMemo(() => summarizeChecklist(checklist, probing), [checklist, probing])
+  const allDone = summary.status === 'done'
 
   // 4. Handlers
   const goBack = useCallback(() => navigation.goBack(), [navigation])
@@ -95,7 +104,13 @@ export default function OemBatteryAssistantScreen() {
           !probing && (
             <View accessibilityLiveRegion="polite">
               <Text style={styles.title}>Para o alarme tocar na hora</Text>
-              <Text style={styles.intro}>{pendingLabel(checklist.pending)} · leva menos de 1 minuto</Text>
+              <Text style={styles.intro}>
+                {summary.status === 'pending'
+                  ? `${pendingLabel(checklist.pending)} · leva menos de 1 minuto`
+                  : summary.status === 'manual'
+                    ? 'Não conseguimos conferir estes ajustes neste aparelho. Siga os passos abaixo.'
+                    : 'Este aparelho não informa os ajustes de bateria. Confira nas configurações do app.'}
+              </Text>
             </View>
           )
         )}
@@ -199,6 +214,7 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, gap: 4 },
   rowTitle: { fontSize: 15, fontWeight: '700', color: colors.text.primary },
   rowTitleDone: { fontSize: 15, fontWeight: '600', color: colors.text.secondary },
+  rowTag: { fontSize: 12, fontWeight: '600', color: colors.text.secondary },
   rowInstruction: { fontSize: 14, lineHeight: 20, color: colors.text.primary },
   tips: { gap: spacing[2] },
   tipsTitle: { fontSize: 15, fontWeight: '700', color: colors.text.primary },

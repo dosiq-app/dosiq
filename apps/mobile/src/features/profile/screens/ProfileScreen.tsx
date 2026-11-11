@@ -12,6 +12,7 @@ import ScreenContainer from '@shared/components/ui/ScreenContainer'
 import LoadingState from '@shared/components/states/LoadingState'
 import LogoutSheet from '@profile/components/LogoutSheet'
 import NudgeBanner from '@shared/components/ui/NudgeBanner'
+import OemAssistantProfileRow from '@features/oemAssistant/components/OemAssistantProfileRow'
 import DevBadge from '@features/_dev/components/DevBadge'
 import { useNudges } from '@profile/hooks/useNudges'
 import { colors, spacing, borderRadius, shadows, typography } from '@shared/styles/tokens'
@@ -235,25 +236,29 @@ export default function ProfileScreen() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>AVISOS & LEMBRETES</Text>
-          <TouchableOpacity
-            style={styles.card}
-            onPress={() => (navigation.navigate as any)(ROUTES.NOTIFICATION_INBOX, { userId: user?.id })}
-            activeOpacity={0.7}
-          >
-            <View style={styles.notificationRow}>
-              <Bell size={20} color={colors.brand.primary} strokeWidth={1.5} />
-              <View style={styles.notificationTextGroup}>
-                <Text style={styles.notificationLabel}>Notificações</Text>
-                <Text style={styles.notificationSubtitle}>Avisos, preferências e canais</Text>
-              </View>
-              {unreadCount > 0 && (
-                <View style={styles.inboxBadge}>
-                  <Text style={styles.inboxBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+          <View style={styles.cardNoPadding}>
+            <TouchableOpacity
+              style={styles.notificationTouch}
+              onPress={() => (navigation.navigate as any)(ROUTES.NOTIFICATION_INBOX, { userId: user?.id })}
+              activeOpacity={0.7}
+            >
+              <View style={styles.notificationRow}>
+                <Bell size={20} color={colors.brand.primary} strokeWidth={1.5} />
+                <View style={styles.notificationTextGroup}>
+                  <Text style={styles.notificationLabel}>Notificações</Text>
+                  <Text style={styles.notificationSubtitle}>Avisos, preferências e canais</Text>
                 </View>
-              )}
-              <ChevronRight size={18} color={colors.text.secondary} strokeWidth={1.5} />
-            </View>
-          </TouchableOpacity>
+                {unreadCount > 0 && (
+                  <View style={styles.inboxBadge}>
+                    <Text style={styles.inboxBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+                <ChevronRight size={18} color={colors.text.secondary} strokeWidth={1.5} />
+              </View>
+            </TouchableOpacity>
+            {/* 068 PR 2 (US5): entrada fixa do assistente — só Android; única volta após o dismiss do card. */}
+            <OemAssistantProfileRow onPress={() => (navigation.navigate as any)(ROUTES.OEM_BATTERY_ASSISTANT)} />
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -565,6 +570,9 @@ const styles = StyleSheet.create({
     color: colors.status.error,
     fontSize: 12,
     textAlign: 'center',
+  },
+  notificationTouch: {
+    paddingVertical: spacing[4],
   },
   notificationRow: {
     flexDirection: 'row',
