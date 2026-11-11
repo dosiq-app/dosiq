@@ -25,6 +25,7 @@ import type { VisitItem } from './reportSections/header'
 import type { InjectionSiteCard } from './reportSections/injectionSites'
 import type { DayCellState, IntakeRow } from './reportSections/intakes'
 import type { MeasureBlock, MeasurePoint, MeasureStat, MeasuresSection } from './reportSections/measures'
+import { measureStat } from './reportSections/measures'
 import type { StockRow } from './reportSections/stock'
 
 interface FlowTable {
@@ -495,17 +496,46 @@ function contextTable(block: MeasureBlock): string {
   return `<table><thead><tr><th>Momento (${e(block.unit)})</th>${STAT_HEAD}</tr></thead><tbody>${rows}</tbody></table>`
 }
 
+/** Até este número de pesagens a tabela lista todas; acima, resume (quem se pesa todo dia gera ~30 linhas/mês). */
+export const MEASURE_LIST_MAX_ROWS = 8
+
+/**
+ * Peso: lista completa quando curta; senão uma linha de tabela com primeira, última, variação e mínimo/mediana/máximo.
+ * A tendência fica no gráfico da escada.
+ */
+function weightTable(block: MeasureBlock): string {
+  if (block.points.length <= MEASURE_LIST_MAX_ROWS) {
+    const rows = block.points.map((p) => `<tr><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`).join('')
+    return `<table><thead><tr><th>Data</th><th>Peso</th></tr></thead><tbody>${rows}</tbody></table>`
+  }
+  // Uma linha de tabela no estilo das outras medidas (smoke 10/11: texto solto perdia peso visual).
+  // Variação = última − primeira: cálculo informacional, sem cor nem juízo (INV-5, emenda 2026-11-10).
+  const first = block.points[0]
+  const last = block.points[block.points.length - 1]
+  // Sobre TODAS as pesagens, não `byContext[0]`: o banco não tem CHECK de contexto (RC5).
+  const stat = measureStat(block.points.map((p) => p.value))
+  const delta = Math.round((last.value - first.value) * 10) / 10
+  const signed = delta > 0 ? `+${num(delta)}` : delta < 0 ? `−${num(-delta)}` : num(0)
+  const head = '<th>Peso (kg)</th><th>n</th><th>Primeira</th><th>Última</th><th>Variação</th><th>Mínimo</th><th>Mediana</th><th>Máximo</th>'
+  const cells =
+    `<td>No período</td><td class="num">${block.points.length}</td>` +
+    `<td class="num">${dm(first.day)} · ${num(first.value)}</td><td class="num">${dm(last.day)} · ${num(last.value)}</td>` +
+    `<td class="num">${signed}</td>` +
+    (stat ? `<td class="num">${num(stat.min)}</td><td class="num">${num(stat.median)}</td><td class="num">${num(stat.max)}</td>` : '<td></td><td></td><td></td>')
+  return `<table><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table>`
+}
+
 function measureBlock(block: MeasureBlock, model: ReportModel): string {
   const title = `<div><b>${e(block.label)}</b> <span class="mute num">· ${block.points.length} ${block.points.length === 1 ? 'medida' : 'medidas'}</span></div>`
   if (block.type === 'peso') {
-    const rows = block.points.map((p) => `<tr><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`).join('')
     const inLadder = model.ladders.some((l) => l.weightChart)
       ? '<div class="small mute">Peso por etapa: ver "Escadas de titulação".</div>'
       : ''
-    const table = `<table><thead><tr><th>Data</th><th>Peso</th></tr></thead><tbody>${rows}</tbody></table>`
-    return `<div class="mblock">${title}${table}${inLadder}</div>`
+    return `<div class="mblock">${title}${weightTable(block)}${inLadder}</div>`
   }
   if (block.type === 'pressao_arterial') {
+    // Muitas medidas: tabela por momento (n/mín/mediana/máx, sistólica×diastólica), a régua da glicemia.
+    if (block.points.length > MEASURE_LIST_MAX_ROWS) return `<div class="mblock">${title}${contextTable(block)}</div>`
     const rows = block.points
       .map(
         (p) =>

@@ -20,6 +20,8 @@ export interface MeasureInput {
 
 export interface MeasureStepInput {
   doseLabel: string
+  /** Posição real na escada (1-based). Ausente = conta só as etapas da janela (legado). */
+  position?: number
   /** Dia local de início; `null` = sem data (etapa não iniciada — ignorada). */
   start: string | null
   /** Dia local de fim (exclusivo: o dia em que a próxima começa); `null` = em aberto. */
@@ -128,7 +130,8 @@ export function buildTreatmentMeasureSeries({
     if (!clip) continue
     const inStep = points.filter((p) => _inStep(p.day, clip.start, clip.end)).map((p) => p.kg)
     seriesSteps.push({
-      index: seriesSteps.length + 1,
+      // Numera pela escada, não pela janela: etapa 3 cortada pela janela continua "Etapa 3".
+      index: s.position ?? seriesSteps.length + 1,
       dose: s.doseLabel,
       start: clip.start,
       end: clip.end,

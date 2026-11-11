@@ -128,6 +128,22 @@ describe('buildTreatmentMeasureSeries', () => {
     expect(s.steps[0]).toMatchObject({ dose: 'b', meanKg: null, count: 0, expected: 0 })
   })
 
+  it('numera pela posição na escada, não pela janela (etapa 2 cortada continua "2")', () => {
+    const s = build([], {
+      steps: [
+        { doseLabel: 'a', position: 1, start: '2026-06-01', end: '2026-08-01', current: false },
+        { doseLabel: 'b', position: 2, start: '2026-08-01', end: '2026-09-10', current: false },
+        { doseLabel: 'c', position: 3, start: '2026-09-10', end: null, current: true },
+      ],
+      from: '2026-09-01',
+      to: '2026-09-30',
+    })
+    expect(s.steps.map((x) => [x.dose, x.index, x.clipped])).toEqual([
+      ['b', 2, true],
+      ['c', 3, false],
+    ])
+  })
+
   it('medida fora da janela não entra', () => {
     const s = build([peso('2026-08-31', 90, '23:59'), peso('2026-10-01', 85, '00:01')], { from: '2026-09-01', to: '2026-09-30' })
     expect(s.points).toEqual([])

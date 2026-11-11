@@ -117,6 +117,7 @@ function _seriesSteps(
     return {
       seriesSteps: days.map((d, i) => ({
         doseLabel: d.doseLabel,
+        position: i + 1,
         start: d.planned ? null : d.start,
         end: d.end,
         current: ordered[i].status === 'current',
