@@ -5,7 +5,8 @@
  *   desconhecido (o banco não tem CHECK) é ignorado.
  * - Dia e período do dia no fuso do dono (ADR-049). O período sai da HORA local (`getPeriodFromTime`,
  *   a mesma régua do app), nos dois lados: `slot` da RPC para a dose, `measured_at` para a medida.
- * - Linha SaMD (INV-5): só contagem, mínimo, mediana e máximo. Nenhuma faixa, meta ou juízo.
+ * - Linha SaMD (INV-5): contagem, mínimo, mediana e máximo; no peso, também a variação última − primeira
+ *   (emenda PO 2026-11-10: cálculo informacional, sem juízo). Nenhuma faixa, meta ou juízo.
  * - Sem medida do tipo no período, o bloco não existe; sem medida nenhuma, a seção é `null` (PO-8).
  */
 import { formatBiomarkerContext } from '../../../utils/biomarkerDisplay'

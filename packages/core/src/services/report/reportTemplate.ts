@@ -499,24 +499,28 @@ function contextTable(block: MeasureBlock): string {
 export const MEASURE_LIST_MAX_ROWS = 8
 
 /**
- * Peso: lista completa quando curta; senão uma linha com primeira e última pesagem + mínimo/mediana/máximo.
- * Só fatos (INV-5): nenhuma diferença ou ritmo calculado — a tendência fica no gráfico da escada.
+ * Peso: lista completa quando curta; senão uma linha de tabela com primeira, última, variação e mínimo/mediana/máximo.
+ * A tendência fica no gráfico da escada.
  */
 function weightTable(block: MeasureBlock): string {
   if (block.points.length <= MEASURE_LIST_MAX_ROWS) {
     const rows = block.points.map((p) => `<tr><td class="num">${dm(p.day)} ${e(p.time)}</td><td class="num">${num(p.value)} kg</td></tr>`).join('')
     return `<table><thead><tr><th>Data</th><th>Peso</th></tr></thead><tbody>${rows}</tbody></table>`
   }
-  // Linha única (smoke 10/11: duas tabelas empilhadas desalinhavam). O n já está no título do bloco.
+  // Uma linha de tabela no estilo das outras medidas (smoke 10/11: texto solto perdia peso visual).
+  // Variação = última − primeira: cálculo informacional, sem cor nem juízo (INV-5, emenda 2026-11-10).
   const first = block.points[0]
   const last = block.points[block.points.length - 1]
   const stat = block.byContext[0]?.stat
-  const parts = [
-    `Primeira ${dm(first.day)} ${num(first.value)} kg`,
-    `Última ${dm(last.day)} ${num(last.value)} kg`,
-    ...(stat ? [`mínimo ${num(stat.min)} · mediana ${num(stat.median)} · máximo ${num(stat.max)} kg`] : []),
-  ]
-  return `<div class="num">${parts.join(' · ')}</div>`
+  const delta = Math.round((last.value - first.value) * 10) / 10
+  const signed = delta > 0 ? `+${num(delta)}` : delta < 0 ? `−${num(-delta)}` : num(0)
+  const head = '<th>Peso (kg)</th><th>n</th><th>Primeira</th><th>Última</th><th>Variação</th><th>Mínimo</th><th>Mediana</th><th>Máximo</th>'
+  const cells =
+    `<td>No período</td><td class="num">${block.points.length}</td>` +
+    `<td class="num">${dm(first.day)} · ${num(first.value)}</td><td class="num">${dm(last.day)} · ${num(last.value)}</td>` +
+    `<td class="num">${signed}</td>` +
+    (stat ? `<td class="num">${num(stat.min)}</td><td class="num">${num(stat.median)}</td><td class="num">${num(stat.max)}</td>` : '<td></td><td></td><td></td>')
+  return `<table><thead><tr>${head}</tr></thead><tbody><tr>${cells}</tr></tbody></table>`
 }
 
 function measureBlock(block: MeasureBlock, model: ReportModel): string {
