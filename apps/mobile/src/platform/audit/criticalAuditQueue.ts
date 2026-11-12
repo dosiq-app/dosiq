@@ -51,11 +51,13 @@ async function _readQueueState(storage: AuditQueueStorage, key: string): Promise
   }
 }
 
-async function _writeQueueState(storage: AuditQueueStorage, key: string, state: AuditQueueState): Promise<void> {
+async function _writeQueueState(storage: AuditQueueStorage, key: string, state: AuditQueueState): Promise<boolean> {
   try {
     await storage.setItem(key, JSON.stringify(state))
+    return true
   } catch {
     // Fail-open
+    return false
   }
 }
 
@@ -106,7 +108,8 @@ export function createCriticalAuditQueue({
   const readState = () => _readQueueState(storage, key)
   const writeState = (s: AuditQueueState) => _writeQueueState(storage, key, s)
 
-  function enqueue(payload: AuditQueueItem): Promise<void> {
+  /** `true` só se o item foi gravado (084 B, C-B1: quem marca "emitido" precisa saber). Nunca rejeita. */
+  function enqueue(payload: AuditQueueItem): Promise<boolean> {
     return withLock(async () => {
       try {
         const state = await readState()
@@ -115,9 +118,10 @@ export function createCriticalAuditQueue({
           state.items.shift()
           state.overflowDropped += 1
         }
-        await writeState(state)
+        return await writeState(state)
       } catch {
         // Fail-open
+        return false
       }
     })
   }

@@ -113,9 +113,19 @@ describe('surfaceAuditBeacon', () => {
 
   it('fail-open: getSession e enqueue que lançam não propagam', async () => {
     mockGetSession.mockRejectedValueOnce(new Error('x'))
-    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'now', source: 'app' })).resolves.toBeUndefined()
+    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'now', source: 'app' })).resolves.toBe(false)
     mockEnqueue.mockRejectedValueOnce(new Error('disco'))
-    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'now', source: 'app' })).resolves.toBeUndefined()
+    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'now', source: 'app' })).resolves.toBe(false)
+  })
+
+  it('084 B E1: true só quando a fila gravou; sem sessão / inválido / fila falhou ⇒ false', async () => {
+    mockEnqueue.mockResolvedValueOnce(true)
+    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'now', source: 'app' })).resolves.toBe(true)
+    mockEnqueue.mockResolvedValueOnce(false)
+    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'now', source: 'app' })).resolves.toBe(false)
+    mockGetSession.mockResolvedValueOnce({ data: { session: null } })
+    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'now', source: 'app' })).resolves.toBe(false)
+    await expect(enqueueSurfaceTransition({ instanceId: INST, from: null, to: 'bogus', source: 'app' })).resolves.toBe(false)
   })
 
   it('emitDeliveredTransition lê transitionFrom/To do payload, source=boundary', async () => {

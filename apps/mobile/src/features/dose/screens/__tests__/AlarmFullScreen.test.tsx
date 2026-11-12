@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals'
 import React from 'react'
-import { render, waitFor } from '@testing-library/react-native'
+import { render, waitFor, fireEvent } from '@testing-library/react-native'
 import { formatMedicineConcentration, formatDoseItem } from '@dosiq/core'
 
 // --- Mocks de módulo ---
@@ -51,7 +51,7 @@ jest.mock('@platform/alarms/snoozeAnchorStore', () => ({
   getSnoozeAnchors: () => Promise.resolve(mockAnchors),
 }))
 
-import AlarmFullScreen from '../AlarmFullScreen'
+import AlarmFullScreen, { SNOOZE_CLOSE_CAP_MS } from '../AlarmFullScreen'
 import { emitDoseChanged } from '@platform/alarms/doseChangedBus'
 
 function makeNav() {
@@ -89,6 +89,17 @@ describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
     await waitFor(() => expect(mockCancelAlarm).toHaveBeenCalledWith('inst-1'))
     expect(nav.goBack).toHaveBeenCalled()
+  })
+
+  it('C-B4 (084 B): soneca com a rede presa ⇒ a tela fecha pelo teto, sem esperar a rede', async () => {
+    const { scheduleSnooze } = require('@platform/alarms/alarmService')
+    scheduleSnooze.mockImplementationOnce(() => new Promise(() => {})) // setSnoozedUntil preso
+    const nav = makeNav()
+    const { getByText } = render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
+    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    fireEvent.press(getByText('Soneca 5 min', { exact: false }))
+    expect(scheduleSnooze).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(nav.goBack).toHaveBeenCalledTimes(1), { timeout: SNOOZE_CLOSE_CAP_MS + 1000 })
   })
 
   it('status pending → não fecha nem cancela', async () => {

@@ -48,15 +48,17 @@ export interface SurfaceTransitionInput {
 /**
  * Enfileira uma transição da superfície. `occurredAt` é o instante do fato (INV-5): o chamador o
  * carimba na origem; sem ele, carimba aqui, antes de qualquer await.
+ * Retorna `true` só se o item foi GRAVADO na fila (084 B, RC3 E1): sem sessão, entrada inválida ou
+ * falha de escrita ⇒ `false`, e quem registra "já emiti" não marca (marcar sem enfileirar = perda).
  */
-export async function enqueueSurfaceTransition({ instanceId, from, to, source, occurredAt }: SurfaceTransitionInput) {
+export async function enqueueSurfaceTransition({ instanceId, from, to, source, occurredAt }: SurfaceTransitionInput): Promise<boolean> {
   try {
     const at = occurredAt || getRawNow().toISOString()
-    if (Platform.OS !== 'android') return
-    if (!instanceId || !SURFACE_STATES.has(to) || !SOURCES.has(source)) return
+    if (Platform.OS !== 'android') return false
+    if (!instanceId || !SURFACE_STATES.has(to) || !SOURCES.has(source)) return false
     const userId = await resolveUserId()
-    if (!userId) return // sem dono → evento órfão proibido (CON-031)
-    await surfaceAuditQueue.enqueue({
+    if (!userId) return false // sem dono → evento órfão proibido (CON-031)
+    return await surfaceAuditQueue.enqueue({
       userId,
       doseInstanceId: instanceId,
       event: 'surface_transitioned',
@@ -67,6 +69,7 @@ export async function enqueueSurfaceTransition({ instanceId, from, to, source, o
     })
   } catch {
     // Fail-open: o rastro jamais quebra a superfície nem o alarme (INV-1).
+    return false
   }
 }
 

@@ -31,6 +31,7 @@ import {
 } from './doseActivitySurfaceService'
 import { enqueueSurfaceTransition, emitDeliveredTransition } from '@platform/audit/surfaceAuditBeacon'
 import { isDoseResolved } from './resolvedDoseStore'
+import { emitOnce, clearEmissions } from './surfaceEmissionStore'
 
 const numOrNull = (v) => {
   const n = Number(v)
@@ -75,11 +76,35 @@ function reconstructDoseItem(data) {
 /**
  * Spec 084: a transição do boundary viaja no `data` do trigger (strings, sem PII). Classificada AQUI,
  * no agendamento, onde o instante exato do boundary é conhecido — o atraso de entrega do AlarmManager
- * não importa. Vazio = re-exibição (T0, cap do cronômetro) → a entrega não emite. @private
+ * não importa. Vazio = re-exibição (T0, cap do cronômetro) → a entrega não emite.
+ * Slice B (FR-B2): `transitionAt` = instante do boundary (epoch ms) vira o `occurred_at` da entrega —
+ * reprocessar a mesma entrega não ganha mais instante próprio. @private
  */
 function transitionData(doseItem, atMs) {
   const t = classifySurfaceTransition(doseItem, atMs)
-  return { transitionFrom: t?.from ?? '', transitionTo: t?.to ?? '' }
+  return { transitionFrom: t?.from ?? '', transitionTo: t?.to ?? '', transitionAt: t?.to ? String(atMs) : '' }
+}
+
+/**
+ * `occurred_at` de uma entrega: o instante do boundary que viaja no payload; trigger agendado antes
+ * do Slice B (AlarmManager sobrevive ao update) não o tem ⇒ instante do handler (RC3 E5). @private
+ */
+function deliveredOccurredAt(data, fallbackIso) {
+  const ms = Number(data?.transitionAt)
+  if (!data?.transitionAt || !Number.isFinite(ms)) return fallbackIso
+  // eslint-disable-next-line no-restricted-syntax
+  return new Date(ms).toISOString()
+}
+
+/** Entrega (bg|fg) passa pelo mesmo `emitOnce` dos arms (RC3 E3): M2 vira no-op. Fail-open. @private */
+function emitDeliveredOnce(data, now, occurredAt) {
+  if (!data?.transitionTo) return Promise.resolve(false) // re-exibição / payload antigo
+  return emitOnce({
+    instanceId: data.doseInstanceId,
+    to: data.transitionTo,
+    nowMs: now.getTime(),
+    emit: () => emitDeliveredTransition(data, deliveredOccurredAt(data, occurredAt)),
+  })
 }
 
 /** Payload mínimo que ENCERRA a superfície no boundary `missed` (não dá p/ ter trigger silencioso). */
@@ -177,14 +202,22 @@ async function readDisplayedSurfaceState(instanceId): Promise<string | null | un
 /**
  * Spec 084: emite a transição do `arm` comparando com o card exibido (INV-2: re-exibição não emite).
  * Leitura falhou ⇒ emite (duplicata é tolerável, perda não — spec A3). `missed` só emite se havia card:
- * sem ele, cada resync após o cutoff repetiria a linha. Fail-open. @private
+ * sem ele, cada resync após o cutoff repetiria a linha. Slice B: tudo dentro do `emitOnce` da
+ * instância — arms concorrentes (M1) e card dispensado (M3) caem no registro. Fail-open. @private
  */
-async function emitArmTransition(activity, source, occurredAt) {
+async function emitArmTransition(activity, source, occurredAt, nowMs) {
   try {
-    const shown = await readDisplayedSurfaceState(activity.instanceId)
-    if (shown === activity.state) return
-    if (activity.state === DOSE_ACTIVITY_STATES.MISSED && !shown) return
-    await enqueueSurfaceTransition({ instanceId: activity.instanceId, from: shown ?? null, to: activity.state, source, occurredAt })
+    await emitOnce({
+      instanceId: activity.instanceId,
+      to: activity.state,
+      nowMs,
+      emit: async () => {
+        const shown = await readDisplayedSurfaceState(activity.instanceId)
+        if (shown === activity.state) return false
+        if (activity.state === DOSE_ACTIVITY_STATES.MISSED && !shown) return false
+        return enqueueSurfaceTransition({ instanceId: activity.instanceId, from: shown ?? null, to: activity.state, source, occurredAt })
+      },
+    })
   } catch {
     // INV-1: o rastro nunca quebra a superfície.
   }
@@ -209,7 +242,7 @@ export async function armDoseActivity(activity, doseItem, { now = getRawNow(), d
     return
   }
   // Lido ANTES de exibir/encerrar: depois disso o exibido já é o estado novo (ou nenhum).
-  await emitArmTransition(activity, source, occurredAt)
+  await emitArmTransition(activity, source, occurredAt, now.getTime())
   if (activity.state === DOSE_ACTIVITY_STATES.DONE || activity.state === DOSE_ACTIVITY_STATES.MISSED) {
     await endDoseActivity(activity.instanceId)
     return
@@ -237,7 +270,7 @@ export async function advanceDoseActivity(data, now = getRawNow()) {
   await scheduleNextBoundary(doseItem, now.getTime(), data.discreet === 'true')
   // Spec 084: encadear PRIMEIRO; o rastro vem depois, em try próprio (INV-1).
   try {
-    await emitDeliveredTransition(data, occurredAt)
+    await emitDeliveredOnce(data, now, occurredAt)
   } catch {
     // fail-open
   }
@@ -253,7 +286,7 @@ export async function finishDoseActivity(data, now = getRawNow()) {
   const occurredAt = now.toISOString()
   await endDoseActivity(data.doseInstanceId)
   try {
-    await emitDeliveredTransition(data, occurredAt)
+    await emitDeliveredOnce(data, now, occurredAt)
   } catch {
     // fail-open
   }
@@ -302,6 +335,9 @@ export async function deferDoseActivity(data, nowMs = getRawNow().getTime()) {
 export async function deferDoseItem(doseItem, nowMs = getRawNow().getTime()) {
   if (Platform.OS !== 'android') return
   if (!doseItem?.instanceId || !doseItem.scheduledFor || doseItem.snoozedUntil == null) return
+  // Slice B (FR-B5, RC3 E2): o `now` da âncora é transição real (FR-003) — sem limpar, o registro o
+  // suprimiria. Antes de reprogramar: o boundary novo só existe depois disto. Best-effort.
+  await clearEmissions(doseItem.instanceId, [DOSE_ACTIVITY_STATES.NOW, DOSE_ACTIVITY_STATES.LATE], nowMs)
   await endDoseActivity(doseItem.instanceId)
   await scheduleNextBoundary(doseItem, nowMs, true) // crítica = discreto (PO-SEC-1)
 }
