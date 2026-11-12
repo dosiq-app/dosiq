@@ -95,6 +95,44 @@ from (
 
 Volume (SC-003): mais de 40 linhas android por dia indica que o dedupe falhou.
 
+### 2b. Repetição por mecanismo (Slice B, FR-B4)
+
+O Slice B (app ≥ 0.34.14) fecha três mecanismos de duplicata. Para saber qual deles sobrou depois do
+veículo, classifique cada par repetido. Troque o T0 pela data em que o 1º Android de cliente chegou
+na 0.34.14 (ou 0.35); linhas anteriores são fato histórico e não se apagam (R-299).
+
+```sql
+with dup as (
+  select e.dose_instance_id, e.detail->>'to' as t,
+         array_agg(e.detail->>'source' order by e.occurred_at) as sources,
+         array_agg(coalesce(e.detail->>'from', '∅') order by e.occurred_at) as froms,
+         extract(epoch from max(e.occurred_at) - min(e.occurred_at)) as delta_s,
+         count(*) as n
+  from dose_critical_events e
+  where e.event = 'surface_transitioned' and e.platform = 'android'
+    and e.occurred_at >= timestamptz '2026-11-01'  -- T0
+    and not exists (select 1 from dose_critical_events s
+                    where s.dose_instance_id = e.dose_instance_id and s.event = 'snoozed')
+  group by 1, 2 having count(*) > 1)
+select case
+         when delta_s < 1 and cardinality(array(select distinct unnest(sources))) > 1 then 'M1 corrida'
+         when (select count(*) from unnest(froms) f where f = '∅') >= 2 then 'M3 dispensa/re-arm'
+         when 'boundary' = all(sources) then 'M2 reprocesso'
+         else 'outro'
+       end as mecanismo,
+       count(*) as pares, sum(n) as linhas
+from dup group by 1 order by 2 desc;
+```
+
+Leitura: `M3` = duas ou mais linhas sem `from` (re-arm que não achou o card), mesmo que o par tenha
+também uma linha `boundary`. Exclua as contas internas do operador (lista em config do servidor, spec
+083 Q3) antes de comparar com o SC-002: em 2026-11-11 os 2 pares com mais linhas eram de smoke.
+
+**Multi-aparelho (RC3 E7).** O `detail` não identifica o aparelho (INV-3). Se a mesma pessoa tiver dois
+Androids, cada um emite a sua linha, e o par conta como repetido, normalmente como `M1` ou `outro`.
+Antes de concluir que o dedupe falhou, confira os aparelhos ativos do `user_id` em
+`notification_devices`.
+
 ## Limitações (imprimir junto do resultado)
 
 Ausência quer dizer **"sem evidência"**, nunca **"falhou"**:

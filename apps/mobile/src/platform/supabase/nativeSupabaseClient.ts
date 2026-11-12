@@ -8,6 +8,7 @@ import type { Database } from '@dosiq/shared-data'
 import { nativePublicAppConfig } from '../config/nativePublicAppConfig'
 import { secureStoreAuthStorage } from '../auth/secureStoreAuthStorage'
 import { debugLog } from '@shared/utils/debugLog'
+import { createFetchWithTimeout } from './fetchWithTimeout'
 
 function createNativeSupabaseClient() {
   // Debug: confirmar URL e que URLSearchParams está patchado antes do createClient
@@ -25,6 +26,8 @@ function createNativeSupabaseClient() {
         // Universal Links desabilitados no native nesta fase (DL-005)
         detectSessionInUrl: false,
       },
+      // C-B4 (084 B): sem teto, uma requisição presa segura a trava de token e TODAS as seguintes.
+      global: { fetch: createFetchWithTimeout((input, init) => fetch(input, init)) }, // resolve o fetch global na hora (polyfill/mocks)
     }
   )
 

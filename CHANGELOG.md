@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Android: cada mudança do card da dose crítica vira uma linha só no rastro (spec 084, Slice B)
+
+- **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.13 → **0.34.14** → **0.34.15** (smoke achou travas: teto no lock, teto de rede, ping do OkHttp); builds internos para smoke — loja em 0.35.0; canal: **build de loja** — R-314: a 0.34.15 traz código nativo (config plugin no `MainApplication`), não elegível a OTA).
+  - O rastro de auditoria do card contínuo da dose crítica gravava a mesma mudança mais de uma vez em 19% dos casos: quando o alarme e o app atualizavam o card no mesmo instante, quando o aparelho processava a mesma mudança duas vezes e quando o card dispensado voltava ao reabrir o app. Agora cada mudança grava uma linha, com o horário exato em que aconteceu. Depois de adiar, a volta da dose continua registrada. O card em si não muda.
+  - **0.34.15:** se uma leitura do aparelho travar durante esse registro, o app desiste em até 3 segundos e segue. Antes, a trava podia prender o botão de adiar da tela de alarme e deixar o app em tela preta ao reabrir.
+  - **0.34.15:** depois de o aparelho dormir, a conexão com o servidor podia morrer sem aviso e toda requisição do app ficava esperando para sempre: botões da tela de alarme travados, abas carregando sem fim, "Sessão expirada" sem motivo. Agora cada requisição desiste em até 15 segundos, a conexão é testada a cada 10 segundos e trocada quando morre, e o "Adiar" da tela de alarme fecha a tela em até 3 segundos mesmo sem rede — o adiamento termina em segundo plano. O teto de 15 segundos e o "Adiar" que não espera a rede valem também no iPhone; o teste de conexão é só do Android.
+
 ### Android: "Alarme e bateria" fixo no Perfil + checklist com notificações sempre visíveis (spec 068, PR 2)
 
 - **Mobile** (`Added` + `Changed` + `Fixed`, **patch** `APP_VERSION` 0.34.11 → **0.34.12** (entrada no Perfil) → **0.34.13** (checklist revisada); builds internos do trem v0.35 — loja em 0.35.0; canal: **build de loja** — R-314: entrada nova de feature, mesmo sendo 100% JS).

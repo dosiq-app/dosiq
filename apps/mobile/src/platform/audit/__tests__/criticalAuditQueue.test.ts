@@ -204,4 +204,12 @@ describe('criticalAuditQueue', () => {
     const state = await queue.peek()
     expect(state.items).toEqual([{ event: 'B' }]) // 'A' drenado, 'B' preservado
   })
+  test('084 B C-B1: enqueue resolve true quando grava e false quando setItem falha', async () => {
+    const ok = createCriticalAuditQueue({ storage: createMockStorage() })
+    await expect(ok.enqueue({ event: 'x' })).resolves.toBe(true)
+    const broken = createCriticalAuditQueue({
+      storage: createMockStorage({ setItem: jest.fn(async () => { throw new Error('full') }) }),
+    })
+    await expect(broken.enqueue({ event: 'x' })).resolves.toBe(false)
+  })
 })

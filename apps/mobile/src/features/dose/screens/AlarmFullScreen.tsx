@@ -163,6 +163,9 @@ function DoseHeadline({ data, isGrouped, medicineName }) {
 }
 
 
+/** C-B4: teto para a tela da soneca fechar mesmo com a rede presa. */
+export const SNOOZE_CLOSE_CAP_MS = 3000
+
 export default function AlarmFullScreen({ navigation, route }) {
   // Ordem R-010: States → Memos → derivados (previne TDZ).
   const [busy, setBusy] = useState(false)
@@ -211,7 +214,19 @@ export default function AlarmFullScreen({ navigation, route }) {
     if (busy) return
     setBusy(true)
     try {
-      await scheduleSnooze({
+      // C-B4 (084 B): a parte que importa (cancelar o som, agendar a soneca, âncora) é local e leva
+      // <0,2 s; o resto (snoozed_until, auditoria) depende da rede. A tela fecha no que vier primeiro
+      // — a soneca termina em segundo plano. Antes: rede presa ⇒ botões travados para sempre.
+      await Promise.race([
+        snoozeTask(),
+        new Promise((resolve) => setTimeout(resolve, SNOOZE_CLOSE_CAP_MS)),
+      ])
+    } finally {
+      close()
+    }
+
+    function snoozeTask() {
+      return scheduleSnooze({
         doseInstanceId: data.doseInstanceId,
         medicineName: data.medicineName,
         scheduledFor: data.scheduledFor,
@@ -224,9 +239,7 @@ export default function AlarmFullScreen({ navigation, route }) {
         // 065 AD-8: Adiar na tela cheia do alarme.
         source: REMINDER_SOURCES.ALARM,
         surface: SURFACES.ALARM,
-      })
-    } finally {
-      close()
+      }).catch(() => undefined)
     }
   }, [busy, data, close])
 
