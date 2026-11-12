@@ -8,7 +8,8 @@
  * no `getLadderForProtocol` do mobile), o tratamento, os cadastros e as contagens diárias de dose
  * (RPC `report_dose_days`). Sem copy de UI além do rótulo de dose que o relatório já usa.
  */
-import { formatDosePerIntake, formatStepDose, localDayOf, shiftDay } from './report/reportFormat'
+import { formatDosePerIntake, formatStepDose, formatStepDoseShort, localDayOf, shiftDay } from './report/reportFormat'
+import type { DoseParts } from '../utils/doseUnit'
 import type { ReportMedicineRow, ReportProtocolRow, ReportTitrationStepRow } from './report/reportTypes'
 import { isInjectable } from '../utils/injectionSites'
 import {
@@ -64,6 +65,8 @@ export interface MeasureBridgeDoseDay {
 
 export interface LadderStepDays<M> {
   doseLabel: string
+  /** Forma curta estruturada (o que a titulação muda — massa do ativo quando calculável). */
+  doseShort: DoseParts | null
   /** `null` = contínua (última etapa sem fim). */
   durationDays: number | null
   /** Dia local de início (real ou previsto). */
@@ -92,6 +95,7 @@ export function ladderStepDays<M extends MeasureBridgeMedicine>(
   return ordered.map((step) => {
     const stepMedicine = medicines.find((m) => m.id === step.medicine_id) ?? protoMedicine
     const dose = formatStepDose(step, protocol, stepMedicine) ?? '-'
+    const doseShort = formatStepDoseShort(step, protocol, stepMedicine)
     const duration = Number(step.duration_days)
     const durationDays = Number.isFinite(duration) && duration > 0 ? duration : null
     const startedDay = localDayOf(step.started_at, timezone)
@@ -99,7 +103,7 @@ export function ladderStepDays<M extends MeasureBridgeMedicine>(
     const endedDay = localDayOf(step.ended_at, timezone)
     const end = endedDay ?? (start && durationDays ? shiftDay(start, durationDays) : null)
     prevEnd = end
-    return { doseLabel: dose, durationDays, start, end, planned: startedDay === null, medicine: stepMedicine }
+    return { doseLabel: dose, doseShort, durationDays, start, end, planned: startedDay === null, medicine: stepMedicine }
   })
 }
 
@@ -136,6 +140,7 @@ function _seriesSteps(
     return {
       seriesSteps: days.map((d, i) => ({
         doseLabel: d.doseLabel,
+        doseShort: d.doseShort,
         position: i + 1,
         start: d.planned ? null : d.start,
         end: d.end,

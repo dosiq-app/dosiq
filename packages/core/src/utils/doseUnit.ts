@@ -527,7 +527,25 @@ function convertMetricUnit(total: number, unit: string | null | undefined): { to
   return { total, currentUnit: unit }
 }
 
+/** Valor e unidade de uma dose, separados — para quem precisa do número sem cortar texto. */
+export interface DoseParts {
+  value: string
+  unit: string
+}
+
 export function formatActiveIngredientShort(qty: number | string | null | undefined, dosagePerPill: number | string | null | undefined, unit: string | null | undefined): string {
+  const parts = activeIngredientParts(qty, dosagePerPill, unit)
+  return parts ? `${parts.value} ${parts.unit}`.trim() : ''
+}
+
+/**
+ * Massa (ou atividade) do princípio ativo em `qty` unidades físicas, ESTRUTURADA. Núcleo único de
+ * `formatActiveIngredientShort` (que só junta as partes) — os dois não têm como divergir.
+ * `null` quando o cadastro não permite calcular (sem concentração; un/gotas com concentração 1).
+ *
+ * @example activeIngredientParts(1, 14, 'mg') → { value: '14', unit: 'mg' }
+ */
+export function activeIngredientParts(qty: number | string | null | undefined, dosagePerPill: number | string | null | undefined, unit: string | null | undefined): DoseParts | null {
   // Vírgula decimal PT-BR normalizada nos DOIS parâmetros (review Gemini #731):
   // Number('0,5') = NaN, e NaN <= 0 é false — passaria no guard e vazaria '' no chip.
   const dosagePerPillNum = dosagePerPill == null ? NaN : Number(String(dosagePerPill).replace(',', '.'))
@@ -538,7 +556,7 @@ export function formatActiveIngredientShort(qty: number | string | null | undefi
     isNaN(dosagePerPillNum) ||
     dosagePerPillNum <= 0
   ) {
-    return ''
+    return null
   }
   const qtyNum = Number(String(qty).replace(',', '.'))
   // cleanFloat no produto (R-277): formatNumberPtBR não arredonda, então o artefato
@@ -564,10 +582,10 @@ export function formatActiveIngredientShort(qty: number | string | null | undefi
   // Se o próprio medicamento for medido em unidades ou gotas e a dosagem unitária for 1,
   // a quantidade física já é a quantidade ativa (ex: "3 gotas"). Não precisa de concentração separada.
   if ((unit === 'un' || unit === 'gotas') && dosagePerPill === 1) {
-    return ''
+    return null
   }
 
-  return `${displayTotal} ${displayTotalUnit}`.trim()
+  return { value: displayTotal, unit: displayTotalUnit }
 }
 
 /**
