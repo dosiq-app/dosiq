@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { daysBetween, shiftDay } from '../report/reportFormat'
 import {
   buildProtocolMeasureSeries,
+  isMeasureSeriesEligible,
   ladderStepDays,
   protocolMeasureWindowStart,
   splitDayWindow,
@@ -87,6 +88,28 @@ describe('buildProtocolMeasureSeries — elegibilidade e etapas', () => {
   afterEach(() => {
     vi.clearAllMocks()
     vi.clearAllTimers()
+  })
+
+  it('escolha gravada manda: oral diário com peso é elegível (QA 2026-11-12)', () => {
+    const oral = { ...PROTO, id: 'p_met', medicine_id: 'm_met', frequency: 'diário', tracked_measure: 'peso' }
+    expect(buildProtocolMeasureSeries(args({ protocol: oral, steps: [] }))).not.toBeNull()
+  })
+
+  it('escolha gravada manda: injetável semanal com glicemia ou nenhum não ganha série de peso', () => {
+    for (const tracked_measure of ['glicemia', 'pressao_arterial', 'nenhum']) {
+      expect(buildProtocolMeasureSeries(args({ protocol: { ...PROTO, tracked_measure } }))).toBeNull()
+    }
+  })
+
+  it('legado sem escolha (null) cai no predicado semanal OU injetável', () => {
+    expect(buildProtocolMeasureSeries(args({ protocol: { ...PROTO, tracked_measure: null } }))).not.toBeNull()
+    const oral = { ...PROTO, medicine_id: 'm_met', frequency: 'diário', tracked_measure: null }
+    expect(buildProtocolMeasureSeries(args({ protocol: oral, steps: [] }))).toBeNull()
+  })
+
+  it('isMeasureSeriesEligible: predicado legado só vale para peso', () => {
+    expect(isMeasureSeriesEligible('glicemia', { frequency: 'semanal', tracked_measure: null }, null)).toBe(false)
+    expect(isMeasureSeriesEligible('glicemia', { frequency: 'diário', tracked_measure: 'glicemia' }, null)).toBe(true)
   })
 
   it('oral diário ⇒ null (R-11)', () => {

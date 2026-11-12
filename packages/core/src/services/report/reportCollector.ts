@@ -39,7 +39,7 @@ const PAGE_SIZE = 1000
 
 const SETTINGS_SELECT = 'display_name, birth_date, emergency_card, timezone, stock_tracking_enabled'
 const PROTOCOL_SELECT =
-  'id, medicine_id, name, frequency, time_schedule, dosage_per_intake, intake_unit, interval_days, weekdays, start_date, end_date, active, paused_at, archived_at'
+  'id, medicine_id, name, frequency, time_schedule, dosage_per_intake, intake_unit, interval_days, weekdays, start_date, end_date, active, paused_at, archived_at, tracked_measure'
 const MEDICINE_SELECT =
   'id, name, active_ingredient, dosage_per_pill, dosage_unit, units_per_ml, concentration_volume_ml, presentation, type, archived_at'
 const STEP_SELECT =

@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Peso por etapa obedece a medida escolhida no tratamento (spec 100)
+
+- **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.15 → **0.34.16**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — correção 100% JS, o trem segura a loja) e **Web** (`Fixed`, **patch** 4.39.1 → **4.39.2**; relatório em PDF).
+  - **Card "Peso durante o tratamento"** no detalhe do tratamento: tratamento diário (ou de intervalo) não injetável marcado para acompanhar **Peso** mostrava o carregamento do card e depois o card sumia. A regra antiga (só semanal ou injetável) seguia valendo por cima da escolha feita no tratamento. Agora a medida escolhida decide; a regra antiga vale só para tratamento que ainda não teve medida escolhida.
+  - **Relatório em PDF — peso por etapa da escada:** pelo mesmo motivo, escada de tratamento diário marcado com Peso ficava sem o bloco; e escada semanal ou injetável marcada com Glicemia, Pressão ou Nenhum ganhava o bloco de peso mesmo assim. Agora o bloco segue a medida escolhida. A seção "Medidas" do relatório não muda.
+- **Core:** `isMeasureSeriesEligible` (escolha gravada manda; semanal OU injetável só para `tracked_measure` nulo); o relatório passa a ler `protocols.tracked_measure`.
+
 ### Android: cada mudança do card da dose crítica vira uma linha só no rastro (spec 084, Slice B)
 
 - **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.13 → **0.34.14** → **0.34.15** (smoke achou travas: teto no lock, teto de rede, ping do OkHttp); builds internos para smoke — loja em 0.35.0; canal: **build de loja** — R-314: a 0.34.15 traz código nativo (config plugin no `MainApplication`), não elegível a OTA).
