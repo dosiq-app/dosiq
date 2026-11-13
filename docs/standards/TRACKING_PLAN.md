@@ -243,6 +243,15 @@ segue essa hierarquia — o funil de ativação culmina em `treatment_created`, 
 | `treatment_ended` | ✅ mobile | encerramento (`deleted` ativo; `prescription_end`/`weaning_complete` derivados — §5.3.1) | `surface`, `treatment_id`, `medicine_id`, `reason` | **churn de alta vs. abandono** |
 | `titration_transition_confirmed` | ✅ mobile | confirma etapa de titulação (evolução do tratamento) | `step_id`, `surface` (canal), `placement: timeline_banner\|today_card` (só em `mobile`), `outcome`, `treatment_id` (**só** quando a RPC devolve `protocol_activated`; ausente em `already_confirmed`/recusa — R-299) | avanço de titulação |
 | `titration_transition_postponed` | ✅ mobile | adia etapa | `step_id`, `surface`, `placement?`, `treatment_id?` — `protocol_id` da **própria etapa** adiada no card do Hoje (092 FR-005); ausente no push (o payload só carrega `stepId`) e em etapa futura sem tratamento | fricção na titulação |
+| `next_doses_viewed` | 🆕 mobile (117 A) | bloco "Próximas doses" do detalhe do tratamento exibido com ≥1 dose (só cadência não diária, ativo, não finalizado) — 1× por foco do detalhe | `surface`, `treatment_id` (protocolo da tela), `frequency`, `dose_count` (1–3) | quem consulta "quando é a próxima" fora do diário? (denominador para avaliar o bloco) |
+| `treatment_stock_viewed` | 🆕 mobile (117 A) | card "Estoque" do detalhe do tratamento exibido (estoque ligado) — 1× por foco e por mudança de `state` | `surface`, `treatment_id`, `state: level\|empty` (`empty` = nunca comprou ou fora da lista) | o detalhe é porta de entrada do estoque? quantos tratamentos sem 1ª compra aparecem? |
+| `treatment_stock_tapped` | 🆕 mobile (117 A) | toque no card "Estoque": `level` abre o detalhe do estoque do medicamento; `empty` abre direto o formulário de compra dele (como o item sem compra da aba) | `surface`, `treatment_id`, `state: level\|empty` | o atalho converte? `empty` → `stock_added` na sessão mede a 1ª compra pelo detalhe |
+
+> **Detalhe do tratamento (117 A):** `treatment_id` aqui é o protocolo **da tela** — fato da superfície,
+> não join com entidade viva (R-299 não se aplica: não descreve dose passada). Diferente de
+> `stock_added`/`stock_low_viewed` (§5.6, Decisão 6), que são por medicamento. 🔴 Nunca nome, dose,
+> saldo, dias restantes nem datas (§6). Guard: `NextDosesCard.test.tsx` e `ProtocolStockCard.test.tsx`
+> conferem as props exatas.
 
 **Setup do medicamento (passo anterior, secundário):**
 

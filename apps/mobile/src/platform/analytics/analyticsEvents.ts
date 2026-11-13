@@ -78,6 +78,10 @@ export const EVENTS = {
   // Estoque
   STOCK_ADDED: 'stock_added',
   STOCK_LOW_VIEWED: 'stock_low_viewed',
+  // Detalhe do tratamento (spec 117 A, TRACKING_PLAN §5.3). treatment_id = protocolo da tela. NUNCA nome/dose.
+  NEXT_DOSES_VIEWED: 'next_doses_viewed',             // frequency, dose_count, treatment_id, surface — 1× por foco
+  TREATMENT_STOCK_VIEWED: 'treatment_stock_viewed',   // state: level|empty, treatment_id, surface — 1× por foco
+  TREATMENT_STOCK_TAPPED: 'treatment_stock_tapped',   // state: level|empty, treatment_id, surface
 
   // Famílias novas (065 US6) — só meta/tipo, NUNCA valor/texto/PII (FR-8, R-042).
   BIOMARKER_LOGGED: 'biomarker_logged',               // biomarker_type: BIOMARKER_TYPES do core (glicemia|peso|pressao_arterial|batimentos), surface, entry_point? (dose_prompt|measure_series), measure_source? (configured|fallback, só dose_prompt — 100 B) — NUNCA value/value_secondary

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   View,
   Text,
@@ -48,13 +48,28 @@ export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, en
   const flow = useMedicineSearchFlow({ active: !!open, onSelect })
   const { query, setQuery, trimmed, results, hint, picked, presentationStep, presentationKey } = flow
   const keyboardVisible = useKeyboardVisible()
+  // 117 US-6: foco no campo de busca sem 2º toque. Pedido no `onShow` (fim da animação do Modal), não
+  // no mount: `autoFocus` antes da animação não abre o teclado no Android (FR-012).
+  const searchRef = useRef<TextInput>(null)
+  const wasPresentationRef = useRef(false)
 
   // Effects
   useEffect(() => {
     if (open) logEvent(EVENTS.MEDICINE_SEARCH_OPENED, { surface: SURFACES.MOBILE, entry_point: entryPoint })
   }, [open, entryPoint])
 
+  // Voltou do passo 2 (concentração CMED) para a busca: o campo remonta — foco de novo (AC-6.2).
+  useEffect(() => {
+    const isPresentation = Boolean(presentationStep)
+    if (open && wasPresentationRef.current && !isPresentation) searchRef.current?.focus()
+    wasPresentationRef.current = isPresentation
+  }, [open, presentationStep])
+
   // Handlers
+  function focusSearch() {
+    searchRef.current?.focus()
+  }
+
   function handleClose() {
     logEvent(EVENTS.MEDICINE_SEARCH_DISMISSED, {
       surface: SURFACES.MOBILE,
@@ -79,6 +94,7 @@ export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, en
       // Android: cobre o stack inteiro (sem isso inputs do form parent vazam
       // por cima do overlay no Android 7/API 24).
       statusBarTranslucent
+      onShow={focusSearch}
     >
       <KeyboardAvoidingView
         style={styles.root}
@@ -105,6 +121,7 @@ export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, en
           <View style={styles.searchBox}>
             <Search size={18} color={colors.text.muted} strokeWidth={2} />
             <TextInput
+              ref={searchRef}
               style={styles.searchInput}
               value={query}
               onChangeText={setQuery}

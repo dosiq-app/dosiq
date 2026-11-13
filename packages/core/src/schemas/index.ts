@@ -59,6 +59,7 @@ export {
   frequencyRequiresWeekdays,
   FREQUENCY_LABELS,
   formatFrequencyLabel,
+  consumptionLabel,
   parseIntervalDaysInput,
   getIntervalDaysError,
   INTAKE_UNITS,

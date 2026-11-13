@@ -58,6 +58,7 @@ export {
   getNextOccurrence,
   describeNextOccurrence,
   listUpcomingDoseDates,
+  listUpcomingOccurrences,
   getProtocolDays,
   getDailyDoseRate,
   // Leitura de adesão a partir de dose_instances (Fase 3 — ADR-048/050/052)
@@ -397,3 +398,7 @@ export type { DoseCycle } from './doseCycle'
 // 107 FR-015: e-mails da fila de exclusão (HTML + texto, envio manual por privacidade@dosiq.app).
 export { PRUNE_EMAIL_LINKS, PRUNE_EMAIL_CONTROLLER, pruneEmailVariant, buildPruneEmail } from './pruneEmail'
 export type { PruneEmailVariant } from './pruneEmail'
+
+// 117 Fatia A: próximas doses com horário e dose da etapa (mesmo walk do gerador, CON-036).
+export { listUpcomingDoses } from './upcomingDoses'
+export type { UpcomingDose, UpcomingDoseProtocol } from './upcomingDoses'

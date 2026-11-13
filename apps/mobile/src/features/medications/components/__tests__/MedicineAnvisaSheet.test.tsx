@@ -4,7 +4,7 @@
 
 import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
-import { Modal } from 'react-native'
+import { Modal, TextInput } from 'react-native'
 import { decodeCmedIndex } from '@dosiq/core'
 import { MedicineAnvisaSheet } from '../MedicineAnvisaSheet'
 import fixture from '../../../../../../../packages/core/src/services/cmed/__tests__/fixtures/cmed-fixture.json'
@@ -229,5 +229,31 @@ describe('mínimo de letras da busca (066 E, C-8)', () => {
     expect(getByText('Digite ao menos 3 letras')).toBeTruthy()
     expect(queryByText('Nenhum resultado')).toBeNull()
     expect(mockSearch).not.toHaveBeenCalled()
+  })
+
+  // 117 PO-12: foco pedido no fim da animação (onShow), nunca autoFocus no mount; e de novo ao voltar do passo 2.
+  describe('117 US-6 — foco na busca', () => {
+    let focusSpy: jest.SpyInstance
+    beforeEach(() => {
+      focusSpy = jest.spyOn((TextInput as any).prototype, 'focus').mockImplementation(() => {})
+    })
+    afterEach(() => focusSpy.mockRestore())
+
+    it('não usa autoFocus e foca no onShow do Modal (AC-6.1)', () => {
+      const { getByLabelText, UNSAFE_getByType } = renderSheet([])
+      expect(getByLabelText('Buscar medicamento').props.autoFocus).toBeFalsy()
+      expect(focusSpy).not.toHaveBeenCalled()
+      act(() => UNSAFE_getByType(Modal).props.onShow())
+      expect(focusSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it('volta do passo 2 pede foco de novo (AC-6.2)', () => {
+      mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+      const { getByLabelText } = renderSheet([DIVALPROATO])
+      fireEvent.press(getByLabelText(DIVALPROATO.name))
+      expect(focusSpy).not.toHaveBeenCalled()
+      fireEvent.press(getByLabelText('Voltar'))
+      expect(focusSpy).toHaveBeenCalledTimes(1)
+    })
   })
 })

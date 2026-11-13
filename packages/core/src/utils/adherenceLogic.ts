@@ -873,8 +873,20 @@ export function listUpcomingDoseDates(
   count = 3,
   now: Date = getNow()
 ): UpcomingDoseDates {
-  const { occurrences, todayDropped } = _walkOccurrences(protocol, now, count, _horizonDays(protocol, now, count))
+  const { occurrences, todayDropped } = listUpcomingOccurrences(protocol, count, now)
   return { dates: occurrences.map((o) => o.date), todayDropped }
+}
+
+/**
+ * 117 A (FR-001): as mesmas ocorrências de `listUpcomingDoseDates`, com o horário de cada uma
+ * (hoje = 1º horário ainda por vir; demais dias = 1º horário). Mesmo walk, mesmo horizonte (INV-3).
+ */
+export function listUpcomingOccurrences(
+  protocol: AdherenceProtocol | null | undefined,
+  count = 3,
+  now: Date = getNow()
+): { occurrences: NextOccurrence[]; todayDropped: boolean } {
+  return _walkOccurrences(protocol, now, count, _horizonDays(protocol, now, count))
 }
 
 /**

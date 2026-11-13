@@ -7,6 +7,16 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Detalhe do tratamento: próximas doses, estoque e consumo pela cadência (spec 117, Fatia A)
+
+- **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.18 → **0.34.20** (0.34.19 = 1º build de smoke; 0.34.20 = achados do smoke: estoque relido ao iniciar etapa e card depois do alarme); build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — funcionalidade nova, 100% JS).
+  - **Próximas doses** no detalhe de tratamento semanal, mensal, a cada N dias ou em dias alternados: a próxima em destaque ("hoje", "amanhã" ou o dia da semana, com horário) e mais duas. Com escada de dose, cada data mostra a dose e a etapa daquele dia. As datas são as mesmas em que o lembrete toca. Não aparece no diário, nem em tratamento pausado ou finalizado.
+  - **Card de estoque** no detalhe do tratamento: saldo, o mesmo selo da aba Estoque e "Próxima compra até" quando houver. Um toque abre o estoque do remédio. Sem estoque registrado, o card mostra "Nova compra" e o toque abre direto o formulário de compra daquele remédio, como na aba Estoque. Com o controle de estoque desligado, o card não aparece. Em tratamento que zera de propósito (mensal ou etapa de passagem, em que se compra perto da aplicação), o card e a aba Estoque não pedem mais a "primeira compra": mostram o selo Planejado e a data de compra.
+  - O rótulo **"Consumo diário"** passa a seguir a cadência: "Consumo semanal" (semanal com um dia), "Consumo a cada N dias", "Consumo a cada 2 dias" (dias alternados) e "Consumo por dia de dose" (semanal com mais de um dia na semana). O valor não muda.
+  - **Busca na Base ANVISA** abre com o campo focado e o teclado aberto, sem o segundo toque. Ao voltar da escolha da concentração, o foco volta à busca.
+- **Core:** `listUpcomingDoses` (próximas doses com horário e dose da etapa, sobre o mesmo cálculo de recorrência do gerador de doses), `listUpcomingOccurrences` e `consumptionLabel`. `listUpcomingDoseDates` não muda.
+- **Process:** eventos `next_doses_viewed`, `treatment_stock_viewed` e `treatment_stock_tapped` (TRACKING_PLAN §5.3), sem nome, dose nem saldo.
+
 ### Estoque: um número e um "estoque baixo" só, em todo canal (spec 072)
 
 - **Backend/Infra** (`Changed`, sem version source; deploy normal do servidor). **Mudança de comportamento intencional:** o alerta de estoque baixo (notificação) passa a sair com **7 dias** restantes. Antes só saía com 6 ou menos: o paciente com 7 dias via "estoque baixo" no app, no `/estoque` e no assistente, mas não recebia o aviso. Agora o limite é o mesmo em todo lugar: dias inteiros restantes ≤ 7. Isso vale também para quem tem entre 7 e 7,9 dias (o app mostra "7 dias").
