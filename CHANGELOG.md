@@ -7,6 +7,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Teste documenta o fallback de dose sem cadastro de medicamento
+
+- **Shared/Core** (`no-user-impact`, sem bump — só teste; nenhum código de runtime muda). `formatIntakeDose` sem cadastro de medicamento mostra "<qty> un." mesmo com unidade de tomada explícita. Decisão: não alterar sem caso real (0 ocorrências em prod em 2026-11-12; medicamento nulo é defeito do chamador; o helper alimenta push, alarme, chatbot e PDF). `doseUnit.noMedicine.test.ts` protege o comportamento e registra o porquê.
+
 ### Peso por etapa obedece a medida escolhida no tratamento (spec 100)
 
 - **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.15 → **0.34.16**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — correção 100% JS, o trem segura a loja) e **Web** (`Fixed`, **patch** 4.39.1 → **4.39.2**; relatório em PDF).
