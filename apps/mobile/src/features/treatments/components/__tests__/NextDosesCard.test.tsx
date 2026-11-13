@@ -2,7 +2,8 @@
 // mostra a dose da etapa. Datas e doses vêm do core real (`listUpcomingDoses`, paridade com o gerador
 // em upcomingDoseParity.test.ts — PO-1); aqui só a forma. Relógio: sex, 13 nov 2026, 14:00 (SP).
 import React from 'react'
-import { render } from '@testing-library/react-native'
+import { render, act } from '@testing-library/react-native'
+import { AppState } from 'react-native'
 import NextDosesCard from '../NextDosesCard'
 
 const mockLogEvent = jest.fn()
@@ -78,5 +79,18 @@ describe('117 PO-2 — bloco Próximas doses', () => {
     const steps = [{ position: 1, dose: 1, duration_days: null, status: 'current', started_at: '2026-10-01T03:00:00.000Z', medicine_id: 'm-1' }]
     const { getByTestId } = render(<NextDosesCard protocol={weekly({ titration_steps: steps })} paused={false} finished={false} />)
     expect(getByTestId('next-doses-first')).toBeTruthy()
+  })
+})
+
+describe('117 RC6 #947 (AP-366) — o relógio avança com a tela aberta', () => {
+  it('dose de hoje 20:00 sai da lista depois que o horário passa', () => {
+    Object.defineProperty(AppState, 'currentState', { value: 'active', configurable: true })
+    const { getByTestId } = render(<NextDosesCard protocol={weekly()} paused={false} finished={false} />)
+    expect(getByTestId('next-doses-first')).toHaveTextContent(/hoje · 20:00/)
+    act(() => {
+      jest.setSystemTime(new Date('2026-11-13T20:01:30-03:00'))
+      jest.advanceTimersByTime(6 * 60 * 60 * 1000 + 2 * 60 * 1000)
+    })
+    expect(getByTestId('next-doses-first')).toHaveTextContent(/sex, 20 nov · 20:00/)
   })
 })

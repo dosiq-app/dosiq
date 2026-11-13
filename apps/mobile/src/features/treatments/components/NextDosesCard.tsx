@@ -10,8 +10,9 @@ import { View, Text, StyleSheet } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 — ver TreatmentsScreen.tsx
 import * as LucideIcons from 'lucide-react-native'
-import { listUpcomingDoses, formatWeekdayDayMonthPtBR, formatIntakeDose, formatLocalDate, addDays, getNow } from '@dosiq/core'
+import { listUpcomingDoses, formatWeekdayDayMonthPtBR, formatIntakeDose, formatLocalDate, addDays } from '@dosiq/core'
 import SectionCard from '@shared/components/ui/SectionCard'
+import { useMinuteClock } from '@shared/hooks/useMinuteClock'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
 import { colors, spacing, typography } from '@shared/styles/tokens'
@@ -36,17 +37,18 @@ type Props = {
 export default function NextDosesCard({ protocol, paused, finished }: Props) {
   // States
   const viewedRef = useRef(false)
+  // AP-366 (RC6 #947): "agora" é estado — dose que passou sai da lista e "hoje/amanhã" viram à meia-noite.
+  const now = useMinuteClock()
 
   // Memos
   const hidden = !protocol || protocol.frequency === 'diário' || paused || finished
   const { doses, today, tomorrow } = useMemo(() => {
-    const now = getNow()
     return {
       doses: hidden ? [] : listUpcomingDoses(protocol, COUNT, now),
       today: formatLocalDate(now),
       tomorrow: formatLocalDate(addDays(now, 1)),
     }
-  }, [protocol, hidden])
+  }, [protocol, hidden, now])
 
   // Effects — 1 exibição por foco do detalhe (FR-010).
   useFocusEffect(
