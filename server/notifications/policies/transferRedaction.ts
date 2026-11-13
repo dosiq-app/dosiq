@@ -42,10 +42,11 @@ export function isTransferRedacted(settings: TransferRedactionSettings | null | 
 // é `.strict()` e não tem campo de remédio, dose ou plano.
 export const TRANSFER_NEUTRAL_KINDS = Object.freeze(['consent_prune_notice', 'prune_admin_alert', 'supply_reminder'])
 
-const DOSE_GENERIC = { title: '💊 Hora do seu remédio', body: 'Abra o dosiq para ver a dose.' }
+// 120 B (decisão PO 13/11): sem possessivo (INV-3).
+const DOSE_GENERIC = { title: '💊 Hora do remédio', body: 'Abra o dosiq para ver a dose.' }
 
 /**
- * Genérico por kind (Q-3: dose = "💊 Hora do seu remédio", crítico idem — "Remédio essencial"
+ * Genérico por kind (Q-3: dose = "💊 Hora do remédio" — 120 B tirou o possessivo, crítico idem — "Remédio essencial"
  * revelaria a criticidade). Kind fora da tabela cai no FALLBACK, nunca no payload original.
  */
 const GENERIC_BY_KIND: Readonly<Record<string, { title: string; body: string }>> = Object.freeze({

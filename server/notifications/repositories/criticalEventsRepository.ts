@@ -293,20 +293,27 @@ const EVENT_DEVICE_CAPABILITY = 'device_capability'
  * - Capacidade é por USUÁRIO (a tabela não tem coluna de aparelho): o negativo de um aparelho corta a
  *   prova do usuário inteiro. Medido 2026-11-02: 0 de 10 pacientes críticos com > 1 aparelho ativo.
  *
+ * - `before` (120 B, smoke X-3): teto ESTRITO — só conta negativo emitido antes do disparo da dose. O
+ *   alarme que acabou de tocar sai do conjunto armado e o app emite `capable=false` segundos depois do
+ *   horário; esse negativo descreve o aparelho DEPOIS do disparo, não a capacidade de tocar a dose.
+ *
  * @returns ISO do corte, ou `null` sem negativo. Em erro devolve `now` — corta TODA prova anterior ⇒ o
  *          push sai (fail-open, FR-013), sem ramo especial no chamador.
  */
 export async function findLatestIncapableAt(
   client: SupabaseLike,
   userId: string,
-  now: Date = getNow()
+  now: Date = getNow(),
+  before: string | null = null
 ): Promise<string | null> {
-  const { data, error } = await client
+  let query = client
     .from('dose_critical_events')
     .select('created_at')
     .eq('user_id', userId)
     .eq('event', EVENT_DEVICE_CAPABILITY)
     .eq('detail->>capable', 'false')
+  if (before) query = query.lt('created_at', before)
+  const { data, error } = await query
     .order('created_at', { ascending: false })
     .limit(1)
 

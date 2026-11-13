@@ -219,7 +219,12 @@ export const doseReminderDataSchema = z.object({
   intakeUnit: z.string().nullable().optional(), // Líquidos (022): gotas/ml/UI
   protocolId: z.string().optional(),
   hour: z.number().min(0).max(23).optional(),
-  critical_alarm: z.boolean().optional()
+  critical_alarm: z.boolean().optional(),
+  // 120 B (D-9 · ADR-124): verbo pela apresentação, título de evento p/ semanal injetável e o
+  // último local de aplicação (valor cru do banco; o builder só imprime rótulo canônico — S-2).
+  presentation: z.string().nullable().optional(),
+  frequency: z.string().nullable().optional(),
+  lastInjectionSite: z.string().nullable().optional()
 });
 
 export const doseReminderByPlanDataSchema = z.object({

@@ -3,19 +3,11 @@
 
 import type { z } from 'zod';
 
-import {
-  getServerTimestamp,
-  getSaoPauloTime
-} from '../../utils/dateUtils.js';
+import { getServerTimestamp } from '../../utils/dateUtils.js';
 
 import { escapeMarkdownV2 } from '../../utils/formatters.js';
 
-import { DOSAGE_UNIT_LABELS, INTAKE_UNIT_LABELS } from '@dosiq/core';
-
-import {
-  getTimeOfDayGreeting,
-  getTimeOfDayEmoji
-} from '../../bot/utils/notificationHelpers.js';
+import { DOSAGE_UNIT_LABELS, INTAKE_UNIT_LABELS, doseVerb, getKnownInjectionSiteLabel } from '@dosiq/core';
 
 import {
   kindSchema,
@@ -139,103 +131,108 @@ export function buildNotificationPayload({ kind, data, context = {} }: { kind: s
   // 2. Resolver Deeplink lógico (Responsabilidade da Layer 2)
   const deeplink = resolveDeeplink(validatedKind, data);
 
-  // 3. Aplicar Decoração de Reenvio (Gate 1 — Shim removido, agora via context)
-  const decorated = applyRetryDecoration({ title, body, pushBody }, context);
+  // 120 B (E-12): reenvio NÃO muda o texto visível — "(Reenvio)" era linguagem de sistema. A
+  // identidade do reenvio fica no `context.isRetry` (log/dedupe não comparam pelo título).
 
   // Validação do Contrato de Saída (Gate L2 -> L3)
   return notificationPayloadSchema.parse({
-    ...decorated,
+    title,
+    body,
+    pushBody,
     deeplink,
     actions,
     metadata
   });
 }
 
+// 120 B (D-9 · copy-matrix-B.md): o título carrega a ação e o nome; o corpo, só dose e hora.
+// O mesmo texto vale para push, Telegram e Inbox — exceto o local da última aplicação, que vai
+// SÓ no `pushBody` (ADR-124; o `body` é o do Telegram e o que a Inbox grava/mostra).
+const SEP = ' · ';
+const MAX_SHOWN = 10;
+
+const formatNumber = (n: number): string => String(n).replace('.', ',');
+
+// 120 B (smoke C-B1): espaço inquebrável DENTRO da dose — a quebra de linha só cai entre itens,
+// nunca em "Selozok 2 / × 25 mg".
+const NBSP = '\u00A0';
+
 /**
- * Auxiliar para formatar a descrição clínica do medicamento com quantidade e dosagem.
- * Exemplo: "Xarope (10 mL) • 1 un." ou "Dipirona (500 mg) • 2 un."
+ * Quantidade da dose, sem o nome do remédio. Exemplos: "50 mg" · "2 × 25 mcg" · "20 gotas" ·
+ * "10 UI" · "1,5 un.". Sem nenhuma informação de dose ⇒ null (o corpo fica só com a hora).
  */
-const formatMedicineDescription = (
-  name: string,
+const isPositive = (n: number | undefined | null): n is number => n !== undefined && n !== null && n > 0;
+
+const unitLabelOf = (labels: Record<string, string>, unit: string): string => labels?.[unit] || unit;
+
+const formatDoseAmount = (
   qty: number | undefined | null,
   dosagePerPill: number | undefined | null,
   unit: string | undefined,
-  intakeUnit: string | undefined | null
-): string => {
-  let desc = name;
-  if (dosagePerPill !== undefined && dosagePerPill !== null && unit) {
-    // 012 Fase D (FR-015b c): case canônico do acrônimo — 'ui/ml' → 'UI/ml',
-    // 'ui' → 'UI' (DOSAGE_UNIT_LABELS); 'mg'/'ml' inalterados. Sem label → unit cru.
-    const unitLabel = (DOSAGE_UNIT_LABELS as Record<string, string>)?.[unit] || unit;
-    desc += ` (${dosagePerPill} ${unitLabel})`;
+  intakeUnit: string | undefined | null,
+  dosage?: string,
+): string | null => {
+  // Líquidos (022): unidade de tomada real (gotas/ml/UI), sem a concentração.
+  if (intakeUnit && isPositive(qty)) {
+    return `${formatNumber(qty)}${NBSP}${unitLabelOf(INTAKE_UNIT_LABELS as Record<string, string>, intakeUnit)}`;
   }
-  if (qty !== undefined && qty !== null) {
-    const formattedQty = String(qty).replace('.', ',');
-    // Líquidos (022): unidade de tomada real (gotas/ml/UI) em vez do genérico "un.".
-    const intakeUnitLabel = intakeUnit ? (INTAKE_UNIT_LABELS as Record<string, string>)?.[intakeUnit] || intakeUnit : null;
-    desc += intakeUnitLabel ? ` • ${formattedQty} ${intakeUnitLabel}` : ` • ${formattedQty} un.`;
+  if (isPositive(dosagePerPill) && unit) {
+    // 012 Fase D (FR-015b c): case canônico do acrônimo ('ui' → 'UI'); sem label → unit cru.
+    const strength = `${formatNumber(dosagePerPill)}${NBSP}${unitLabelOf(DOSAGE_UNIT_LABELS as Record<string, string>, unit)}`;
+    return isPositive(qty) && qty !== 1 ? `${formatNumber(qty)}${NBSP}×${NBSP}${strength}` : strength;
   }
-  return desc;
+  if (dosage) return dosage;
+  return isPositive(qty) ? `${formatNumber(qty)}${NBSP}un.` : null;
 };
+
+type DoseLike = {
+  medicineName: string;
+  dosagePerIntake?: number;
+  dosagePerPill?: number | null;
+  dosageUnit?: string;
+  intakeUnit?: string | null;
+};
+
+const formatDoseItem = (d: DoseLike): string => {
+  const amount = formatDoseAmount(d.dosagePerIntake, d.dosagePerPill, d.dosageUnit, d.intakeUnit);
+  return amount ? `${d.medicineName} ${amount}` : d.medicineName;
+};
+
+const isWeeklyInjectable = (presentation: string | null | undefined, frequency: string | null | undefined): boolean =>
+  presentation === 'injetavel' && frequency === 'semanal';
 
 /**
  * Formata payload de lembrete de dose única.
  */
 function formatDoseReminder(data: NotificationEventData, metadata: Metadata): NotificationPayloadContent {
   const result = doseReminderDataSchema.safeParse(data);
-  if (!result.success) {
+  if (result.success === false) {
     throw new Error(`Invalid data for dose_reminder: ${result.error.message}`);
   }
 
-  const { medicineName, time, dosage, hour, protocolId, critical_alarm, dosagePerIntake, dosageUnit, dosagePerPill, intakeUnit } = result.data;
+  const {
+    medicineName, time, dosage, protocolId, critical_alarm, dosagePerIntake, dosageUnit, dosagePerPill, intakeUnit,
+    presentation, frequency, lastInjectionSite,
+  } = result.data;
   const isCritical = critical_alarm === true;
-  const safeHour = hour ?? getSaoPauloTime().getHours();
-  const emoji = getTimeOfDayEmoji(safeHour);
-  const greeting = getTimeOfDayGreeting(safeHour);
-  const title = isCritical ? '💊 Remédio essencial' : `${emoji} ${greeting}`;
+  const verb = doseVerb(presentation);
+  const weeklyInjectable = isWeeklyInjectable(presentation, frequency);
 
-  const safeTime = escapeMarkdownV2(time);
-  let body, pushBody;
+  let title: string;
+  if (isCritical) title = `💊 Essencial: ${verb} ${medicineName}`;
+  else if (weeklyInjectable) title = `Dia da aplicação de ${medicineName}`;
+  else title = `Hora de ${verb} ${medicineName}`;
 
-  if (isCritical) {
-    if (dosagePerIntake !== undefined) {
-      const desc = formatMedicineDescription(medicineName, dosagePerIntake, dosagePerPill, dosageUnit, intakeUnit);
-      const safeDesc = escapeMarkdownV2(desc);
-      body = `Hora de tomar *${safeDesc}* — ${safeTime}`;
-      pushBody = `Hora de tomar ${desc} — ${time}`;
-    } else {
-      const safeName = escapeMarkdownV2(medicineName);
-      if (dosage) {
-        const safeDosage = escapeMarkdownV2(dosage);
-        body = `Hora de tomar *${safeName}* • **${safeDosage}** — ${safeTime}`;
-        pushBody = `Hora de tomar ${medicineName} • ${dosage} — ${time}`;
-      } else {
-        body = `Hora de tomar *${safeName}* — ${safeTime}`;
-        pushBody = `Hora de tomar ${medicineName} — ${time}`;
-      }
-    }
-  } else {
-    if (dosagePerIntake !== undefined) {
-      const desc = formatMedicineDescription(medicineName, dosagePerIntake, dosagePerPill, dosageUnit, intakeUnit);
-      const safeDesc = escapeMarkdownV2(desc);
-      body = `Está na hora de tomar *${safeDesc}* — ${safeTime}`;
-      pushBody = `Está na hora de tomar ${desc} — ${time}`;
-    } else {
-      const resolvedDosage = dosage;
-      const safeName = escapeMarkdownV2(medicineName);
-      if (resolvedDosage) {
-        const safeDosage = escapeMarkdownV2(resolvedDosage);
-        body = `Está na hora de tomar *${safeName}* • **${safeDosage}** — ${safeTime}`;
-        pushBody = `Está na hora de tomar ${medicineName} • ${resolvedDosage} — ${time}`;
-      } else {
-        body = `Está na hora de tomar *${safeName}* — ${safeTime}`;
-        pushBody = `Está na hora de tomar ${medicineName} — ${time}`;
-      }
-    }
-  }
+  const amount = formatDoseAmount(dosagePerIntake, dosagePerPill, dosageUnit, intakeUnit, dosage);
+  const detail = [amount, time].filter((part): part is string => Boolean(part));
+  // ADR-124 / RC-SEC S-2: só o rótulo canônico; valor fora do enum ⇒ trecho omitido.
+  const siteLabel = weeklyInjectable ? getKnownInjectionSiteLabel(lastInjectionSite) : null;
+
+  const body = escapeMarkdownV2(detail.join(SEP));
+  const pushBody = [...detail, ...(siteLabel ? [`última: ${siteLabel}`] : [])].join(SEP);
 
   const actions: Array<z.input<typeof actionSchema>> = [
-    { id: 'take', label: '✅ Tomar', params: { protocolId: protocolId ?? '', dosage: dosagePerIntake ?? 1 } },
+    { id: 'take', label: '✅ Registrar', params: { protocolId: protocolId ?? '', dosage: dosagePerIntake ?? 1 } },
     { id: 'snooze', label: '⏰ Soneca', params: { protocolId: protocolId ?? '' } },
     { id: 'skip', label: '⏭️ Pular', params: { protocolId: protocolId ?? '' } }
   ];
@@ -243,51 +240,47 @@ function formatDoseReminder(data: NotificationEventData, metadata: Metadata): No
   return { title, body, pushBody, actions, metadata };
 }
 
+const dosesWord = (count: number): string => `${count} dose${count === 1 ? '' : 's'} agora`;
+
+/**
+ * Lista das doses de um bloco: push em linha única (cabe no banner), Telegram uma por linha.
+ */
+function formatDoseList(doses: DoseLike[]): { plain: string; markdown: string } {
+  const shown = doses.slice(0, MAX_SHOWN);
+  const extra = doses.length - shown.length;
+  const items = shown.map(formatDoseItem);
+  let plain = items.join(SEP);
+  let markdown = items.map((item) => `  – ${escapeMarkdownV2(item)}`).join('\n');
+  if (extra > 0) {
+    plain += `${SEP}e mais ${extra}`;
+    markdown += `\n  _e mais ${escapeMarkdownV2(String(extra))}_`;
+  }
+  return { plain, markdown };
+}
+
 /**
  * Formata payload de lembrete de doses por plano.
  */
 function formatDoseReminderByPlan(data: NotificationEventData, metadata: Metadata): NotificationPayloadContent {
   const result = doseReminderByPlanDataSchema.safeParse(data);
-  if (!result.success) {
+  if (result.success === false) {
     throw new Error(`Invalid data for dose_reminder_by_plan: ${result.error.message}`);
   }
 
-  const { planName, planId, scheduledTime, hour, doses, critical_alarm } = result.data;
+  const { planName, planId, scheduledTime, doses, critical_alarm } = result.data;
   const isCritical = critical_alarm === true;
-  const emoji = getTimeOfDayEmoji(hour);
-  const greeting = getTimeOfDayGreeting(hour);
-  const title = isCritical ? '📂 Plano essencial' : `${emoji} ${greeting}`;
-  const safePlanName = escapeMarkdownV2(planName || 'Plano terapêutico');
-  const safeTime = escapeMarkdownV2(scheduledTime);
-  const count = doses.length;
-  const MAX_SHOWN = 10;
-  const shown = doses.slice(0, MAX_SHOWN);
-  const extra = count - shown.length;
+  const plan = planName || 'Plano de tratamento';
+  const list = formatDoseList(doses);
 
-  let doseLines, plainLines;
-  doseLines = shown.map(d => {
-    const desc = formatMedicineDescription(d.medicineName, d.dosagePerIntake, d.dosagePerPill, d.dosageUnit, d.intakeUnit);
-    const safeDesc = escapeMarkdownV2(desc);
-    return `  – ${safeDesc}`;
-  }).join('\n');
-
-  plainLines = shown.map(d => {
-    const desc = formatMedicineDescription(d.medicineName, d.dosagePerIntake, d.dosagePerPill, d.dosageUnit, d.intakeUnit);
-    return `– ${desc}`;
-  }).join('\n');
-
-  let body, pushBody;
+  let title: string, body: string, pushBody: string;
   if (isCritical) {
-    body = `Hora dos remédios de *${safePlanName}* — ${safeTime}\\.\n\n${doseLines}`;
-    pushBody = `Hora dos remédios de ${planName} — ${scheduledTime}.\n${plainLines}`;
+    title = '📂 Plano essencial';
+    body = `*${escapeMarkdownV2(plan)}*${escapeMarkdownV2(SEP + scheduledTime)}\n\n${list.markdown}`;
+    pushBody = [plan, scheduledTime, list.plain].join(SEP);
   } else {
-    body = `*${safePlanName}*\n\n${escapeMarkdownV2(String(count))} remédios agora — ${safeTime}\n\n${doseLines}`;
-    pushBody = `Está na hora do plano ${planName} — ${scheduledTime}.\n${plainLines}`;
-  }
-
-  if (extra > 0) {
-    body += `\n  _… e mais ${escapeMarkdownV2(String(extra))}_`;
-    pushBody += `\n… e mais ${extra}`;
+    title = `${dosesWord(doses.length)}${SEP}${plan}`;
+    body = `${escapeMarkdownV2(scheduledTime)}\n\n${list.markdown}`;
+    pushBody = [scheduledTime, list.plain].join(SEP);
   }
 
   const planIdShort = String(planId ?? '').slice(0, 8);
@@ -303,46 +296,17 @@ function formatDoseReminderByPlan(data: NotificationEventData, metadata: Metadat
  */
 function formatDoseReminderMisc(data: NotificationEventData, metadata: Metadata): NotificationPayloadContent {
   const result = doseReminderMiscDataSchema.safeParse(data);
-  if (!result.success) {
+  if (result.success === false) {
     throw new Error(`Invalid data for dose_reminder_misc: ${result.error.message}`);
   }
 
-  const { scheduledTime, hour, doses, critical_alarm } = result.data;
+  const { scheduledTime, doses, critical_alarm } = result.data;
   const isCritical = critical_alarm === true;
-  const emoji = getTimeOfDayEmoji(hour);
-  const greeting = getTimeOfDayGreeting(hour);
-  const title = isCritical ? '📋 Doses essenciais' : `${emoji} ${greeting}`;
-  const safeTime = escapeMarkdownV2(scheduledTime);
-  const count = doses.length;
-  const MAX_SHOWN = 10;
-  const shown = doses.slice(0, MAX_SHOWN);
-  const extra = count - shown.length;
+  const list = formatDoseList(doses);
 
-  let doseLines, plainLines;
-  doseLines = shown.map(d => {
-    const desc = formatMedicineDescription(d.medicineName, d.dosagePerIntake, d.dosagePerPill, d.dosageUnit, d.intakeUnit);
-    const safeDesc = escapeMarkdownV2(desc);
-    return `  – ${safeDesc}`;
-  }).join('\n');
-
-  plainLines = shown.map(d => {
-    const desc = formatMedicineDescription(d.medicineName, d.dosagePerIntake, d.dosagePerPill, d.dosageUnit, d.intakeUnit);
-    return `– ${desc}`;
-  }).join('\n');
-
-  let body, pushBody;
-  if (isCritical) {
-    body = `Remédios essenciais agora — *${safeTime}*\\.\n\n${doseLines}`;
-    pushBody = `Remédios essenciais agora — ${scheduledTime}:\n${plainLines}`;
-  } else {
-    body = `*Suas doses agora* — ${safeTime}\n\n${escapeMarkdownV2(String(count))} remédio${count !== 1 ? 's' : ''} pendente${count !== 1 ? 's' : ''}:\n\n${doseLines}`;
-    pushBody = `${count} remédio${count !== 1 ? 's' : ''} pendente${count !== 1 ? 's' : ''} — ${scheduledTime}:\n${plainLines}`;
-  }
-
-  if (extra > 0) {
-    body += `\n  _… e mais ${escapeMarkdownV2(String(extra))}_`;
-    pushBody += `\n… e mais ${extra}`;
-  }
+  const title = isCritical ? '📋 Doses essenciais' : dosesWord(doses.length);
+  const body = `${escapeMarkdownV2(scheduledTime)}\n\n${list.markdown}`;
+  const pushBody = [scheduledTime, list.plain].join(SEP);
 
   const hhmm = scheduledTime;
   const actions: Array<z.input<typeof actionSchema>> = [
@@ -350,25 +314,6 @@ function formatDoseReminderMisc(data: NotificationEventData, metadata: Metadata)
   ];
 
   return { title, body, pushBody, actions, metadata };
-}
-
-/**
- * Aplica decoração visual de reenvio se necessário.
- * Isolado para reduzir complexidade da função principal.
- */
-function applyRetryDecoration(
-  content: { title: string; body: string; pushBody: string },
-  context: NotificationContext
-): { title: string; body: string; pushBody: string } {
-  const isRetry = context.isRetry ?? false;
-  if (!isRetry) return content;
-
-  return {
-    ...content,
-    title: `🔄 ${content.title} (Reenvio)`,
-    body: `${content.body}\n\n_Esta é uma nova tentativa de envio\\._`,
-    pushBody: `${content.pushBody}\n\n(Reenvio)`
-  };
 }
 
 interface NavigationMetadata {

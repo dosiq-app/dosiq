@@ -328,9 +328,14 @@ export {
   INJECTION_SITES,
   INJECTION_SITE_VALUES,
   getInjectionSiteLabel,
+  getKnownInjectionSiteLabel,
   getInjectionSiteAbsorption,
   isInjectable,
 } from './injectionSites'
+
+// Verbo da dose pela apresentação (120, D-9) — push do servidor e prévia no app
+export { doseVerb } from './doseVerb'
+export type { DoseVerb } from './doseVerb'
 
 // Mapa corporal de sítios — geometria pura compartilhada web↔mobile (071, ADR-096)
 export {

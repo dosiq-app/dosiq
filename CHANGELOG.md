@@ -7,6 +7,20 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Lembrete de dose diz o que fazer: verbo certo, ação no título e local da última aplicação (spec 120, Fatia B)
+
+- **Backend/Infra** (`Changed`, sem version source; deploy normal do servidor). Texto novo em todo lembrete de dose (push, Telegram e Avisos do app):
+  - O **título** passa a dizer a ação e o remédio ("Hora de tomar Losartana"), no lugar da saudação ("Remédios da manhã"). O corpo traz só dose e hora ("50 mg · 08:00"; "2 × 25 mcg"; "20 gotas").
+  - **Verbo pela apresentação**: injetável e pomada ⇒ "aplicar"; spray e outros ⇒ "usar"; comprimido, cápsula e líquido ⇒ "tomar".
+  - **Injetável semanal** vira evento: "Dia da aplicação de Mounjaro". No push do celular, o corpo lembra o local da última aplicação ("· última: Abdômen (esquerdo)"), lido do último registro com local (rotação entre remédios, ADR-072). Sem registro, o trecho não aparece. O local **não** vai para o Telegram nem para Avisos (ADR-124).
+  - **Essencial**: "💊 Essencial: aplicar Insulina". **Várias doses no mesmo horário**: "2 doses agora · Pressão" (com plano) ou "2 doses agora", com a lista no corpo. Sai o "Suas doses agora".
+  - **Reenvio** não muda mais o texto: some o "(Reenvio)" e o "Esta é uma nova tentativa de envio".
+  - Botão do Telegram na dose única: "✅ Registrar" (era "✅ Tomar").
+  - Sem a autorização de envio para fora do Brasil, o texto genérico passa a ser "💊 Hora do remédio" (era "Hora do seu remédio").
+- **Backend/Infra** (`Fixed`): dose essencial com alarme do celular deixava de suprimir o push quando o aplicativo avisava, segundos depois do alarme tocar, que "não havia alarme armado" (o alarme que acabou de tocar sai da lista). O aviso emitido depois do horário da dose deixa de contar contra aquela dose, e não sai o push repetido junto do alarme e da Live Activity. Encontrado no teste da 0.34.22; em produção, 0 casos nos últimos 30 dias.
+- **Web** (`Changed`, **patch** 4.39.4 → **4.39.5**): o exemplo do push sem autorização, nos detalhes do consentimento, acompanha o texto novo. **Mobile**: o mesmo exemplo entra no próximo build de loja (sem bump nesta fatia).
+- **Core:** `doseVerb` (verbo pela apresentação, fonte única para o servidor e para a fatia A) e `getKnownInjectionSiteLabel` (rótulo só dos 8 locais canônicos; valor desconhecido ⇒ nada).
+
 ### Aba Estoque em três seções: em uso, programado e sem tratamentos (spec 117, Fatia B)
 
 - **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.20 → **0.34.22** (0.34.22 = correções do smoke: data da troca só no Programado, nome longo no card); build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — funcionalidade nova, 100% JS).

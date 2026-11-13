@@ -16,7 +16,7 @@ afterEach(() => {
 /** Query builder encadeável mínimo: cada método devolve `this` e o terminal resolve o thenable. */
 function makeClient(result: { data?: unknown; error?: unknown }, spy = vi.fn()) {
   const builder: Record<string, unknown> = {}
-  for (const m of ['select', 'eq', 'in', 'gte', 'gt', 'order', 'limit']) {
+  for (const m of ['select', 'eq', 'in', 'gte', 'gt', 'lt', 'order', 'limit']) {
     builder[m] = vi.fn((...args: unknown[]) => {
       spy(m, ...args)
       return builder
@@ -277,6 +277,23 @@ describe('findLatestIncapableAt (082 D2)', () => {
     // F6: o relógio comparado é o do SERVIDOR (`created_at`), nunca o `occurred_at` do aparelho.
     expect(client._spy).toHaveBeenCalledWith('order', 'created_at', { ascending: false })
     expect(client._spy).toHaveBeenCalledWith('limit', 1)
+  })
+
+  // 120 B (smoke X-3): o alarme que ACABOU de tocar sai do conjunto armado e o app emite negativo
+  // segundos depois do horário da dose. Negativo posterior ao disparo não fala da capacidade de
+  // tocar AQUELA dose ⇒ não corta a prova dela.
+  it('com `before`: só considera negativo ANTERIOR ao disparo da dose (lt created_at)', async () => {
+    const client = makeClient({ data: [] })
+    const at = await findLatestIncapableAt(client, 'u1', NOW, '2026-11-02T11:45:00.000Z')
+
+    expect(at).toBeNull()
+    expect(client._spy).toHaveBeenCalledWith('lt', 'created_at', '2026-11-02T11:45:00.000Z')
+  })
+
+  it('sem `before`: nenhum filtro de teto (comportamento anterior)', async () => {
+    const client = makeClient({ data: [] })
+    await findLatestIncapableAt(client, 'u1', NOW)
+    expect(client._spy).not.toHaveBeenCalledWith('lt', expect.anything(), expect.anything())
   })
 
   it('sem nenhum negativo ⇒ null (nenhum corte; comportamento anterior ao D2)', async () => {
