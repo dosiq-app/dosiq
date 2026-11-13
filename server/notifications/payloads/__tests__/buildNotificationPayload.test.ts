@@ -140,6 +140,17 @@ describe('buildNotificationPayload', () => {
   });
 
   // 120 B — oráculo: plans/specs/120-notification-permission-recovery/copy-matrix-B.md (local-only)
+  // NBSP dentro da dose (C-B1) — as asserções de texto comparam com espaço comum; a de baixo prova o NBSP.
+  const plain = (s: string) => s.replace(/\u00A0/g, ' ');
+
+  it('C-B1: dose usa espaço inquebrável (número · × · unidade); separador entre itens é espaço comum', () => {
+    const p = buildNotificationPayload({ kind: 'dose_reminder_misc', data: { scheduledTime: '17:15', hour: 17, doses: [
+      { medicineName: 'Besilato de Anlodipino', dosagePerIntake: 1, dosagePerPill: 5, dosageUnit: 'mg' },
+      { medicineName: 'Selozok', dosagePerIntake: 2, dosagePerPill: 25, dosageUnit: 'mg' },
+    ] } });
+    expect(p.pushBody).toBe('17:15 · Besilato de Anlodipino 5\u00A0mg · Selozok 2\u00A0×\u00A025\u00A0mg');
+  });
+
   describe('dose_reminder (120 B · copy-matrix §1–2)', () => {
     const base = { time: '08:00', hour: 8, dosagePerIntake: 1, critical_alarm: false };
     const losartana = { ...base, medicineName: 'Losartana', dosagePerPill: 50, dosageUnit: 'mg', presentation: 'comprimido', frequency: 'diário' };
@@ -149,25 +160,25 @@ describe('buildNotificationPayload', () => {
     it('1.1 comprimido diário: título com ação, corpo só dose e hora', () => {
       const p = build(losartana);
       expect(p.title).toBe('Hora de tomar Losartana');
-      expect(p.pushBody).toBe('50 mg · 08:00');
-      expect(p.body).toBe('50 mg · 08:00');
+      expect(plain(p.pushBody)).toBe('50 mg · 08:00');
+      expect(plain(p.body)).toBe('50 mg · 08:00');
     });
 
     it('1.2 dois comprimidos por dose ⇒ "2 × 25 mcg"', () => {
       const p = build({ ...losartana, medicineName: 'Vitamina D', dosagePerIntake: 2, dosagePerPill: 25, dosageUnit: 'mcg' });
-      expect(p.pushBody).toBe('2 × 25 mcg · 08:00');
+      expect(plain(p.pushBody)).toBe('2 × 25 mcg · 08:00');
     });
 
     it('1.3 líquido em gotas ⇒ unidade de tomada, sem concentração', () => {
       const p = build({ ...losartana, medicineName: 'Dipirona', presentation: 'liquido', dosagePerIntake: 20, dosagePerPill: 500, dosageUnit: 'mg/ml', intakeUnit: 'gotas' });
       expect(p.title).toBe('Hora de tomar Dipirona');
-      expect(p.pushBody).toBe('20 gotas · 08:00');
+      expect(plain(p.pushBody)).toBe('20 gotas · 08:00');
     });
 
     it('1.4 injetável diário ⇒ aplicar, UI canônico', () => {
       const p = build({ ...losartana, medicineName: 'Insulina', presentation: 'injetavel', dosagePerIntake: 10, dosagePerPill: 100, dosageUnit: 'ui/ml', intakeUnit: 'UI' });
       expect(p.title).toBe('Hora de aplicar Insulina');
-      expect(p.pushBody).toBe('10 UI · 08:00');
+      expect(plain(p.pushBody)).toBe('10 UI · 08:00');
     });
 
     it.each([['pomada', 'aplicar'], ['spray', 'usar'], ['outro', 'usar'], ['capsula', 'tomar'], [null, 'tomar']])(
@@ -178,42 +189,42 @@ describe('buildNotificationPayload', () => {
     it('1.7 semanal injetável com local: título de evento, local SÓ no push', () => {
       const p = build({ ...mounjaro, lastInjectionSite: 'abdomen_e' });
       expect(p.title).toBe('Dia da aplicação de Mounjaro');
-      expect(p.pushBody).toBe('2,5 mg · 08:00 · última: Abdômen (esquerdo)');
-      expect(p.body).toBe('2,5 mg · 08:00');
-      expect(p.body).not.toContain('Abdômen');
+      expect(plain(p.pushBody)).toBe('2,5 mg · 08:00 · última: Abdômen (esquerdo)');
+      expect(plain(p.body)).toBe('2,5 mg · 08:00');
+      expect(plain(p.body)).not.toContain('Abdômen');
     });
 
     it('1.8 semanal injetável sem local ⇒ trecho omitido', () => {
-      expect(build({ ...mounjaro, lastInjectionSite: null }).pushBody).toBe('2,5 mg · 08:00');
+      expect(plain(build({ ...mounjaro, lastInjectionSite: null }).pushBody)).toBe('2,5 mg · 08:00');
     });
 
     it.each(['abdomen', 'ABDOMEN_E', '<b>x</b>', ''])('1.9 local fora do enum (%s) ⇒ omitido, valor cru nunca no texto (PO-SEC-2)', (site) => {
       const p = build({ ...mounjaro, lastInjectionSite: site });
-      expect(p.pushBody).toBe('2,5 mg · 08:00');
+      expect(plain(p.pushBody)).toBe('2,5 mg · 08:00');
       expect(`${p.title} ${p.body} ${p.pushBody}`).not.toContain(site || 'última');
     });
 
     it('1.10 comprimido semanal ⇒ sem título de evento e sem local', () => {
       const p = build({ ...losartana, frequency: 'semanal', lastInjectionSite: 'abdomen_e' });
       expect(p.title).toBe('Hora de tomar Losartana');
-      expect(p.pushBody).toBe('50 mg · 08:00');
+      expect(plain(p.pushBody)).toBe('50 mg · 08:00');
     });
 
     it.each(['personalizado', 'diário', null])('1.11 injetável %s ⇒ como diário, sem local', (frequency) => {
       const p = build({ ...mounjaro, frequency, lastInjectionSite: 'abdomen_e' });
       expect(p.title).toBe('Hora de aplicar Mounjaro');
-      expect(p.pushBody).toBe('2,5 mg · 08:00');
+      expect(plain(p.pushBody)).toBe('2,5 mg · 08:00');
     });
 
     it('1.12 sem dose cadastrada ⇒ só a hora', () => {
       const p = build({ medicineName: 'Omega 3', time: '12:00' });
       expect(p.title).toBe('Hora de tomar Omega 3');
-      expect(p.pushBody).toBe('12:00');
+      expect(plain(p.pushBody)).toBe('12:00');
     });
 
     it('dose sem força ⇒ "1,5 un."; string de dosagem pré-formatada respeitada', () => {
-      expect(build({ medicineName: 'Ansitec', time: '18:00', dosagePerIntake: 1.5 }).pushBody).toBe('1,5 un. · 18:00');
-      expect(build({ medicineName: 'Omega 3', time: '12:00', dosage: '3 cp' }).pushBody).toBe('3 cp · 12:00');
+      expect(plain(build({ medicineName: 'Ansitec', time: '18:00', dosagePerIntake: 1.5 }).pushBody)).toBe('1,5 un. · 18:00');
+      expect(plain(build({ medicineName: 'Omega 3', time: '12:00', dosage: '3 cp' }).pushBody)).toBe('3 cp · 12:00');
     });
 
     it('2.1/2.2 essencial: "💊 Essencial: {verbo} {nome}"', () => {
@@ -224,8 +235,8 @@ describe('buildNotificationPayload', () => {
     it('2.3 essencial semanal injetável: título do essencial, local no push', () => {
       const p = build({ ...mounjaro, critical_alarm: true, lastInjectionSite: 'coxa_d' });
       expect(p.title).toBe('💊 Essencial: aplicar Mounjaro');
-      expect(p.pushBody).toBe('2,5 mg · 08:00 · última: Coxa (direita)');
-      expect(p.body).toBe('2,5 mg · 08:00');
+      expect(plain(p.pushBody)).toBe('2,5 mg · 08:00 · última: Coxa (direita)');
+      expect(plain(p.body)).toBe('2,5 mg · 08:00');
     });
 
     it('nunca saudação de horário no título', () => {
@@ -237,7 +248,7 @@ describe('buildNotificationPayload', () => {
     it('Telegram: MarkdownV2 escapado no corpo (PO-120-7 guard)', () => {
       const p = build({ ...losartana, medicineName: 'A_b*[c]', dosage: '1.5 cp', dosagePerPill: null, dosagePerIntake: undefined, time: '08:00' });
       expect(p.title).toBe('Hora de tomar A_b*[c]');
-      expect(p.body).toBe('1\\.5 cp · 08:00');
+      expect(plain(p.body)).toBe('1\\.5 cp · 08:00');
     });
 
     it('5.3 botões do Telegram: "✅ Registrar" com id/params inalterados', () => {
@@ -272,8 +283,8 @@ describe('buildNotificationPayload', () => {
     it('3.1 normal: "N doses agora · plano", push em linha, Telegram uma por linha', () => {
       const p = buildNotificationPayload({ kind: 'dose_reminder_by_plan', data: base });
       expect(p.title).toBe('2 doses agora · Pressão');
-      expect(p.pushBody).toBe('08:00 · Losartana 50 mg · Metformina 500 mg');
-      expect(p.body).toBe('08:00\n\n  – Losartana 50 mg\n  – Metformina 500 mg');
+      expect(plain(p.pushBody)).toBe('08:00 · Losartana 50 mg · Metformina 500 mg');
+      expect(plain(p.body)).toBe('08:00\n\n  – Losartana 50 mg\n  – Metformina 500 mg');
       expect(p.actions).toHaveLength(1);
       expect(p.actions[0].id).toBe('take_plan');
     });
@@ -281,15 +292,15 @@ describe('buildNotificationPayload', () => {
     it('3.2 essencial: título mantido, plano no corpo', () => {
       const p = buildNotificationPayload({ kind: 'dose_reminder_by_plan', data: { ...base, critical_alarm: true } });
       expect(p.title).toBe('📂 Plano essencial');
-      expect(p.pushBody).toBe('Pressão · 08:00 · Losartana 50 mg · Metformina 500 mg');
-      expect(p.body).toBe('*Pressão* · 08:00\n\n  – Losartana 50 mg\n  – Metformina 500 mg');
+      expect(plain(p.pushBody)).toBe('Pressão · 08:00 · Losartana 50 mg · Metformina 500 mg');
+      expect(plain(p.body)).toBe('*Pressão* · 08:00\n\n  – Losartana 50 mg\n  – Metformina 500 mg');
     });
 
     it('3.3 mais de 10 doses ⇒ "e mais N"', () => {
       const many = Array.from({ length: 12 }, (_, i) => ({ medicineName: `Med ${i}`, dosagePerIntake: 1 }));
       const p = buildNotificationPayload({ kind: 'dose_reminder_by_plan', data: { ...base, doses: many } });
       expect(p.title).toBe('12 doses agora · Pressão');
-      expect(p.pushBody.endsWith(' · Med 9 1 un. · e mais 2')).toBe(true);
+      expect(plain(p.pushBody).endsWith(' · Med 9 1 un. · e mais 2')).toBe(true);
       expect(p.body.endsWith('\n  _e mais 2_')).toBe(true);
     });
 
@@ -300,7 +311,7 @@ describe('buildNotificationPayload', () => {
 
     it('Telegram escapa nome do plano e dos remédios', () => {
       const p = buildNotificationPayload({ kind: 'dose_reminder_by_plan', data: { ...base, critical_alarm: true, planName: 'P_1.x', doses: [{ medicineName: 'A(b)', dosagePerIntake: 1 }, { medicineName: 'C', dosagePerIntake: 1 }] } });
-      expect(p.body).toBe('*P\\_1\\.x* · 08:00\n\n  – A\\(b\\) 1 un\\.\n  – C 1 un\\.');
+      expect(plain(p.body)).toBe('*P\\_1\\.x* · 08:00\n\n  – A\\(b\\) 1 un\\.\n  – C 1 un\\.');
     });
   });
 
@@ -313,22 +324,22 @@ describe('buildNotificationPayload', () => {
     it('4.1 normal: "N doses agora", sem possessivo', () => {
       const p = buildNotificationPayload({ kind: 'dose_reminder_misc', data: { scheduledTime: '08:00', hour: 8, doses, critical_alarm: false } });
       expect(p.title).toBe('2 doses agora');
-      expect(p.pushBody).toBe('08:00 · Losartana 50 mg · Vitamina D 2 × 25 mcg');
-      expect(p.body).toBe('08:00\n\n  – Losartana 50 mg\n  – Vitamina D 2 × 25 mcg');
-      expect(p.body).not.toContain('Suas');
+      expect(plain(p.pushBody)).toBe('08:00 · Losartana 50 mg · Vitamina D 2 × 25 mcg');
+      expect(plain(p.body)).toBe('08:00\n\n  – Losartana 50 mg\n  – Vitamina D 2 × 25 mcg');
+      expect(plain(p.body)).not.toContain('Suas');
       expect(p.actions[0].id).toBe('take_misc');
     });
 
     it('4.1 singular: "1 dose agora"', () => {
       const p = buildNotificationPayload({ kind: 'dose_reminder_misc', data: { scheduledTime: '22:00', hour: 22, doses: [{ medicineName: 'Med X', dosagePerIntake: 1.5 }] } });
       expect(p.title).toBe('1 dose agora');
-      expect(p.pushBody).toBe('22:00 · Med X 1,5 un.');
+      expect(plain(p.pushBody)).toBe('22:00 · Med X 1,5 un.');
     });
 
     it('4.2 essencial: título mantido', () => {
       const p = buildNotificationPayload({ kind: 'dose_reminder_misc', data: { scheduledTime: '08:00', hour: 8, doses, critical_alarm: true } });
       expect(p.title).toBe('📋 Doses essenciais');
-      expect(p.pushBody).toBe('08:00 · Losartana 50 mg · Vitamina D 2 × 25 mcg');
+      expect(plain(p.pushBody)).toBe('08:00 · Losartana 50 mg · Vitamina D 2 × 25 mcg');
     });
 
     it('5.1 reenvio do bloco: texto idêntico', () => {

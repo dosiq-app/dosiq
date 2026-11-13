@@ -153,6 +153,10 @@ const MAX_SHOWN = 10;
 
 const formatNumber = (n: number): string => String(n).replace('.', ',');
 
+// 120 B (smoke C-B1): espaço inquebrável DENTRO da dose — a quebra de linha só cai entre itens,
+// nunca em "Selozok 2 / × 25 mg".
+const NBSP = '\u00A0';
+
 /**
  * Quantidade da dose, sem o nome do remédio. Exemplos: "50 mg" · "2 × 25 mcg" · "20 gotas" ·
  * "10 UI" · "1,5 un.". Sem nenhuma informação de dose ⇒ null (o corpo fica só com a hora).
@@ -170,15 +174,15 @@ const formatDoseAmount = (
 ): string | null => {
   // Líquidos (022): unidade de tomada real (gotas/ml/UI), sem a concentração.
   if (intakeUnit && isPositive(qty)) {
-    return `${formatNumber(qty)} ${unitLabelOf(INTAKE_UNIT_LABELS as Record<string, string>, intakeUnit)}`;
+    return `${formatNumber(qty)}${NBSP}${unitLabelOf(INTAKE_UNIT_LABELS as Record<string, string>, intakeUnit)}`;
   }
   if (isPositive(dosagePerPill) && unit) {
     // 012 Fase D (FR-015b c): case canônico do acrônimo ('ui' → 'UI'); sem label → unit cru.
-    const strength = `${formatNumber(dosagePerPill)} ${unitLabelOf(DOSAGE_UNIT_LABELS as Record<string, string>, unit)}`;
-    return isPositive(qty) && qty !== 1 ? `${formatNumber(qty)} × ${strength}` : strength;
+    const strength = `${formatNumber(dosagePerPill)}${NBSP}${unitLabelOf(DOSAGE_UNIT_LABELS as Record<string, string>, unit)}`;
+    return isPositive(qty) && qty !== 1 ? `${formatNumber(qty)}${NBSP}×${NBSP}${strength}` : strength;
   }
   if (dosage) return dosage;
-  return isPositive(qty) ? `${formatNumber(qty)} un.` : null;
+  return isPositive(qty) ? `${formatNumber(qty)}${NBSP}un.` : null;
 };
 
 type DoseLike = {
