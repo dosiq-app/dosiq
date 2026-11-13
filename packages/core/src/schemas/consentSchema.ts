@@ -99,9 +99,9 @@ export const HEALTH_CONSENT_COPY = Object.freeze({
  */
 export const TRANSFER_CONSENT_COPY = Object.freeze({
   label:
-    'Autorizo enviar meus dados de saúde para fora do Brasil (EUA) para notificações detalhadas, ' +
-    'assistente IA e medições de uso. Opcional.',
-  sheetTitle: 'Envio para fora do Brasil',
+    'Quero ver o nome do remédio nos lembretes e usar o assistente. Para isso, autorizo que esses ' +
+    'dados passem por serviços fora do Brasil, como os da Apple e do Google (inclui medições de uso do app). Opcional.',
+  sheetTitle: 'Envio para fora do Brasil (EUA)',
   withoutTitle: 'Sem a autorização',
   without:
     'O app funciona normalmente. Os alarmes do próprio celular continuam completos, porque não saem ' +
