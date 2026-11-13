@@ -11,7 +11,7 @@ import { View, Text, StyleSheet } from 'react-native'
 // apps/mobile/tsconfig.json — ver nota em TreatmentsScreen.tsx
 import * as LucideIcons from 'lucide-react-native'
 const { Package, TrendingDown, Clock, Tag } = LucideIcons as any
-import { formatBRL, formatActiveIngredientShort, isLiquidMedicine, formatNumberPtBR } from '@dosiq/core'
+import { formatBRL, formatActiveIngredientShort, isLiquidMedicine, formatNumberPtBR, STOCK_LOW_DAYS, STOCK_THRESHOLDS } from '@dosiq/core'
 import { colors, spacing, borderRadius, shadows } from '@shared/styles/tokens'
 
 /**
@@ -38,8 +38,10 @@ import { colors, spacing, borderRadius, shadows } from '@shared/styles/tokens'
 function getDaysColor(daysRemaining, runwayAlertExpected = true) {
   // 105 G4: zerar é o plano (mensal / etapa de passagem) ⇒ número neutro, nunca vermelho.
   if (daysRemaining == null || runwayAlertExpected === false) return colors.text.primary
-  if (daysRemaining < 7) return colors.status.error
-  if (daysRemaining < 14) return colors.status.warning
+  // 117 B (072 D-6): `daysRemaining` chega INTEIRO (floor) da previsão canônica; crítico = `<= STOCK_LOW_DAYS`,
+  // o mesmo limiar do selo, da aba e do alerta do servidor (antes `< 7`: "7 dias" sem vermelho).
+  if (daysRemaining <= STOCK_LOW_DAYS) return colors.status.error
+  if (daysRemaining < STOCK_THRESHOLDS.LOW_DAYS) return colors.status.warning
   return colors.text.primary
 }
 

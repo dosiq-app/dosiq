@@ -64,7 +64,9 @@ function ProtocolStockCardBody({
 
   // Memos (derivação trivial, sem custo)
   const view = item ? stockItemView(item) : null
-  const isEmpty = !item || view?.showInitialStockHint === true
+  // Sem item, ou CTA de compra com saldo zero ⇒ "Sem estoque registrado" (AC-2.3). CTA com saldo
+  // (régua FR-013: a dose seguinte não está coberta) mostra o saldo E a pílula.
+  const isEmpty = !item || (Boolean(view?.purchaseCta) && (item.totalQuantity ?? 0) === 0)
   const state = isEmpty ? 'empty' : 'level'
 
   // Effects
@@ -125,10 +127,15 @@ function ProtocolStockCardBody({
           style={pressed ? styles.pressed : undefined}
         >
           {isEmpty ? (
+            <>
             <View style={styles.row}>
               <Text style={styles.emptyText}>Sem estoque registrado</Text>
-              <NewPurchaseBadge />
+              <NewPurchaseBadge tone={view?.purchaseCta?.tone ?? 'alert'} />
             </View>
+            {view?.supplyLabel ? (
+              <Text style={styles.supply} testID="protocol-stock-supply">{view.supplyLabel}</Text>
+            ) : null}
+            </>
           ) : (
             <>
               <View style={styles.row}>
@@ -141,9 +148,11 @@ function ProtocolStockCardBody({
                     })}
                   </Text>
                 </Text>
-                {view?.showBadge ? (
+                {view?.purchaseCta ? (
+                  <NewPurchaseBadge tone={view.purchaseCta.tone} />
+                ) : view?.badge ? (
                   <StockLevelBadge
-                    status={item.status}
+                    status={view.badge}
                     daysRemaining={item.daysRemaining}
                     dosesRemaining={item.dosesRemaining}
                     isDailyStock={item.isDailyStock}

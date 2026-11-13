@@ -32,7 +32,7 @@ import PurchaseCard from '@stock/components/PurchaseCard'
 import StockIndicators from '@stock/components/StockIndicators'
 import StockLevelBadge from '@stock/components/StockLevelBadge'
 import { useAuth } from '@platform/auth/hooks/useAuth'
-import { computeAverageUnitPrice, resolveStockStatus, getTodayLocal, isProtocolInPeriod, formatConcentration, isLiquidMedicine, doseToMl, frequencyDailyFactor, stockDoseMetrics, isStockRunwayAlertExpected } from '@dosiq/core'
+import { computeAverageUnitPrice, getTodayLocal, isProtocolInPeriod, formatConcentration, isLiquidMedicine, doseToMl, deriveStockForecast, isStockRunwayAlertExpected } from '@dosiq/core'
 import { colors, spacing, borderRadius, shadows, typography } from '@shared/styles/tokens'
 import { ROUTES } from '@navigation/routes'
 
@@ -147,23 +147,26 @@ function LatestPurchaseSection({ purchases, latestPurchase, medicine, stockEntry
   )
 }
 
-function calculateDailyConsumption(medicine, paramConsumption, today) {
-  if (!medicine?.protocols) return paramConsumption ?? 0
-  const activeProtocols = medicine.protocols.filter(
-    (p) => p.active && isProtocolInPeriod(p, today)
-  )
-  const liquid = isLiquidMedicine(medicine)
-  return activeProtocols.reduce((acc, p) => {
-    const intakesPerDay = p.time_schedule?.length ?? 0
-    const perDose = liquid
-      ? doseToMl(Number(p.dosage_per_intake ?? 0), p.intake_unit, medicine.units_per_ml, medicine.dosage_per_pill)
-      : Number(p.dosage_per_intake ?? 0)
-    return acc + perDose * intakesPerDay * frequencyDailyFactor(p)
-  }, 0)
+/**
+ * 117 Fatia B (T014b · 072 CON-046): a previsão desta tela é a CANÔNICA do core — o mesmo número da
+ * aba, do card do detalhe do tratamento e do alerta do servidor. Antes ela refazia a conta (consumo,
+ * dias, doses, tier) e aceitava o consumo por param, o que deixava a borda `< 7` × `<= 7` divergir.
+ */
+function stockDetailForecast(medicineId, medicine, saldo, steps, today) {
+  return deriveStockForecast({
+    medicineId,
+    medicine: medicine
+      ? { dosage_unit: medicine.dosage_unit, units_per_ml: medicine.units_per_ml, dosage_per_pill: medicine.dosage_per_pill }
+      : null,
+    protocols: (medicine?.protocols ?? []).map((p) => ({ ...p, medicine_id: p?.medicine_id ?? medicineId })),
+    quantity: saldo,
+    steps: steps ?? [],
+    asOf: today,
+  })
 }
 
-function calculateConsumoPorDiaDose(medicine, paramConsumption, today) {
-  if (!medicine?.protocols) return paramConsumption ?? 0
+function calculateConsumoPorDiaDose(medicine, today) {
+  if (!medicine?.protocols) return 0
   const liquid = isLiquidMedicine(medicine)
   return medicine.protocols
     .filter((p) => p.active && isProtocolInPeriod(p, today))
@@ -183,16 +186,12 @@ function calculateIntakesPerDay(medicine, today) {
     .reduce((acc, p) => acc + (p.time_schedule?.length ?? 0), 0)
 }
 
-function calculateBadgeStatus(saldo, dailyConsumption) {
-  const status = resolveStockStatus(saldo, dailyConsumption)
-  const statusMap = {
-    critico: 'CRITICAL',
-    baixo: 'LOW',
-    normal: 'NORMAL',
-    alto: 'HIGH',
-    vencido: 'CRITICAL',
-  }
-  return statusMap[status] || 'NORMAL'
+const SEVERITY_TO_BADGE = { critico: 'CRITICAL', baixo: 'LOW', normal: 'NORMAL', alto: 'HIGH', vencido: 'CRITICAL' }
+
+/** Tier do selo pela gravidade canônica; sem consumo ⇒ HIGH (como a aba). */
+function badgeStatusOf(forecast) {
+  if (!(forecast.dailyIntake > 0)) return 'HIGH'
+  return SEVERITY_TO_BADGE[forecast.severity] || 'NORMAL'
 }
 
 function useStockDetailState(route, navigation) {
@@ -211,8 +210,12 @@ function useStockDetailState(route, navigation) {
 
   // — Memos (R-010) —
   const today = useMemo(() => getTodayLocal(), [])
-  const dailyConsumption = useMemo(() => calculateDailyConsumption(medicine, route.params?.dailyConsumption, today), [medicine, route.params?.dailyConsumption, today])
-  const consumoPorDiaDose = useMemo(() => calculateConsumoPorDiaDose(medicine, route.params?.dailyConsumption, today), [medicine, route.params?.dailyConsumption, today])
+  const forecast = useMemo(
+    () => stockDetailForecast(medicineId, medicine, saldo, runwaySteps, today),
+    [medicineId, medicine, saldo, runwaySteps, today],
+  )
+  const dailyConsumption = forecast.dailyIntake
+  const consumoPorDiaDose = useMemo(() => calculateConsumoPorDiaDose(medicine, today), [medicine, today])
 
   const avgUnitPrice = useMemo(
     () => computeAverageUnitPrice(purchases),
@@ -228,15 +231,12 @@ function useStockDetailState(route, navigation) {
     return null
   }, [avgUnitPrice, consumoPorDiaDose, intakesPerDay])
 
-  const daysRemaining = useMemo(
-    () => (dailyConsumption > 0 ? Math.floor(saldo / dailyConsumption) : null),
-    [saldo, dailyConsumption],
-  )
+  const daysRemaining = forecast.daysRemaining
 
-  const doseMetrics = useMemo(() => {
-    const active = (medicine?.protocols || []).filter((p) => p.active && isProtocolInPeriod(p, today))
-    return stockDoseMetrics(saldo, active, medicine)
-  }, [medicine, saldo, today])
+  const doseMetrics = useMemo(
+    () => ({ runwayDias: forecast.runwayDays, dosesRemaining: forecast.dosesRemaining, isDaily: forecast.isDaily }),
+    [forecast],
+  )
 
   // 105 G4 (C-B2): esta tela calcula o tier por conta própria — passa pelo MESMO predicado do core que
   // lista, Hoje e servidor. Zerar é o plano (mensal / etapa de passagem) ⇒ `PLANNED`, sem vermelho;
@@ -248,8 +248,8 @@ function useStockDetailState(route, navigation) {
   }, [runwaySteps, medicine, medicineId, today])
 
   const badgeStatus = useMemo(
-    () => (runwayAlertExpected ? calculateBadgeStatus(saldo, dailyConsumption) : 'PLANNED'),
-    [runwayAlertExpected, saldo, dailyConsumption],
+    () => (runwayAlertExpected ? badgeStatusOf(forecast) : 'PLANNED'),
+    [runwayAlertExpected, forecast],
   )
 
   const isSupplement = useMemo(

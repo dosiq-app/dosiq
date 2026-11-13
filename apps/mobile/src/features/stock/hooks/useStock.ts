@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { AppState } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { getTodayLocal, getNow, parseISO, addDays, isProtocolInPeriod, describeLoadFailure } from '@dosiq/core'
+import { getTodayLocal, getNow, parseISO, addDays, describeLoadFailure } from '@dosiq/core'
 import { supabase } from '../../../platform/supabase/nativeSupabaseClient'
 import { stockService } from '../services/stockService'
 import { debugLog } from '@shared/utils/debugLog'
@@ -46,19 +46,22 @@ async function _fetchOpenedAtMap() {
   }
 }
 
-/**
- * 105 Fatia B: anota predicado e data de compra (core). Etapas falharam ⇒ `steps = null` ⇒ fail-safe
- * no `attachSupplyRunway` (alerta como hoje). Doses só dos elegíveis (lista curta, quase sempre vazia).
- * Falha nas doses ⇒ sem data (FR-010), mas o silêncio do alerta continua valendo (predicado não usa doses).
- */
-async function _withSupplyRunway(items) {
-  const now = getNow()
-  let steps = null
+/** Etapas de escada; falha ⇒ `null` ⇒ sem Programado por etapa e alerta como hoje (INV-2 / AP-277). */
+async function _fetchSteps() {
   try {
-    steps = await supplyRunwayService.getSteps()
+    return await supplyRunwayService.getSteps()
   } catch (err) {
-    debugLog('useStock', `Etapas indisponíveis (alerta segue como hoje): ${err?.message}`)
+    debugLog('useStock', `Etapas indisponíveis (sem Programado por etapa; alerta segue como hoje): ${err?.message}`)
+    return null
   }
+}
+
+/**
+ * 105 Fatia B: anota predicado e data de compra (core). Doses só dos elegíveis (lista curta, quase
+ * sempre vazia). Falha nas doses ⇒ sem data (FR-010), mas o silêncio do alerta continua valendo.
+ */
+async function _withSupplyRunway(items, steps) {
+  const now = getNow()
   let instances = []
   const eligible = supplyEligibleMedicineIds(items, steps)
   if (eligible.length > 0) {
@@ -70,7 +73,7 @@ async function _withSupplyRunway(items) {
     }
   }
   const annotated = attachSupplyRunway(items, { steps, instances, now })
-  // Escada: o remédio da próxima etapa costuma não estar na lista (sem saldo, sem tratamento ativo).
+  // Escada: o remédio da próxima etapa pode não estar na lista (cadastro arquivado, etc.).
   let summaries = []
   const missing = supplyBuyIdsMissing(annotated)
   if (missing.length > 0) {
@@ -84,12 +87,12 @@ async function _withSupplyRunway(items) {
 }
 
 async function _fetchAndPersistStock(setState, dataRef) {
-  // PO-9 §0.7: lista meds com protocolo ativo OU saldo positivo (corrige bug de
-  // estoque órfão invisível). Split em active (com previsão) + inactive (só-estoque).
-  // userId é resolvido internamente pela factory (G2) — não passamos mais aqui.
-  const [rawData, openedAtMap] = await Promise.all([
-    stockService.getMedicinesWithStockOrActiveProtocol(),
+  // 117 Fatia B (FR-005, RC3 E-1): leitura SEM corte por hoje (`getStockOverview`) — tratamento
+  // futuro, pausado e o remédio da próxima etapa chegam ao app; a classificação do core decide a seção.
+  const [rawData, openedAtMap, steps] = await Promise.all([
+    stockService.getStockOverview(),
     _fetchOpenedAtMap(),
+    _fetchSteps(),
   ])
   // Injeta opened_at no rawData para que o transformer possa calcular o eixo TTL.
   const rawWithTtl = rawData.map((item) => ({
@@ -97,9 +100,9 @@ async function _fetchAndPersistStock(setState, dataRef) {
     _latestOpenedAt: openedAtMap[item.id] ?? null,
   }))
   const today = getTodayLocal()
-  const transformed = transformStockData(rawWithTtl)
-  const { active, inactive } = splitStockItems(await _withSupplyRunway(transformed))
-  const newData = { active, inactive, localDay: today }
+  const transformed = transformStockData(rawWithTtl, { steps, today })
+  const { active, scheduled, inactive } = splitStockItems(await _withSupplyRunway(transformed, steps))
+  const newData = { active, scheduled, inactive, localDay: today }
   const snapshot = { data: newData, capturedAt: getNow().toISOString(), rawData }
   await AsyncStorage.setItem(STOCK_CACHE_KEY, JSON.stringify(snapshot))
   dataRef.current = newData
@@ -163,37 +166,12 @@ export function useStock() {
   const lastFetchedRef = useRef(0)
   const loadStockRef = useRef(null)
 
-  // Resilience layer (Rule R-175): re-valida atividade no dia atual.
-  // Protege contra cache gerado às 23:59 e carregado às 00:01 (dia virou).
-  // PO-9: re-split active/inactive a partir da união, mantendo só-estoque visível.
+  // 117 Fatia B (E-9 / PO-5): a 2ª cópia do predicado de período que re-dividia as seções aqui saiu —
+  // a seção vem da classificação do core. Virada do dia: `_setupMidnightAndAppState` recarrega (R-175),
+  // e cache de outro dia é recarregado no foco (`localDay`). Cache antigo sem `scheduled` ⇒ [].
   const refinedData = useMemo(() => {
-    if (!state.data?.active && !state.data?.inactive) return state.data
-    const today = getTodayLocal()
-
-    // Period-only (active flag + janela), não strict frequency-aware — senão
-    // semanal/dias_alternados/quando_necessario caem em "sem tratamento ativo".
-    // Nome reflete período (não "dispara hoje"). Obsolescência na virada do dia
-    // já coberta por _setupMidnightAndAppState (R-175) que dispara loadStock.
-    const isInActivePeriod = (item) => {
-      if (item.activeProtocols) {
-        return item.activeProtocols.some(p => isProtocolInPeriod(p, today))
-      }
-      return (item.protocols || []).some(p => p.active && isProtocolInPeriod(p, today))
-    }
-
-    const union = [...(state.data.active || []), ...(state.data.inactive || [])]
-    const refinedActive = union.filter(isInActivePeriod)
-    // totalQuantity > 0: seção inativa só lista saldo positivo (PO-9); item sem
-    // tratamento ativo E sem saldo não aparece. 0 = sem estoque, correto excluir.
-    const refinedInactive = union.filter(
-      item => !isInActivePeriod(item) && (item.totalQuantity ?? 0) > 0,
-    )
-
-    return {
-      ...state.data,
-      active: refinedActive,
-      inactive: refinedInactive,
-    }
+    if (!state.data) return state.data
+    return { ...state.data, scheduled: state.data.scheduled ?? [] }
   }, [state.data])
 
   // refresh estável (useMemo) — arrow inline no useMemo recriava a função a

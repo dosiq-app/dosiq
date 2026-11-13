@@ -50,6 +50,7 @@ interface CreateStockRepositoryDeps {
 // inferido do `.select()` dinâmico sem referenciar caminho interno de @dosiq/shared-data).
 export function createStockRepository({ client, getUserId }: CreateStockRepositoryDeps): {
   getMedicinesWithStockOrActiveProtocol(): Promise<any[]>
+  getStockOverview(): Promise<any[]>
   getByMedicine(medicineId: string): Promise<any[]>
   getStockSummary(medicineId: string): Promise<any>
   getStockSummaryMap(): Promise<Record<string, number>>
@@ -132,6 +133,55 @@ export function createStockRepository({ client, getUserId }: CreateStockReposito
         const totalStock = m.medicine_stock_summary?.[0]?.total_quantity ?? 0
         return hasActiveProtocol || totalStock > 0
       })
+    },
+
+    /**
+     * 117 Fatia B (FR-005, RC3 E-1): leitura da ABA Estoque, SEM corte por "hoje". Devolve todo
+     * medicamento não arquivado com o saldo e os tratamentos (inclusive pausados, futuros e
+     * encerrados) — quem decide a seção (ou se fica fora) é `classifyStockMedicines` do core.
+     * O método acima continua como estava (web `InitialBalanceForm`, `useStockInitialBalance`).
+     * `protocols.name` = rótulo "Etapa N de <tratamento>"; `archived_at` = a classificação ignora
+     * tratamento arquivado (CON-039). Colunas verificadas no banco (R-295, analysis-B).
+     */
+    async getStockOverview() {
+      const userId = await getUserId()
+      z.string().uuid().parse(userId)
+      const { data, error } = await client
+        .from('medicines')
+        .select(`
+        id,
+        name,
+        laboratory,
+        type,
+        presentation,
+        dosage_unit,
+        dosage_per_pill,
+        concentration_volume_ml,
+        units_per_ml,
+        shelf_life_days,
+        medicine_stock_summary!left (
+          total_quantity,
+          stock_entries_count
+        ),
+        protocols (
+          id,
+          name,
+          dosage_per_intake,
+          intake_unit,
+          time_schedule,
+          frequency, interval_days,
+          active,
+          start_date,
+          end_date,
+          archived_at
+        )
+      `)
+        .eq('user_id', userId)
+        .is('archived_at', null)
+        .order('name')
+
+      if (error) throw error
+      return data || []
     },
 
     /**

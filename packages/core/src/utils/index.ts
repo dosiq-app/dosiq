@@ -102,7 +102,24 @@ export {
   nextStepSwitchMedicineId,
   nextStepStockCovers,
   SPARSE_INTERVAL_DAYS_MIN,
+  PURCHASE_OFFSETS,
+  MONTHLY_HEADS_UP_DAYS,
+  PURCHASE_CTA_LEAD_DAYS,
+  calendarDaysUntil,
+  purchaseUrgency,
+  addCalendarDays,
+  localDateOfInstant,
+  type PurchaseUrgency,
 } from './stockRunway'
+// 117 Fatia B (FR-005): classificação única da aba Estoque (Em uso → Programado → Sem tratamentos).
+export {
+  classifyStockMedicines,
+  type StockSection,
+  type StockClassification,
+  type ScheduledInfo,
+  type ClassifiableMedicine,
+  type ClassifiableProtocol,
+} from './stockClassification'
 export type {
   RunwayProtocol,
   RunwayStep,

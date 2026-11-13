@@ -6,21 +6,16 @@
 // A REGRA (elegibilidade, data D) mora no core (`stockRunway.ts`, INV-1). Aqui só há I/O e a
 // tradução de D em "quantos dias faltam" no fuso do usuário (R-020 / E-6).
 
-import { computeSupplyDate, isStockRunwayAlertExpected } from '@dosiq/core';
+import { computeSupplyDate, isStockRunwayAlertExpected, PURCHASE_OFFSETS, MONTHLY_HEADS_UP_DAYS } from '@dosiq/core';
 import { _fetchAllPagesByUsers } from './_pagination.js';
 
 /** Colunas de `dose_instances` verificadas no banco de prod (R-295, analysis-A C-1/C-2). */
 export const DOSE_INSTANCE_SCAN_COLUMNS =
   'id, user_id, protocol_id, medicine_id, scheduled_for, expected_dose, status';
 
-/** Em quais dias antes de D o lembrete de compra sai (FR-004; mensal: D-2 vai no aviso, AC-2). */
-export const PURCHASE_OFFSETS: Readonly<Record<'sparse' | 'step_switch', readonly number[]>> = Object.freeze({
-  step_switch: [2, 1],
-  sparse: [1],
-});
-
-/** Antecedência do aviso de dose mensal (US-1). */
-export const MONTHLY_HEADS_UP_DAYS = 2;
+// 117 Fatia B (FR-013): a régua mora no core — o app usa o MESMO número para trocar o selo Planejado
+// pelo CTA de compra. Reexportado aqui para os consumidores do servidor não mudarem de import.
+export { PURCHASE_OFFSETS, MONTHLY_HEADS_UP_DAYS };
 
 /** Data local YYYY-MM-DD de um instante no fuso dado. */
 export function localDate(at: Date | string, tz: string): string {

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import {
+  STOCK_LOW_DAYS,
   getTodayLocal,
   parseISO,
   computeAdherenceFromInstances,
@@ -38,8 +39,12 @@ function toTimelineStatus(item, nowRaw) {
  * que reintroduzia slot fantasma cross-meia-noite e tolerância fixa. tz default SP
  * (residual G1 mobile — auto-detecção/expat é follow-up).
  */
-/** Limiar do banner "Estoque Baixo" do Hoje (US4 da 090 — dias inteiros, como a aba Estoque exibe). */
-export const STOCK_ALERT_MAX_DAYS = 7
+/**
+ * Limiar do banner "Estoque Baixo" do Hoje — o limiar ÚNICO da previsão canônica (072 D-6). Mantido
+ * como nome local só para o aviso de compra (`SUPPLY_NOTICE_MAX_DAYS`); a decisão de alertar é
+ * `forecast.alertExpected` (117 B, T014b).
+ */
+export const STOCK_ALERT_MAX_DAYS = STOCK_LOW_DAYS
 
 /**
  * Alertas de estoque do Hoje (090 D-5 · INV-3). Deriva dos itens da ABA ESTOQUE
@@ -53,20 +58,26 @@ export const STOCK_ALERT_MAX_DAYS = 7
  * 103 G1: o alerta leva `dosesRemaining`/`isDailyStock` da mesma fonte (ADR-067) para o banner
  * falar em doses no plano não diário — semanal com 1 aplicação dá 7 dias de runway, mas é 1 dose.
  */
+function isStockAlert(it) {
+  if (it.forecast) return it.forecast.alertExpected === true
+  return Number.isFinite(it.daysRemaining) && Math.floor(it.daysRemaining) <= STOCK_LOW_DAYS
+}
+
 export function deriveStockAlerts(stockItems) {
   if (!Array.isArray(stockItems)) return []
   return stockItems
     // 105 G4: zerar é o plano (mensal / etapa de passagem) ⇒ não é falta. Só `false` explícito cala:
     // ausente (cache antigo, leitura falhou) segue alertando (INV-2).
-    .filter((it) => it && it.runwayAlertExpected !== false && Number.isFinite(it.daysRemaining))
+    // 117 B (T014b): quem alerta é a previsão canônica (`alertExpected` = crítico em regime contínuo/PRN)
+    // — o mesmo número do servidor. Cache antigo sem `forecast` (≤ 24h): mesma regra pelo limiar único.
+    .filter((it) => it && it.runwayAlertExpected !== false && isStockAlert(it))
     .map((it) => ({
       medicineId: it.id,
       medicineName: it.name,
-      daysRemaining: Math.floor(it.daysRemaining),
+      daysRemaining: it.forecast?.daysRemaining ?? Math.floor(it.daysRemaining),
       dosesRemaining: it.dosesRemaining,
       isDailyStock: it.isDailyStock,
     }))
-    .filter((a) => a.daysRemaining <= STOCK_ALERT_MAX_DAYS)
 }
 
 /** Janela do aviso neutro de próxima compra no Hoje (105 G-B5: mesmo limite do banner de falta). */
