@@ -27,12 +27,17 @@ import ChatEntryButton from '@features/chatbot/components/ChatEntryButton'
 import { colors, spacing, borderRadius, shadows, typography } from '@shared/styles/tokens'
 import { navigateCrossTab } from '@navigation/navigateCrossTab'
 import { ROUTES } from '@navigation/routes'
+import { stockItemView } from '@stock/hooks/_stockDataTransformer'
+import { calculateCounts, getFilteredSections } from '@stock/screens/stockSections'
+import { logEvent } from '@platform/analytics/productAnalytics'
+import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
 
 // Mensagem contextual do empty state por filtro (evita "nenhum cadastrado"
 // quando na verdade há meds, mas nenhum bate o filtro aplicado).
 const FILTER_EMPTY_LABEL = {
   critico: 'em estado crítico',
   baixo: 'com estoque baixo',
+  programado: 'programado',
   sem_tratamento: 'sem tratamento ativo',
 }
 
@@ -77,44 +82,6 @@ function StockEmptyState({ filter, onNavigationPress }) {
       message={`Nenhum medicamento ${FILTER_EMPTY_LABEL[filter]}.`}
     />
   )
-}
-
-function calculateCounts(active, inactive) {
-  return {
-    todos: active.length + inactive.length,
-    critico: active.filter((m) => m.status === 'CRITICAL').length,
-    baixo: active.filter((m) => m.status === 'LOW').length,
-    sem_tratamento: inactive.length,
-  }
-}
-
-function getFilteredSections(data, filter, active, inactive) {
-  if (!data) return []
-  const list = []
-
-  if (filter === 'sem_tratamento') {
-    if (inactive.length > 0) {
-      list.push({ title: 'Sem tratamento ativo', data: inactive })
-    }
-    return list
-  }
-
-  if (filter === 'critico' || filter === 'baixo') {
-    const status = filter === 'critico' ? 'CRITICAL' : 'LOW'
-    const filtered = active.filter((m) => m.status === status)
-    if (filtered.length > 0) {
-      list.push({ title: 'Estoque em Uso', data: filtered })
-    }
-    return list
-  }
-
-  if (active.length > 0) {
-    list.push({ title: 'Estoque em Uso', data: active })
-  }
-  if (inactive.length > 0) {
-    list.push({ title: 'Sem tratamento ativo', data: inactive })
-  }
-  return list
 }
 
 // 066 D2 · FR-030: "Ler a caixa" da aba Estoque. A caixa lida é comparada a TODOS os remédios da conta
@@ -208,9 +175,13 @@ export default function StockScreen() {
 
   // — Memos (R-010) —
   const active = useMemo(() => data?.active ?? [], [data])
+  const scheduled = useMemo(() => data?.scheduled ?? [], [data])
   const inactive = useMemo(() => data?.inactive ?? [], [data])
-  const counts = useMemo(() => calculateCounts(active, inactive), [active, inactive])
-  const sections = useMemo(() => getFilteredSections(data, filter, active, inactive), [data, filter, active, inactive])
+  const counts = useMemo(() => calculateCounts(active, scheduled, inactive), [active, scheduled, inactive])
+  const sections = useMemo(
+    () => getFilteredSections(data, filter, active, scheduled, inactive),
+    [data, filter, active, scheduled, inactive],
+  )
 
   // — Effects (R-010) —
   // Refresh ao re-focar (volta de PurchaseForm/Detail) pra refletir nova compra
@@ -224,10 +195,10 @@ export default function StockScreen() {
   // — Handlers (R-010) —
   const handleOpenItem = useCallback(
     (item) => {
+      // 117 B (T014b): o detalhe deriva o consumo pela previsão canônica — sem param de consumo.
       navigation.navigate(ROUTES.STOCK_DETAIL, {
         medicineId: item.id,
         medicineName: item.name,
-        dailyConsumption: item.dailyConsumption,
       })
     },
     [navigation],
@@ -246,15 +217,17 @@ export default function StockScreen() {
   )
 
   const renderItem = useCallback(
-    ({ item }) => {
-      const isInitialStock = !item.hasPurchases && item.totalQuantity === 0
+    ({ item, section }) => {
+      // Mesma regra do card do detalhe (stockItemView): CTA visível ou nada registrado ⇒ abre a compra.
+      const isInitialStock = stockItemView(item).tapOpensPurchase
       return (
         <Pressable
-          onPress={() =>
-            isInitialStock
-              ? handleSelectMedicine(item.id, item.name)
-              : handleOpenItem(item)
-          }
+          onPress={() => {
+            if (!isInitialStock) return handleOpenItem(item)
+            // FR-010 (Fatia B): toque em "Nova compra" por seção — sem nome, dose, saldo nem data.
+            logEvent(EVENTS.STOCK_NEW_PURCHASE_TAPPED, { section: section?.key ?? 'active', surface: SURFACES.MOBILE })
+            return handleSelectMedicine(item.id, item.name)
+          }}
           style={({ pressed }) => pressed && styles.itemPressed}
           accessibilityRole="button"
           accessibilityLabel={

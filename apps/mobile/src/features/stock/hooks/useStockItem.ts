@@ -14,7 +14,7 @@ import { useStock } from './useStock'
 
 export function useStockItem(medicineId: string | null | undefined) {
   const { data, loading, error, refresh } = useStock() as {
-    data: { active?: any[]; inactive?: any[] } | null
+    data: { active?: any[]; scheduled?: any[]; inactive?: any[] } | null
     loading: boolean
     error: string | null
     refresh: (bypassThrottle?: boolean) => void
@@ -22,7 +22,8 @@ export function useStockItem(medicineId: string | null | undefined) {
 
   const item = useMemo(() => {
     if (!medicineId || !data) return null
-    const all = [...(data.active ?? []), ...(data.inactive ?? [])]
+    // 117 B (T016): as três seções da classificação — o card lê o MESMO item que a aba mostra.
+    const all = [...(data.active ?? []), ...(data.scheduled ?? []), ...(data.inactive ?? [])]
     return all.find((it) => it?.id === medicineId) ?? null
   }, [data, medicineId])
 

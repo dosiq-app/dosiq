@@ -2,9 +2,9 @@
 // ADR-028: StyleSheet canônico · ADR-023: fontWeight >= 400 · sem cores hardcoded
 //
 // Contrato: { value, onChange, counts }
-//   value: 'todos' | 'critico' | 'baixo' | 'sem_tratamento'
+//   value: 'todos' | 'critico' | 'baixo' | 'programado' | 'sem_tratamento'
 //   onChange(nextValue): callback ao tocar num chip
-//   counts: { todos, critico, baixo, sem_tratamento } (números)
+//   counts: { todos, critico, baixo, programado, sem_tratamento } (números)
 //
 // "vencendo" fora de escopo Wave 4 (exige dado de validade não carregado no hub).
 
@@ -15,6 +15,8 @@ const FILTERS = [
   { key: 'todos', label: 'Todos' },
   { key: 'critico', label: 'Crítico' },
   { key: 'baixo', label: 'Baixo' },
+  // 117 B (FR-011 / W-2): entre "Baixo" e "Sem tratamento".
+  { key: 'programado', label: 'Programado' },
   { key: 'sem_tratamento', label: 'Sem tratamento' },
 ]
 

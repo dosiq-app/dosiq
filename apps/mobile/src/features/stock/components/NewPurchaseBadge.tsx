@@ -8,13 +8,18 @@ const { Plus } = LucideIcons as any
 /**
  * Pílula "+ Nova compra" — o CTA de item sem estoque registrado. Única fonte para a aba Estoque
  * (`StockItem`) e o card do detalhe do tratamento (`ProtocolStockCard`): mesma palavra, mesmo tom
- * (117 A, INV-5). O tom por data do Programado (AC-4.5) entra aqui na Fatia B.
+ * (117 A, INV-5).
+ *
+ * `tone` (117 B, AC-4.5 / FR-013): `alert` (vermelho) quando a compra venceu ou é a 1ª; `neutral` quando
+ * ainda dá tempo ("comprar até" no futuro). Quem decide é `stockItemView` — aqui só se pinta.
  */
-export default function NewPurchaseBadge() {
+export default function NewPurchaseBadge({ tone = 'alert' }: { tone?: 'alert' | 'neutral' }) {
+  const neutral = tone === 'neutral'
+  const fg = neutral ? colors.neutral[700] : colors.status.error
   return (
-    <View style={styles.badge} testID="new-purchase-badge">
-      <Plus size={12} color={colors.status.error} strokeWidth={2.5} />
-      <Text style={styles.text}>Nova compra</Text>
+    <View style={[styles.badge, neutral && styles.badgeNeutral]} testID="new-purchase-badge" accessibilityHint={neutral ? undefined : 'Compra urgente'}>
+      <Plus size={12} color={fg} strokeWidth={2.5} />
+      <Text style={[styles.text, { color: fg }]} testID={`new-purchase-badge-${tone}`}>Nova compra</Text>
     </View>
   )
 }
@@ -28,6 +33,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: borderRadius.full,
     backgroundColor: colors.status.errorLight,
+  },
+  badgeNeutral: {
+    backgroundColor: colors.neutral[100],
   },
   text: {
     fontSize: 12,

@@ -260,3 +260,56 @@ export function computeSupplyDate(params: {
 
   return { status: 'due', date, medicineId: next.medicine_id, reason: 'step_switch', protocolId: switchingProtocol.id }
 }
+
+// ═══ 117 Fatia B (FR-013) — régua de compra ÚNICA entre servidor e app ═══
+// Antes viviam em `server/bot/reminders/supplyPlan.ts`; o app precisava do MESMO número para decidir
+// quando o selo Planejado vira CTA de compra. Um número só: o servidor reexporta daqui.
+
+/** Em quais dias antes de D o lembrete de compra sai (105 FR-004; mensal: D-2 vai no aviso, AC-2). */
+export const PURCHASE_OFFSETS: Readonly<Record<SupplyReason, readonly number[]>> = Object.freeze({
+  step_switch: [2, 1],
+  sparse: [1],
+})
+
+/** Antecedência do aviso de dose mensal (105 US-1). */
+export const MONTHLY_HEADS_UP_DAYS = 2
+
+/** A partir de quantos dias antes de D o app troca o selo pelo CTA de compra (o 1º aviso do servidor). */
+export const PURCHASE_CTA_LEAD_DAYS = Math.max(MONTHLY_HEADS_UP_DAYS, ...PURCHASE_OFFSETS.step_switch, ...PURCHASE_OFFSETS.sparse)
+
+/** Dias de calendário de `from` até `to` (YYYY-MM-DD), em UTC puro. Data inválida ⇒ null. */
+export function calendarDaysUntil(from: string, to: string): number | null {
+  const re = /^(\d{4})-(\d{2})-(\d{2})$/
+  const a = re.exec(from)
+  const b = re.exec(to)
+  if (!a || !b) return null
+  const ms = (m: RegExpExecArray) => Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  return Math.round((ms(b) - ms(a)) / 86400000)
+}
+
+/**
+ * Urgência da compra planejada numa data (FR-013 / AC-4.5):
+ * - `planned`: antes da janela — selo Planejado + "Próxima compra até";
+ * - `soon`: dentro de `PURCHASE_CTA_LEAD_DAYS` (D-2..D-1) — CTA neutro;
+ * - `due`: D ou depois — CTA vermelho.
+ * Sem data (ou inválida) ⇒ `planned`: dado ausente não inventa urgência (INV-2 da 105).
+ */
+export type PurchaseUrgency = 'planned' | 'soon' | 'due'
+export function purchaseUrgency(purchaseBy: string | null | undefined, today: string): PurchaseUrgency {
+  if (!purchaseBy) return 'planned'
+  const days = calendarDaysUntil(today, purchaseBy)
+  if (days === null) return 'planned'
+  if (days <= 0) return 'due'
+  if (days <= PURCHASE_CTA_LEAD_DAYS) return 'soon'
+  return 'planned'
+}
+
+/** Soma N dias a uma data YYYY-MM-DD (UTC puro). Exportado para a classificação (117 B). */
+export function addCalendarDays(date: string, days: number): string {
+  return addDays(date, days)
+}
+
+/** Data local YYYY-MM-DD de um instante (timestamptz) no fuso dado; inválido ⇒ null. */
+export function localDateOfInstant(iso: string | null | undefined, tz: string): string | null {
+  return iso ? localDateOf(iso, tz) : null
+}

@@ -22,7 +22,6 @@ export default function StockItem({ medicine }) {
     dosage_unit,
     dosage_per_pill,
     concentration_volume_ml,
-    status,
     daysRemaining,
     dosesRemaining,
     isDailyStock,
@@ -33,7 +32,8 @@ export default function StockItem({ medicine }) {
 
   // 117 A (INV-5): mesma regra de exibição do card do detalhe do tratamento. 105 FR-009: a data de
   // compra do core; sem data ⇒ null (FR-010).
-  const { showInitialStockHint, showBadge, supplyLabel } = stockItemView(medicine)
+  // 117 B: CTA com tom (AC-4.5/FR-013), selo da seção (PLANEJADO/PAUSADO) e linha "começa" do Programado.
+  const { purchaseCta, badge, supplyLabel, scheduleLabel } = stockItemView(medicine)
 
   // Líquido → "X ml"; sólido → hint princípio ativo / "X un." (formatStockQuantity)
   const saldoText = formatStockQuantity(totalQuantity, { dosage_unit, dosage_per_pill })
@@ -59,16 +59,19 @@ export default function StockItem({ medicine }) {
             {laboratory ? (
               <Text style={styles.lab}>{laboratory}</Text>
             ) : null}
+            {scheduleLabel ? (
+              <Text style={styles.schedule} testID="stock-item-schedule">{scheduleLabel}</Text>
+            ) : null}
             <Text style={styles.quantity}>
               Saldo: <Text style={styles.bold}>{saldoText}</Text>
             </Text>
           </View>
 
-          {showInitialStockHint ? (
-            <NewPurchaseBadge />
-          ) : showBadge ? (
+          {purchaseCta ? (
+            <NewPurchaseBadge tone={purchaseCta.tone} />
+          ) : badge ? (
             <StockLevelBadge
-              status={status}
+              status={badge}
               daysRemaining={daysRemaining}
               dosesRemaining={dosesRemaining}
               isDailyStock={isDailyStock}
@@ -112,10 +115,12 @@ const STOCK_WARNING_BORDER = 'rgba(144, 77, 0, 0.35)'
 const styles = StyleSheet.create({
   titleWrapper: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing[2],
   },
   titleText: {
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '700',
     color: colors.text.primary,
@@ -153,6 +158,12 @@ const styles = StyleSheet.create({
   quantity: {
     fontSize: 14,
     color: colors.text.primary
+  },
+  schedule: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    marginBottom: 4,
   },
   supply: {
     fontSize: 13,

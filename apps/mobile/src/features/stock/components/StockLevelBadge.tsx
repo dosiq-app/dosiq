@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob
 // apps/mobile/tsconfig.json — ver nota em TreatmentsScreen.tsx
 import * as LucideIcons from 'lucide-react-native'
-const { AlertCircle, AlertTriangle, CheckCircle, TrendingUp, CalendarClock } = LucideIcons as any
+const { AlertCircle, AlertTriangle, CheckCircle, TrendingUp, CalendarClock, PauseCircle } = LucideIcons as any
 
 /**
  * Badge visual para nível de estoque conforme ADR-018.
@@ -46,6 +46,14 @@ export default function StockLevelBadge({ status, daysRemaining, dosesRemaining,
           icon: CalendarClock,
           label: 'Planejado'
         }
+      // 117 Fatia B (AC-5.1): tratamento pausado — tom neutro, sem contagem (não há consumo).
+      case 'PAUSED':
+        return {
+          color: '#475569',
+          bg: '#f1f5f9',
+          icon: PauseCircle,
+          label: 'Pausado'
+        }
       case 'HIGH':
       default:
         return {
@@ -66,12 +74,15 @@ export default function StockLevelBadge({ status, daysRemaining, dosesRemaining,
     daysText = daysRemaining === Infinity ? '-- dias' : `${Math.floor(daysRemaining)} dias`
   }
 
+  // Pausado não tem previsão: só o rótulo, sem "-- dias".
+  const showCount = status !== 'PAUSED'
+
   return (
-    <View style={[styles.container, { backgroundColor: bg }]}>
+    <View style={[styles.container, { backgroundColor: bg }]} testID={`stock-level-badge-${status}`}>
       <Icon size={14} color={color} strokeWidth={2.5} />
       <Text style={[styles.label, { color }]}>{label}</Text>
-      <View style={[styles.separator, { backgroundColor: color }]} />
-      <Text style={[styles.days, { color }]}>{daysText}</Text>
+      {showCount ? <View style={[styles.separator, { backgroundColor: color }]} /> : null}
+      {showCount ? <Text style={[styles.days, { color }]}>{daysText}</Text> : null}
     </View>
   )
 }

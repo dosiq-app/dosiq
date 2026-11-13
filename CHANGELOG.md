@@ -7,6 +7,17 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Aba Estoque em três seções: em uso, programado e sem tratamentos (spec 117, Fatia B)
+
+- **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.20 → **0.34.22** (0.34.22 = correções do smoke: data da troca só no Programado, nome longo no card); build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — funcionalidade nova, 100% JS).
+  - **Seção Programado** (e chip "Programado"): remédio de tratamento que ainda vai começar ("Começa 09/12") e o da próxima etapa da escada de dose ("Etapa 2 de <tratamento> · começa ~05/12"; sem data quando o avanço é manual), mesmo sem tratamento próprio. O remédio comprado antes da etapa não cai mais em "Sem tratamentos ativos". Com saldo, o selo é "Planejado" contado a partir do início, nunca "Baixo" ou "Crítico". Sem saldo, aparece "Nova compra": em tom neutro enquanto ainda há tempo, vermelho no dia de comprar.
+  - **Pausado** aparece em "Sem tratamentos ativos" com o selo "Pausado", mesmo sem estoque — dá para comprar antes de retomar. Pausados primeiro, depois os remédios sem tratamento.
+  - **Remédio mensal** (que zera de propósito): o selo "Planejado" vira "Nova compra" dois dias antes da data de compra (neutro) e fica vermelho no dia, na mesma régua dos avisos de compra. Vale na aba e no card do detalhe do tratamento.
+  - **Estoque crítico** na aba, no detalhe do medicamento e no aviso do Hoje passa a usar o mesmo limite do alerta: 7 dias inteiros ou menos (antes a aba só pintava com menos de 7).
+- **Core:** `classifyStockMedicines` (seção de cada remédio, pura), `getStockOverview` (leitura da aba sem corte por data; o método antigo não muda) e a régua de compra (`PURCHASE_OFFSETS`, `MONTHLY_HEADS_UP_DAYS`, `PURCHASE_CTA_LEAD_DAYS`, `purchaseUrgency`) — antes no servidor, agora número único com o app.
+- **Backend/Infra** (`no-user-impact`): o servidor reexporta a régua do core; nenhum aviso muda. Teste novo prova que tratamento com início futuro não gera alerta de estoque baixo e segue com o lembrete de compra.
+- **Process:** evento `stock_new_purchase_tapped` (`section`, sem nome, dose nem saldo); gate `lint:stock-forecast` sem exceções do mobile.
+
 ### Detalhe do tratamento: próximas doses, estoque e consumo pela cadência (spec 117, Fatia A)
 
 - **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.18 → **0.34.20** (0.34.19 = 1º build de smoke; 0.34.20 = achados do smoke: estoque relido ao iniciar etapa e card depois do alarme); build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — funcionalidade nova, 100% JS).
