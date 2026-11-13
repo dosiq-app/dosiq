@@ -3,12 +3,13 @@ import { View, Text, StyleSheet } from 'react-native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob
 // apps/mobile/tsconfig.json — ver nota em TreatmentsScreen.tsx
 import * as LucideIcons from 'lucide-react-native'
-const { Plus, Syringe } = LucideIcons as any
+const { Syringe } = LucideIcons as any
 import SectionCard from '../../../shared/components/ui/SectionCard'
 import StockLevelBadge from './StockLevelBadge'
+import NewPurchaseBadge from './NewPurchaseBadge'
 import { formatStockQuantity, formatConcentration } from '@dosiq/core'
 import { colors, spacing, borderRadius } from '../../../shared/styles/tokens'
-import { supplyLabelOf } from '@stock/hooks/_stockDataTransformer'
+import { stockItemView } from '@stock/hooks/_stockDataTransformer'
 
 /**
  * Item de lista para exibição de estoque.
@@ -18,7 +19,6 @@ export default function StockItem({ medicine }) {
     name,
     laboratory,
     totalQuantity,
-    hasPurchases,
     dosage_unit,
     dosage_per_pill,
     concentration_volume_ml,
@@ -26,15 +26,14 @@ export default function StockItem({ medicine }) {
     daysRemaining,
     dosesRemaining,
     isDailyStock,
-    hasActiveProtocol,
     ttlExpired,
     ttlDaysLeft,
     ttlAlertActive,
   } = medicine
 
-  const showInitialStockHint = !hasPurchases && totalQuantity === 0
-  // 105 FR-009: mensal / etapa de passagem mostram a data de compra do core; sem data ⇒ null (FR-010).
-  const supplyLabel = supplyLabelOf(medicine)
+  // 117 A (INV-5): mesma regra de exibição do card do detalhe do tratamento. 105 FR-009: a data de
+  // compra do core; sem data ⇒ null (FR-010).
+  const { showInitialStockHint, showBadge, supplyLabel } = stockItemView(medicine)
 
   // Líquido → "X ml"; sólido → hint princípio ativo / "X un." (formatStockQuantity)
   const saldoText = formatStockQuantity(totalQuantity, { dosage_unit, dosage_per_pill })
@@ -66,11 +65,8 @@ export default function StockItem({ medicine }) {
           </View>
 
           {showInitialStockHint ? (
-            <View style={styles.ctaBadge}>
-              <Plus size={12} color={colors.status.error} strokeWidth={2.5} />
-              <Text style={styles.ctaBadgeText}>Nova compra</Text>
-            </View>
-          ) : hasActiveProtocol ? (
+            <NewPurchaseBadge />
+          ) : showBadge ? (
             <StockLevelBadge
               status={status}
               daysRemaining={daysRemaining}
@@ -167,20 +163,6 @@ const styles = StyleSheet.create({
   bold: {
     fontWeight: '700',
     color: colors.text.primary
-  },
-  ctaBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing[2],
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.status.errorLight,
-  },
-  ctaBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.status.error,
   },
   // Linha de alerta TTL pós-abertura (012 Fase A)
   ttlRow: {

@@ -225,3 +225,25 @@ export function attachSupplyBuyNames(items, summaries = []) {
     return { ...it, supplyBuyName: med ? formatMedicineFullName(med) : null }
   })
 }
+
+/**
+ * 117 Fatia A (INV-5 / PO-3): o que o card de um item de estoque mostra — o MESMO para a aba
+ * (`StockItem`) e para o card do detalhe do tratamento (`ProtocolStockCard`). Duas telas, uma regra:
+ * - `showInitialStockHint`: nunca comprou e saldo zero ⇒ CTA "Nova compra" no lugar da pill — exceto
+ *   quando zerar é o plano (mensal/etapa de passagem), que fica com o selo Planejado;
+ * - `showBadge`: senão, pill de nível só com tratamento ativo no período;
+ * - `supplyLabel`: "Próxima compra até" da 105 (null sem data).
+ */
+export function stockItemView(item) {
+  const totalQuantity = item?.totalQuantity ?? 0
+  // Zerar é o plano (105: mensal/esparso ou etapa de passagem — `runwayAlertExpected === false`): quem
+  // busca a dose no posto/farmácia perto da aplicação não "deve" uma 1ª compra. Mostra o selo
+  // Planejado e a data de compra, não o CTA (smoke 117 A iOS, Mesigyna mensal, 2026-11-13).
+  const plannedZero = item?.runwayAlertExpected === false
+  const showInitialStockHint = !item?.hasPurchases && totalQuantity === 0 && !plannedZero
+  return {
+    showInitialStockHint,
+    showBadge: !showInitialStockHint && Boolean(item?.hasActiveProtocol),
+    supplyLabel: supplyLabelOf(item),
+  }
+}

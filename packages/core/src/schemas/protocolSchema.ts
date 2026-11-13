@@ -225,6 +225,32 @@ export function formatFrequencyLabel(
   return labels[frequency] || (FREQUENCY_LABELS as Record<string, string>)[frequency] || frequency
 }
 
+/**
+ * 117 Fatia A (FR-004/AC-3.1): rótulo do "consumo" do detalhe pela cadência. O VALOR exibido é o
+ * total de um dia de dose (dose × horários); só o rótulo muda, para não chamar de "diário" o que
+ * não é. Semanal/personalizado com 2+ dias na semana: o valor é de UM dia de dose, não da semana
+ * (C1.5 P-4) ⇒ "por dia de dose". N inválido nunca vira "a cada null dias".
+ */
+export function consumptionLabel(
+  frequency: string | null | undefined,
+  intervalDays?: number | null,
+  weekdayCount = 0
+): string {
+  if (frequency === 'dias_alternados') return 'Consumo a cada 2 dias'
+  if (frequency === 'intervalo_dias') {
+    const valid =
+      typeof intervalDays === 'number' &&
+      Number.isInteger(intervalDays) &&
+      intervalDays >= INTERVAL_DAYS_MIN &&
+      intervalDays <= INTERVAL_DAYS_MAX
+    return valid ? `Consumo a cada ${intervalDays} dias` : 'Consumo por dia de dose'
+  }
+  if (frequencyRequiresWeekdays(frequency)) {
+    return weekdayCount === 1 ? 'Consumo semanal' : 'Consumo por dia de dose'
+  }
+  return 'Consumo diário'
+}
+
 // Dias da semana
 export const WEEKDAYS = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo']
 

@@ -26,6 +26,7 @@ import {
   formatConcentration,
   frequencyRequiresWeekdays,
   formatFrequencyLabel,
+  consumptionLabel,
 } from '@dosiq/core'
 import ScreenContainer from '@shared/components/ui/ScreenContainer'
 import SectionCard from '@shared/components/ui/SectionCard'
@@ -40,6 +41,8 @@ import { useProtocolMutation } from '@treatments/hooks/useProtocolMutation'
 import ProtocolDeleteSheet from '@treatments/components/ProtocolDeleteSheet'
 import TitrationTimeline from '@treatments/components/TitrationTimeline'
 import TreatmentMeasureSlot from '@treatments/components/TreatmentMeasureSlot'
+import NextDosesCard from '@treatments/components/NextDosesCard'
+import ProtocolStockCard from '@treatments/components/ProtocolStockCard'
 import { confirmTitrationSwitch, titrationConfirmedProps } from '@treatments/services/titrationService'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES, PLACEMENTS } from '@platform/analytics/analyticsEvents'
@@ -64,6 +67,20 @@ const VISUAL_ORDER = [
   { key: 'sexta', label: 'S' },
   { key: 'sábado', label: 'S' },
 ]
+
+/** Chave do que mexe no consumo do estoque: remédio, dose, horários, cadência e estado da escada. */
+function stockRevisionOf(protocol) {
+  const steps = (protocol?.titration_steps ?? []).map((s) => `${s.id}:${s.status}`).join(',')
+  return [
+    protocol?.medicine?.id,
+    protocol?.dosage_per_intake,
+    protocol?.time_schedule?.join(','),
+    protocol?.frequency,
+    protocol?.interval_days,
+    protocol?.active,
+    steps,
+  ].join('|')
+}
 
 function daysInUse(startDate) {
   if (!startDate) return null
@@ -347,6 +364,9 @@ export default function ProtocolDetailScreen() {
 
         {/* Peso durante o tratamento (069 Bb · FR-008) — só semanal, o mesmo predicado do pedido de
             peso da Fase A (R-11 emendada 2026-10-05): injetável mensal/diário não ganha o card. */}
+        {/* 117 A (US-1): "quando" logo após a escada; some no diário/pausado/finalizado. */}
+        <NextDosesCard protocol={protocol} paused={!effectiveActive} finished={isFinished} />
+
         <TreatmentMeasureSlot protocol={protocol} />
 
         <DosageFrequencySection
@@ -357,6 +377,10 @@ export default function ProtocolDetailScreen() {
         />
 
         <CriticalAlarmSection protocol={protocol} />
+
+        {/* 117 A (US-2): estoque depois do alarme, junto da prescrição (bloco logístico) — não parte o
+            ritmo dose → alarme (PO, smoke 2026-11-13). Mesmo item da aba (INV-5). */}
+        <ProtocolStockCard medicine={medicine} treatmentId={id} revision={stockRevisionOf(protocol)} />
 
         {/* Período */}
         <SectionCard title="PRESCRIÇÃO">
@@ -547,7 +571,7 @@ function DosageFrequencySection({ protocol, medicine, frequencyLabel, dailyIntak
       ) : null}
       {dailyIntakeTotal !== null ? (
         <DetailRow
-          label="Consumo diário"
+          label={consumptionLabel(protocol.frequency, protocol.interval_days, getProtocolDays(protocol).length)}
           value={formatIntakeDose(dailyIntakeTotal, protocol.intake_unit, medicine)}
         />
       ) : null}
