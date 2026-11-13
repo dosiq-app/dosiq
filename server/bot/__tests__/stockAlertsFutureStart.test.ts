@@ -9,6 +9,9 @@
 // stockAlertsVigency.test.ts); aqui se prova que, mesmo se vazasse, o payload não alertaria.
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+// Só funções puras são exercidas; o cliente real exige env (CI não tem — AP do test:critical sem env).
+vi.mock('../../services/supabase.js', () => ({ supabase: {} }));
+
 import { _computeStockAlertPayload } from '../reminders/stockAlerts.js';
 import { planPurchasesForUser } from '../reminders/supplyPlan.js';
 
