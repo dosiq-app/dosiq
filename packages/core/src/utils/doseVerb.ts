@@ -22,5 +22,6 @@ const VERB_BY_PRESENTATION: Readonly<Record<string, DoseVerb>> = Object.freeze({
 
 export function doseVerb(presentation: string | null | undefined): DoseVerb {
   if (!presentation) return 'tomar'
-  return VERB_BY_PRESENTATION[presentation] ?? 'tomar'
+  // hasOwnProperty: 'constructor'/'toString' não podem escapar do fallback (RC6 #950).
+  return Object.prototype.hasOwnProperty.call(VERB_BY_PRESENTATION, presentation) ? VERB_BY_PRESENTATION[presentation] : 'tomar'
 }

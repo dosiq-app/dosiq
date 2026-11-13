@@ -488,6 +488,18 @@ describe('checkRemindersViaDispatcher — dose_instances path', () => {
         expect(motivoDespachado()).toBe('native_alarm');
       });
 
+      it('🔴 X-3 (RC6 #950): duas críticas com disparos diferentes ⇒ teto no MAIS TARDE (erra p/ enviar)', async () => {
+        process.env.REMINDER_SOURCE = 'instances';
+        const noHorario = instanciaCritica('inst-1');
+        const adiada = { ...instanciaCritica('inst-2'), snoozed_until: '2026-06-30T15:25:00.000Z' };
+        armarCiclo({ instancias: [noHorario, adiada], evidencia: ['inst-1', 'inst-2'], soneca: [], negativo: [] });
+
+        await checkRemindersViaDispatcher(mockDispatcher, 'corr-x3-duas');
+
+        expect(mockSupabase.lt).toHaveBeenCalledWith('created_at', '2026-06-30T15:25:00.000Z');
+        expect(mockSupabase.lt).not.toHaveBeenCalledWith('created_at', '2026-06-30T15:15:00.000Z');
+      });
+
       it('🟢 X-3: dose ADIADA usa snoozed_until como disparo', async () => {
         process.env.REMINDER_SOURCE = 'instances';
         const adiada = { ...instanciaCritica('inst-1'), snoozed_until: '2026-06-30T15:25:00.000Z' };

@@ -325,15 +325,17 @@ async function _fetchLastSitesForWeeklyInjectables(byUser) {
 }
 
 /**
- * 120 B (smoke X-3): instante do disparo mais cedo entre as doses críticas do ciclo — `snoozedUntil`
- * se adiada, senão `scheduledFor`. Teto da leitura do boletim negativo. Sem data legível ⇒ null (sem
- * teto: comportamento anterior). @private
+ * 120 B (smoke X-3): instante do disparo MAIS TARDE entre as doses críticas do ciclo — `snoozedUntil`
+ * se adiada, senão `scheduledFor`. Teto da leitura do boletim negativo. O teto é por ciclo (o corte é
+ * por usuário); o mais tarde erra para o lado de ENVIAR (fail-open, FR-013): um negativo entre dois
+ * disparos ainda corta — nunca é ignorado para a dose que dispara depois dele (RC6 #950). Sem data
+ * legível ⇒ null (sem teto: comportamento anterior). @private
  */
-function _earliestFireAt(criticalDoses) {
+function _latestFireAt(criticalDoses) {
   const times = criticalDoses
     .map(d => d.snoozedUntil || d.scheduledFor)
     .filter(t => typeof t === 'string' && !Number.isNaN(Date.parse(t)))
-    .sort((a, b) => Date.parse(a) - Date.parse(b));
+    .sort((a, b) => Date.parse(b) - Date.parse(a));
   return times[0] ?? null;
 }
 
@@ -646,7 +648,7 @@ async function _loadCriticalEvidence(userId, criticalDoses) {
   const anyCovered = criticalDoses.some(d => _isDoseCovered(d, evidenceByInstance, snoozeEvidence));
   if (anyCovered || !isCapable) {
     // 120 B (X-3): negativo emitido depois do disparo não corta a prova da dose que já tocou.
-    const cut = await findLatestIncapableAt(supabase, userId, undefined, _earliestFireAt(criticalDoses));
+    const cut = await findLatestIncapableAt(supabase, userId, undefined, _latestFireAt(criticalDoses));
     if (cut) {
       // Releitura com corte (e não filtro em memória): os leitores devolvem `Set`, sem `created_at`.
       // O negativo é declaração explícita "não alarmo" de app 0.34.2+ ⇒ a ausência de prova passa a

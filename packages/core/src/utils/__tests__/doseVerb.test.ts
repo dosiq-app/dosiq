@@ -15,7 +15,7 @@ describe('doseVerb (120 B, D-9)', () => {
     expect(doseVerb(presentation)).toBe(verb)
   })
 
-  it.each([null, undefined, '', 'INJETAVEL', 'injetável', 'xpto'])('valor fora do enum (%s) ⇒ tomar', (value) => {
+  it.each([null, undefined, '', 'INJETAVEL', 'injetável', 'xpto', 'constructor', 'toString', '__proto__'])('valor fora do enum (%s) ⇒ tomar', (value) => {
     expect(doseVerb(value as string | null | undefined)).toBe('tomar')
   })
 })
