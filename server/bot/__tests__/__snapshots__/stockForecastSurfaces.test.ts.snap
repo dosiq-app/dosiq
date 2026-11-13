@@ -1,0 +1,406 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-cont — contínuo diário 2x, 15 dias 1`] = `
+{
+  "alert": null,
+  "chatbot": {
+    "dailyIntake": 2,
+    "daysRemaining": 15,
+    "isLow": false,
+    "isZero": false,
+    "total": 30,
+  },
+  "estoque": {
+    "low": false,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-cont*
+📦 Estoque: 30 mg
+✅ Acaba em 15 dias
+
+",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-d7 — exatamente 7 dias 1`] = `
+{
+  "alert": null,
+  "chatbot": {
+    "dailyIntake": 1,
+    "daysRemaining": 7,
+    "isLow": true,
+    "isZero": false,
+    "total": 7,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-d7*
+📦 Estoque: 7 mg
+⚠️ Acaba em 7 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-d8 — 8 dias 1`] = `
+{
+  "alert": null,
+  "chatbot": {
+    "dailyIntake": 1,
+    "daysRemaining": 8,
+    "isLow": false,
+    "isZero": false,
+    "total": 8,
+  },
+  "estoque": {
+    "low": false,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-d8*
+📦 Estoque: 8 mg
+✅ Acaba em 8 dias
+
+",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-d65 — 6,5 dias 1`] = `
+{
+  "alert": {
+    "daysRemaining": 6,
+    "medicineName": "Med m-d65",
+    "remaining": 6,
+  },
+  "chatbot": {
+    "dailyIntake": 2,
+    "daysRemaining": 6,
+    "isLow": true,
+    "isZero": false,
+    "total": 13,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-d65*
+📦 Estoque: 13 mg
+⚠️ Acaba em 6 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-d79 — 7,9 dias (floor 7) 1`] = `
+{
+  "alert": null,
+  "chatbot": {
+    "dailyIntake": 10,
+    "daysRemaining": 7,
+    "isLow": true,
+    "isZero": false,
+    "total": 79,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-d79*
+📦 Estoque: 79 mg
+⚠️ Acaba em 7 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-ended — tratamento encerrado (sem consumo) 1`] = `
+{
+  "alert": null,
+  "chatbot": null,
+  "estoque": {
+    "low": false,
+    "text": "Não há medicamentos com protocolos ativos para exibir no estoque\\.",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-int — intervalo 3 dias, 2 doses = 6 dias 1`] = `
+{
+  "alert": {
+    "daysRemaining": 6,
+    "medicineName": "Med m-int",
+    "remaining": 2,
+  },
+  "chatbot": {
+    "dailyIntake": 0.3333333333333333,
+    "daysRemaining": 6,
+    "isLow": true,
+    "isZero": false,
+    "total": 2,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-int*
+📦 Estoque: 2 mg
+💉 Restam 2 doses
+⚠️ Acaba em \\~6 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-liq — líquido UI/ml, 0,5 ml a 0,4 ml/dia 1`] = `
+{
+  "alert": {
+    "daysRemaining": 1,
+    "medicineName": "Insulina",
+    "remaining": 2,
+  },
+  "chatbot": {
+    "dailyIntake": 0.4,
+    "daysRemaining": 1,
+    "isLow": true,
+    "isZero": false,
+    "total": 0.5,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Insulina*
+📦 Estoque: 0.5 ml
+⚠️ Acaba em 1 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-mixed — contínuo + esparso (105 AC-G3: alerta volta) 1`] = `
+{
+  "alert": {
+    "daysRemaining": 2,
+    "medicineName": "Med m-mixed",
+    "remaining": 3,
+  },
+  "chatbot": {
+    "dailyIntake": 1.0333333333333334,
+    "daysRemaining": 2,
+    "isLow": true,
+    "isZero": false,
+    "total": 3,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-mixed*
+📦 Estoque: 3 mg
+💉 Restam 3 doses
+⚠️ Acaba em \\~2 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-multi — 2 tratamentos de dose diferente, ordem de chegada invertida 1`] = `
+{
+  "alert": {
+    "daysRemaining": 2,
+    "medicineName": "Med m-multi",
+    "remaining": 3,
+  },
+  "chatbot": {
+    "dailyIntake": 3,
+    "daysRemaining": 2,
+    "isLow": true,
+    "isZero": false,
+    "total": 6,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-multi*
+📦 Estoque: 6 mg
+⚠️ Acaba em 2 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-nullactive — active NULL conta como vigente (AP-289) 1`] = `
+{
+  "alert": {
+    "daysRemaining": 4,
+    "medicineName": "Med m-nullactive",
+    "remaining": 4,
+  },
+  "chatbot": {
+    "dailyIntake": 1,
+    "daysRemaining": 4,
+    "isLow": true,
+    "isZero": false,
+    "total": 4,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-nullactive*
+📦 Estoque: 4 mg
+⚠️ Acaba em 4 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-prn — PRN, 5 unidades 1`] = `
+{
+  "alert": {
+    "daysRemaining": 5,
+    "medicineName": "Med m-prn",
+    "remaining": 5,
+  },
+  "chatbot": {
+    "dailyIntake": 1,
+    "daysRemaining": 5,
+    "isLow": true,
+    "isZero": false,
+    "total": 5,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-prn*
+📦 Estoque: 5 mg
+💉 Restam 5 doses
+⚠️ Acaba em \\~5 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-sparse — compra planejada: intervalo 30 dias, 1 dose 1`] = `
+{
+  "alert": null,
+  "chatbot": {
+    "dailyIntake": 0.03333333333333333,
+    "daysRemaining": 30,
+    "isLow": false,
+    "isZero": false,
+    "total": 1,
+  },
+  "estoque": {
+    "low": false,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-sparse*
+📦 Estoque: 1 mg
+💉 Restam 1 dose
+✅ Acaba em \\~30 dias
+
+",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-week — semanal, 3 doses = 21 dias 1`] = `
+{
+  "alert": null,
+  "chatbot": {
+    "dailyIntake": 0.14285714285714285,
+    "daysRemaining": 21,
+    "isLow": false,
+    "isZero": false,
+    "total": 3,
+  },
+  "estoque": {
+    "low": false,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-week*
+📦 Estoque: 3 mg
+💉 Restam 3 doses
+✅ Acaba em \\~21 dias
+
+",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-week-low — semanal, 1 dose = 7 dias 1`] = `
+{
+  "alert": null,
+  "chatbot": {
+    "dailyIntake": 0.14285714285714285,
+    "daysRemaining": 7,
+    "isLow": true,
+    "isZero": false,
+    "total": 1,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-week\\-low*
+📦 Estoque: 1 mg
+💉 Restam 1 dose
+⚠️ Acaba em \\~7 dias
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
+
+exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-zero — saldo 0 com consumo 1`] = `
+{
+  "alert": {
+    "daysRemaining": 0,
+    "medicineName": "Med m-zero",
+    "remaining": 0,
+  },
+  "chatbot": {
+    "dailyIntake": 1,
+    "daysRemaining": 0,
+    "isLow": false,
+    "isZero": true,
+    "total": 0,
+  },
+  "estoque": {
+    "low": true,
+    "text": "📦 *Estoque de Medicamentos:*
+
+💊 *Med m\\-zero*
+📦 Estoque: 0 mg
+⚠️ *SEM ESTOQUE*
+
+
+⚠️ *Atenção:* Alguns medicamentos estão com estoque baixo\\!",
+  },
+}
+`;
