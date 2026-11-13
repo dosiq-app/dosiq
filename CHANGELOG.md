@@ -7,6 +7,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### CI: gates de repositório rodam no PR (AP-375)
+
+- **Process** (`no-user-impact`): `npm run lint:gates` (unit-label, vigency, stock-forecast, migration-grants) passa a ser a lista única usada pelo `npm run lint` da main e pelo passo de PR. Antes o PR rodava só o unit-label, e os outros três gates só acusavam depois do merge (main vermelha após #948 e #950).
+
 ### Lembrete de dose diz o que fazer: verbo certo, ação no título e local da última aplicação (spec 120, Fatia B)
 
 - **Backend/Infra** (`Changed`, sem version source; deploy normal do servidor). Texto novo em todo lembrete de dose (push, Telegram e Avisos do app):
