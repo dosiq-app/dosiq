@@ -1,5 +1,5 @@
 /**
- * stockForecast.ts — previsão de estoque CANÔNICA (spec 072 · ADR-126 · CON a registrar no C5).
+ * stockForecast.ts — previsão de estoque CANÔNICA (spec 072 · ADR-126 · CON-046).
  *
  * UMA função decide, para um medicamento numa data, quanto ele consome por dia, quantos dias o
  * saldo cobre, se o estoque está baixo e em que REGIME a previsão vale. Alerta do servidor (legado,
