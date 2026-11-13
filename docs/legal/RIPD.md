@@ -1,7 +1,7 @@
 ---
 title: "RIPD — Relatório de Impacto à Proteção de Dados Pessoais"
 description: "Inventário de operações de tratamento de dados pessoais do dosiq, com finalidade, base legal, retenção, operadores, risco e mitigação por operação."
-version: "1.1.0"
+version: "1.1.1"
 status: active
 category: legal
 audience:
@@ -14,7 +14,7 @@ tags:
   - compliance
   - internal-only
 created_at: "2026-07-15"
-updated_at: "2026-10-20"
+updated_at: "2026-11-12"
 ---
 
 # RIPD — Relatório de Impacto à Proteção de Dados Pessoais (dosiq)
@@ -58,6 +58,7 @@ updated_at: "2026-10-20"
 
 ## Notas de manutenção
 
+- **2026-11-12 (redação da caixa B, Política v0.4 mantida)**: frase da autorização de transferência internacional (art. 33, VIII) reescrita — benefício primeiro, "serviços fora do Brasil, como os da Apple e do Google" no lugar de "enviar meus dados de saúde para fora do Brasil (EUA)"; título da folha de detalhes passa a "Envio para fora do Brasil (EUA)", mantendo o país a um toque. Escopo idêntico: mesmos dados, finalidades, operadores (Expo/Apple/Google, Groq, PostHog) e base legal — linhas 7a e 9 inalteradas. Sem reconsentimento: `CURRENT_POLICY_VERSION` segue `0.4` (bumpar dispararia a regularização bloqueante — `consentSchema.ts`, `stale` por `compareSemver`); a Política registra a revisão na §14. A frase vista por cada titular se reconstitui pela data do aceite no `consent_log` × esta nota × git de `TRANSFER_CONSENT_COPY`. Motivação: 5 de 39 contas que entraram (coorte pós-v0.34) não chegaram a consentir; hipótese de copy assustador, não confirmada (o abandono pode ter sido em qualquer passo do onboarding — nada é gravado antes do consentimento).
 - **2026-10-20 (spec 096 B1, Política v0.4)**: controlador passa a ser a PJ (cabeçalho). Bases das linhas 7a, 7b e 9 alinhadas à v0.4 §4: PostHog e assistente sob art. 11, I + art. 33, VIII (consentimento opcional de transferência, caixa B), Sentry sob art. 7º, V; "legítimo interesse" sai das três. Idade mínima 18+. A linha nova de registros de acesso (Marco Civil, spec 106) e a redação sem B (ADR-112) entram quando a B2 for ao ar.
 
 - Este RIPD reflete o estado do código em **2026-07-24** (linhas 7a/7b atualizadas nesta data; demais linhas seguem o corte de **2026-07-15**). Toda tabela nova com `user_id` deve, por regra do C5 do épico 008/046 (T000/AUDIT_FR-010), declarar no PR uma decisão explícita de export — e, por extensão, deveria atualizar este RIPD com a linha correspondente. O mesmo vale para troca de subprocessador de observabilidade/analytics (linhas 7a/7b, ADR-090): sempre que operadores mudarem, atualizar risco/mitigação/retenção, não só o nome do fornecedor.

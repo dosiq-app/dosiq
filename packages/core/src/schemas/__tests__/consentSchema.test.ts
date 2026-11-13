@@ -35,7 +35,7 @@ const base: ConsentEvent = {
 const POLICY_V04_BOX_A =
   'Autorizo o uso dos meus dados de saúde para lembretes, histórico, adesão e melhoria do app. Tenho 18 anos ou mais.'
 const POLICY_V04_BOX_B =
-  'Autorizo enviar meus dados de saúde para fora do Brasil (EUA) para notificações detalhadas, assistente IA e medições de uso. Opcional.'
+  'Quero ver o nome do remédio nos lembretes e usar o assistente. Para isso, autorizo que esses dados passem por serviços fora do Brasil, como os da Apple e do Google (inclui medições de uso do app). Opcional.'
 
 describe('consentSchema — copy v0.4 = texto da política', () => {
   it('versão vigente é 0.4', () => {

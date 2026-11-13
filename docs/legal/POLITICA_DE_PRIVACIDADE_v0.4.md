@@ -262,7 +262,7 @@ O dosiq é destinado a maiores de **18 anos** e está classificado assim nas loj
 
 O texto da caixa de consentimento para a transferência é:
 
-"Autorizo enviar meus dados de saúde para fora do Brasil (EUA) para notificações detalhadas, assistente IA e medições de uso. Opcional."
+"Quero ver o nome do remédio nos lembretes e usar o assistente. Para isso, autorizo que esses dados passem por serviços fora do Brasil, como os da Apple e do Google (inclui medições de uso do app). Opcional."
 
 **Se você não der esse consentimento, ou retirá-lo**, nenhum dado ligado à sua saúde é enviado para fora do Brasil. Os alarmes agendados pelo próprio celular continuam completos, porque não saem do aparelho. Os avisos enviados pelos nossos servidores chegam com um texto genérico, sem medicamento, concentração ou dose. O assistente e a medição de uso ficam desligados. Os seus dados continuam guardados no Brasil.
 
@@ -275,3 +275,5 @@ Em todos os casos, o operador só pode usar os dados para prestar o serviço ao 
 Esta Política pode ser atualizada para acompanhar a evolução do produto, mudanças na lei ou alterações técnicas relevantes. A versão vigente fica sempre publicada no canal oficial do produto.
 
 Quando uma alteração mudar o responsável pelos dados, a finalidade, a forma ou a duração do tratamento, ou com quem os dados são compartilhados, o app avisa você com destaque na próxima vez que for aberto e informa o que mudou (LGPD, art. 8º, § 6º e art. 9º, § 2º). Se você não concordar, pode revogar o consentimento ou excluir a conta pelo próprio aviso.
+
+Revisão de redação (12/11/2026), sem mudança de conteúdo: o texto da caixa de consentimento para a transferência (seção 13) foi reescrito para ficar mais claro. Os dados, as finalidades, os destinatários e a base legal continuam os mesmos, por isso a versão desta Política segue 0.4 e quem já consentiu não precisa consentir de novo.

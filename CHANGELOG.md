@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Autorização de envio para fora do Brasil com texto mais claro
+
+- **Mobile** (`Changed`, **patch** `APP_VERSION` 0.34.16 → **0.34.17**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — mudança 100% JS de texto, o trem segura a loja) e **Web** (`Changed`, **patch** 4.39.2 → **4.39.3**).
+  - A caixa opcional de envio para fora do Brasil passa a dizer: "Quero ver o nome do remédio nos lembretes e usar o assistente. Para isso, autorizo que esses dados passem por serviços fora do Brasil, como os da Apple e do Google (inclui medições de uso do app). Opcional." A folha "Detalhes" passa a se chamar "Envio para fora do Brasil (EUA)".
+  - Mesmo alcance da autorização anterior (dados, finalidades, destinatários e base legal iguais): a Política segue na v0.4, com a revisão de redação registrada na §14, e ninguém precisa consentir de novo.
+- **Core:** `TRANSFER_CONSENT_COPY.label` e `sheetTitle`; teste de igualdade com a §13 da política atualizado. RIPD 1.1.1.
+
 ### Teste documenta o fallback de dose sem cadastro de medicamento
 
 - **Shared/Core** (`no-user-impact`, sem bump — só teste; nenhum código de runtime muda). `formatIntakeDose` sem cadastro de medicamento mostra "<qty> un." mesmo com unidade de tomada explícita. Decisão: não alterar sem caso real (0 ocorrências em prod em 2026-11-12; medicamento nulo é defeito do chamador; o helper alimenta push, alarme, chatbot e PDF). `doseUnit.noMedicine.test.ts` protege o comportamento e registra o porquê.
