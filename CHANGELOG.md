@@ -7,6 +7,16 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Estoque: um número e um "estoque baixo" só, em todo canal (spec 072)
+
+- **Backend/Infra** (`Changed`, sem version source; deploy normal do servidor). **Mudança de comportamento intencional:** o alerta de estoque baixo (notificação) passa a sair com **7 dias** restantes. Antes só saía com 6 ou menos: o paciente com 7 dias via "estoque baixo" no app, no `/estoque` e no assistente, mas não recebia o aviso. Agora o limite é o mesmo em todo lugar: dias inteiros restantes ≤ 7. Isso vale também para quem tem entre 7 e 7,9 dias (o app mostra "7 dias").
+  - Na notificação, "doses restantes" de um medicamento com dois tratamentos de dose diferente passa a usar sempre o tratamento mais antigo como referência. Antes dependia da ordem em que o banco devolvia os tratamentos.
+- **Web** (`Fixed`, **patch** 4.39.2 → **4.39.3**) e **Mobile** (`Fixed`, **patch** `APP_VERSION` 0.34.16 → **0.34.17**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — correção 100% JS, o trem segura a loja).
+  - "Doses restantes" de medicamento com dois tratamentos de dose diferente segue a mesma regra estável (tratamento mais antigo). Hoje são 2 medicamentos em produção.
+  - **Mobile:** no detalhe do medicamento, estoque de 7 a 7,9 dias passa a aparecer como crítico, igual ao aviso da tela Hoje. A cor da aba Estoque não muda nesta versão (vai na spec 117).
+- **Core:** `deriveStockForecast` — previsão de estoque canônica (consumo diário, dias inteiros, gravidade, doses restantes e regime: contínuo, compra planejada, PRN, sem previsão), pura e com `asOf` obrigatório. Também `STOCK_LOW_DAYS` (7), o limiar único. O alerta do servidor, o `/estoque` e o resumo de estoque do assistente passam a consumi-la. `resolveStockStatus` considera crítico `floor(dias) <= 7`. `stockDoseMetrics` usa referência estável (`start_date` asc, sem data primeiro, depois `id`). O resumo do assistente perdeu o eixo `min_stock_threshold` (coluna inexistente no banco; o ramo nunca rodou).
+- **Process:** gate `npm run lint:stock-forecast` (dentro do `npm run lint`) barra conta de estoque fora da canônica. As exceções são arquivos nomeados: web legado, mobile até a 117 e o relatório em PDF.
+
 ### Teste documenta o fallback de dose sem cadastro de medicamento
 
 - **Shared/Core** (`no-user-impact`, sem bump — só teste; nenhum código de runtime muda). `formatIntakeDose` sem cadastro de medicamento mostra "<qty> un." mesmo com unidade de tomada explícita. Decisão: não alterar sem caso real (0 ocorrências em prod em 2026-11-12; medicamento nulo é defeito do chamador; o helper alimenta push, alarme, chatbot e PDF). `doseUnit.noMedicine.test.ts` protege o comportamento e registra o porquê.

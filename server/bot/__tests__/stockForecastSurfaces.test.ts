@@ -8,7 +8,8 @@
 // que só mudou o que a spec declara (dia 7 — D-6 — e a dose de referência estável).
 
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
-import { STOCK_FORECAST_CASES } from '../../../packages/core/src/utils/__tests__/fixtures/stockForecastCases';
+import { STOCK_FORECAST_AS_OF, STOCK_FORECAST_CASES } from '../../../packages/core/src/utils/__tests__/fixtures/stockForecastCases';
+import { deriveStockForecast } from '../../../packages/core/src/utils/stockForecast';
 
 const mockDataQueue: any[] = [];
 
@@ -106,6 +107,48 @@ describe('072 — snapshot das 3 superfícies de estoque sobre a fixture compart
       const estoque = await estoqueOf(c);
       const chatbot = await chatbotOf(c);
       expect({ alert, estoque, chatbot }).toMatchSnapshot();
+    });
+  }
+});
+
+// PO-072-1: o oráculo é a canônica. Cada superfície tem de dizer o MESMO que ela para a mesma entrada —
+// nenhuma tem valor esperado próprio (boundary da PO).
+describe('072 — paridade das 3 superfícies com deriveStockForecast (PO-072-1)', () => {
+  for (const c of STOCK_FORECAST_CASES) {
+    it(`${c.id} — ${c.label}`, async () => {
+      const f = deriveStockForecast({
+        medicineId: c.medicine.id,
+        medicine: c.medicine,
+        protocols: c.protocols as never,
+        quantity: c.quantity,
+        steps: [],
+        asOf: STOCK_FORECAST_AS_OF,
+      });
+
+      // 1. alerta do servidor
+      expect(alertOf(c)).toEqual(
+        f.alertExpected
+          ? { medicineName: c.medicine.name, remaining: f.dosesRemaining, daysRemaining: f.daysRemaining }
+          : null,
+      );
+
+      // 2. /estoque — só lista medicamento com consumo; aviso = isCritical
+      const estoque = await estoqueOf(c);
+      expect(estoque.low).toBe(f.regime !== 'no_forecast' && f.isCritical);
+
+      // 3. chatbot
+      const chatbot = await chatbotOf(c);
+      if (f.regime === 'no_forecast') {
+        expect(chatbot).toBeNull();
+      } else {
+        expect(chatbot).toEqual({
+          total: c.quantity,
+          daysRemaining: f.daysRemaining,
+          isZero: f.isZero,
+          isLow: f.isLow,
+          dailyIntake: f.dailyIntake,
+        });
+      }
     });
   }
 });

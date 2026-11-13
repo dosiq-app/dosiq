@@ -1,4 +1,4 @@
-import { calculateTitrationData } from '@dosiq/core';
+import { calculateTitrationData, STOCK_LOW_DAYS } from '@dosiq/core';
 import {
   getCurrentTime as getLocalTime
 } from './dateUtils.js';
@@ -34,7 +34,7 @@ function _formatNonDailyStockStatus(daysRemaining, doseMetrics, status) {
     // `~` é reservado em MarkdownV2 → escapar `\~` senão o Telegram falha o parse.
     result += daysRemaining <= 0
       ? `⚠️ *SEM ESTOQUE*\n`
-      : `${daysRemaining <= 7 ? '⚠️' : '✅'} Acaba em \\~${daysRemaining} dias\n`;
+      : `${daysRemaining <= STOCK_LOW_DAYS ? '⚠️' : '✅'} Acaba em \\~${daysRemaining} dias\n`;
   }
   return result;
 }
@@ -45,7 +45,7 @@ function _formatDailyStockStatus(daysRemaining, status) {
   if (daysRemaining !== null) {
     if (daysRemaining <= 0) {
       result += `⚠️ *SEM ESTOQUE*\n`;
-    } else if (daysRemaining <= 7) {
+    } else if (daysRemaining <= STOCK_LOW_DAYS) {
       result += `⚠️ Acaba em ${daysRemaining} dias\n`;
     } else {
       result += `✅ Acaba em ${daysRemaining} dias\n`;
