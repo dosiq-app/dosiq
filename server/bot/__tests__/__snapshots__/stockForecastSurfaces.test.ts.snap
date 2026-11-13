@@ -25,7 +25,11 @@ exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture comparti
 
 exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-d7 — exatamente 7 dias 1`] = `
 {
-  "alert": null,
+  "alert": {
+    "daysRemaining": 7,
+    "medicineName": "Med m-d7",
+    "remaining": 7,
+  },
   "chatbot": {
     "dailyIntake": 1,
     "daysRemaining": 7,
@@ -100,7 +104,11 @@ exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture comparti
 
 exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-d79 — 7,9 dias (floor 7) 1`] = `
 {
-  "alert": null,
+  "alert": {
+    "daysRemaining": 7,
+    "medicineName": "Med m-d79",
+    "remaining": 7,
+  },
   "chatbot": {
     "dailyIntake": 10,
     "daysRemaining": 7,
@@ -224,7 +232,7 @@ exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture comparti
   "alert": {
     "daysRemaining": 2,
     "medicineName": "Med m-multi",
-    "remaining": 3,
+    "remaining": 6,
   },
   "chatbot": {
     "dailyIntake": 3,
@@ -354,7 +362,11 @@ exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture comparti
 
 exports[`072 — snapshot das 3 superfícies de estoque sobre a fixture compartilhada > m-week-low — semanal, 1 dose = 7 dias 1`] = `
 {
-  "alert": null,
+  "alert": {
+    "daysRemaining": 7,
+    "medicineName": "Med m-week-low",
+    "remaining": 1,
+  },
   "chatbot": {
     "dailyIntake": 0.14285714285714285,
     "daysRemaining": 7,
