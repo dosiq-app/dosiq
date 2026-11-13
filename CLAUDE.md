@@ -168,7 +168,7 @@ Factory em `@dosiq/core/repositories/` (DI de `client`/`getUserId`/selects); val
 | `DOSAGE_UNITS` | `mg` `mcg` `g` `mg/ml` `ui/ml` `ui` `un` | `medicines.dosage_unit` — líquido := `LIKE '%/ml'` |
 | `MEDICINE_TYPES` | `medicamento` `suplemento` | `medicines.type` (NATUREZA, não forma) |
 | `PRESENTATIONS` | `comprimido` `capsula` `liquido` `injetavel` `pomada` `spray` `outro` | `medicines.presentation` (a FORMA) |
-| `FREQUENCIES` | `diário` `dias_alternados` `semanal` `personalizado` `quando_necessário` | `protocols.frequency` — ⚠️ COM acento |
+| `FREQUENCIES` | `diário` `dias_alternados` `semanal` `personalizado` `quando_necessário` `intervalo_dias` | `protocols.frequency` — ⚠️ COM acento; `intervalo_dias` ⇔ `interval_days` NOT NULL (CHECK) |
 | `INTAKE_UNITS` | `gotas` `ml` `UI` `mg` | `protocols.intake_unit` — ⚠️ `UI` maiúsculo; comprimido = **NULL**, não `'cp'` |
 | `DOSE_STATUS` | `pending` `taken` `missed` `skipped_user` `skipped_paused` | `dose_instances.status` — ⚠️ não existe `'skipped'`/`'done'`/`'completed'` (C-29, 2026-10-11) |
 
