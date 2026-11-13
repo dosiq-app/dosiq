@@ -12,8 +12,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '@dosiq/shared-data'
 import { createDoseInstanceRepository } from '../repositories/createDoseInstanceRepository'
-import { isProtocolVigentOn, type AdherenceProtocol } from '../utils/adherenceLogic'
-import { deriveStockForecast, type StockForecastProtocol } from '../utils/stockForecast'
+import { calculateDailyIntake, calculateDaysRemaining, isProtocolVigentOn, type AdherenceProtocol } from '../utils/adherenceLogic'
 import { getNow, getTodayLocal, parseLocalDate, addDays } from '../utils/dateUtils'
 import { validateChatbotContextData } from './chatbotContextSchema'
 
@@ -25,6 +24,7 @@ const ADHERENCE_WINDOW_DAYS = 30
 /** Medicamento (linha crua do Supabase, `stock(*)` embedded). */
 interface MedicineRow {
   id: string
+  min_stock_threshold?: number | null
   stock?: Array<{ quantity: number }> | null
   [key: string]: unknown
 }
@@ -37,45 +37,42 @@ interface ProtocolRow {
 }
 
 /**
- * Resumo de estoque do contexto do chatbot. 072 (ADR-126): a conta é da previsão canônica
- * `deriveStockForecast` — o mesmo número de dias e o mesmo "estoque baixo" do alerta e do `/estoque`.
- * Esta função só escolhe QUAIS medicamentos entram (os com tratamento vigente) e o saldo (lotes com
- * quantidade > 0). Sem `titration_steps` no fetcher (D-3) ⇒ steps=[] (INV-4).
- *
- * O antigo eixo `min_stock_threshold` saiu: a coluna não existe no banco (42703 em prod,
- * 2026-11-12) — o ramo nunca rodou (RC3 E-3, AP-300).
- * @returns Array<{medicine,total,daysRemaining,isZero,isLow,dailyIntake}> (shape do CON-028)
+ * Resumo de estoque rich (paridade web — `_deriveStockSummary`). Movido p/ o core para que
+ * as 3 superfícies derivem igual. Lê `medicine.stock[]` embedded + protocolos ativos.
+ * @param medicines
+ * @param protocols
+ * @returns Array<{medicine,total,daysRemaining,isZero,isLow,dailyIntake}>
  */
-function summarizeStock(medicines: MedicineRow[] | null | undefined, protocols: ProtocolRow[] | null | undefined) {
+function deriveStockSummary(medicines: MedicineRow[] | null | undefined, protocols: ProtocolRow[] | null | undefined) {
   // 064: vigência, não só `active` — tratamento encerrado saía como consumo vivo na
   // resposta do chatbot ("quantos dias de X eu tenho").
   const today = getTodayLocal()
-  // Cast local: linhas cruas do Supabase (`medicine_id` pode ser `null`); a canônica compara
-  // `p.medicine_id === medicineId`, que tolera null.
-  const rows = (protocols || []) as unknown as StockForecastProtocol[]
   const activeMedicineIds = new Set(
-    rows.filter((p) => isProtocolVigentOn(p as AdherenceProtocol, today)).map((p) => p.medicine_id)
+    (protocols || []).filter((p) => isProtocolVigentOn(p as AdherenceProtocol, today)).map((p) => p.medicine_id)
   )
   return (medicines || [])
     .filter((m) => activeMedicineIds.has(m.id))
     .map((medicine) => {
-      const total = (medicine.stock || []).filter((s) => s.quantity > 0).reduce((sum, s) => sum + s.quantity, 0)
-      const forecast = deriveStockForecast({
-        medicineId: medicine.id,
-        medicine: medicine as AdherenceProtocol['medicine'],
-        protocols: rows,
-        quantity: total,
-        steps: [],
-        asOf: today,
-      })
-      return {
-        medicine,
-        total,
-        daysRemaining: forecast.daysRemaining,
-        isZero: forecast.isZero,
-        isLow: forecast.isLow,
-        dailyIntake: forecast.dailyIntake,
-      }
+      const activeStockEntries = (medicine.stock || []).filter((s) => s.quantity > 0)
+      const totalQuantity = activeStockEntries.reduce((sum, s) => sum + s.quantity, 0)
+      // Cast local: `protocols`/`medicine` aqui são linhas cruas do Supabase (shape amplo,
+      // `medicine_id` pode ser `null`); `AdherenceProtocol` (adherenceLogic.ts) não modela
+      // `null` no FK — seguro pois a comparação `p.medicine_id === medicineId` tolera null.
+      const dailyIntake = calculateDailyIntake(
+        medicine.id,
+        protocols as AdherenceProtocol[] | null | undefined,
+        medicine as AdherenceProtocol['medicine'],
+        today
+      )
+      const daysRemaining = calculateDaysRemaining(totalQuantity, dailyIntake)
+      const threshold = medicine.min_stock_threshold || 0
+      const isZero = totalQuantity === 0
+      const isLow =
+        !isZero &&
+        (dailyIntake > 0
+          ? daysRemaining <= 7 || totalQuantity <= threshold
+          : totalQuantity <= threshold && totalQuantity > 0)
+      return { medicine, total: totalQuantity, daysRemaining, isZero, isLow, dailyIntake }
     })
 }
 
@@ -171,7 +168,7 @@ export async function fetchChatbotContextData({
     protocols,
     logs: logsRes.data || [],
     // Dose-only: array vazio → o builder não emite nenhuma linha de estoque.
-    stockSummary: stockTrackingEnabled ? summarizeStock(medicines, protocols) : [],
+    stockSummary: stockTrackingEnabled ? deriveStockSummary(medicines, protocols) : [],
     stats,
     doseInstances: doseInstances || [],
     treatmentPlans: plansRes.data || [],

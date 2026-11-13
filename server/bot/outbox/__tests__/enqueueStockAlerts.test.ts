@@ -64,7 +64,7 @@ const protocolFor = (medicineId: string, userId = USER) => ({
   paused_at: null,
 });
 
-/** Saldo 2 e consumo diário 1 → 2 dias restantes (<= 7 = alerta, 072/D-6). */
+/** Saldo 2 e consumo diário 1 → 2 dias restantes (< 7 = alerta). */
 const stockFor = (medicineId: string, quantity = 2, userId = USER) => ({
   // 050 PR 2: o lote tem `id` — é o subject_id do eixo VALIDADE.
   id: `lot-${medicineId}`,
@@ -163,7 +163,7 @@ describe('enqueueStockAlerts — fan-out do stock_alert (050 PR 1b)', () => {
     expect(repo.inserted).toHaveLength(3); // nenhuma nova
   });
 
-  it('medicamento com saldo alto não entra (predicado floor(dias) <= 7)', async () => {
+  it('medicamento com saldo alto não entra (predicado daysRemaining < 7)', async () => {
     queueFetches(
       [userRow()],
       [protocolFor(MEDS[0]), protocolFor(MEDS[1])],
@@ -174,19 +174,6 @@ describe('enqueueStockAlerts — fan-out do stock_alert (050 PR 1b)', () => {
     await enqueueStockAlerts({ repo, kinds: KINDS_ON, now: spTime(10, 0) });
 
     expect(repo.inserted.map((e: any) => e.subjectId)).toEqual([MEDS[0]]);
-  });
-
-  it('072 PO-072-2: 7,0 e 7,9 dias enfileiram; 8,0 não (limiar D-6, dias inteiros <= 7)', async () => {
-    queueFetches(
-      [userRow()],
-      MEDS.map((m) => protocolFor(m)),
-      [stockFor(MEDS[0], 7), stockFor(MEDS[1], 7.9), stockFor(MEDS[2], 8)],
-    );
-    const repo = makeRepo();
-
-    await enqueueStockAlerts({ repo, kinds: KINDS_ON, now: spTime(10, 0) });
-
-    expect(repo.inserted.map((e: any) => e.subjectId).sort()).toEqual([MEDS[0], MEDS[1]].sort());
   });
 
   describe('filtro dose-only (044/AP-277)', () => {

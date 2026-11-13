@@ -183,24 +183,12 @@ describe('Stock Alerts via Dispatcher (ADR-030)', () => {
 
   // ---- Cenário 2: sem alerta quando estoque suficiente ----
 
-  describe('Limiar 072/D-6: alerta com dias inteiros <= 7; sem alerta a partir de 8', () => {
-    it('dispara quando restam exatamente 7 dias (antes era `< 7` e calava — 072 D-6)', async () => {
+  describe('Sem alerta quando estoque >= 7 dias', () => {
+    it('não deve disparar quando restam exatamente 7 dias', async () => {
       const dispatcher = createMockDispatcher()
-      // qty=70, dailyConsumption=10 → 7 dias → alerta (limiar único STOCK_LOW_DAYS, `<=`)
+      // qty=70, dailyConsumption=10 → 7 dias → não alerta (threshold: < 7)
       setupSupabaseMock(supabase, {
         stockItems: [makeStockItem('user-1', 'med-1', 70, 'Ibuprofeno')],
-        protocols: [makeProtocol('user-1', 'med-1', { intakesPerDay: 1, dosagePerIntake: 10 })],
-      })
-
-      await checkStockAlerts({}, { notificationDispatcher: dispatcher })
-
-      expect(dispatcher.dispatch).toHaveBeenCalledTimes(1)
-    })
-
-    it('não deve disparar quando restam 8 dias', async () => {
-      const dispatcher = createMockDispatcher()
-      setupSupabaseMock(supabase, {
-        stockItems: [makeStockItem('user-1', 'med-1', 80, 'Ibuprofeno')],
         protocols: [makeProtocol('user-1', 'med-1', { intakesPerDay: 1, dosagePerIntake: 10 })],
       })
 

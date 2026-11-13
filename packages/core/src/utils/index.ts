@@ -245,17 +245,6 @@ export {
   formatBRL,
 } from './stock'
 
-// Previsão de estoque CANÔNICA (072 / ADR-126): consumo, dias, gravidade e regime num lugar só.
-// Superfície nova de estoque consome esta saída — o gate `lint:stock-forecast` barra conta própria.
-export {
-  deriveStockForecast,
-  STOCK_LOW_DAYS,
-  type StockForecast,
-  type StockForecastInput,
-  type StockForecastProtocol,
-  type StockRegime,
-} from './stockForecast'
-
 // Ícone de identificação do medicamento (012 Fase A — fonte única, binding por plataforma)
 export {
   getMedicineIconName,

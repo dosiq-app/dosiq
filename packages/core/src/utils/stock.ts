@@ -1,8 +1,8 @@
 /**
  * stock.js — Helpers puros de estoque (web↔mobile, sem deps de plataforma).
  *
- * Convencao: thresholds em DIAS restantes:
- *   CRITICAL floor(dias) <= 7 (072 / D-6 / ADR-126)  ·  LOW <14d  ·  NORMAL <30d  ·  HIGH >=30d
+ * Convencao: thresholds em DIAS restantes, alinhados com CLAUDE.md:
+ *   CRITICAL <7d  ·  LOW <14d  ·  NORMAL <30d  ·  HIGH >=30d
  *
  * Para `vencendo`: itens com expDays < EXPIRY_WARNING_DAYS (90 dias).
  *
@@ -38,8 +38,7 @@ interface StockProtocol {
   end_date?: string | null
   dosage_per_intake?: number | null
   intake_unit?: string | null
-  medicine_id?: string | null
-  id?: string
+  medicine_id?: string
   time_schedule?: string[] | null
   frequency?: string | null
 }
@@ -93,27 +92,10 @@ export function resolveStockStatus(
   }
 
   const daysRemaining = qty / dailyConsumption
-  // 072 / D-6: crítico = dias INTEIROS restantes <= 7 — o mesmo número que o paciente lê ("7 dias").
-  // Antes era `< 7` sobre o valor cru: 7,0 a 7,9 dias apareciam como "7 dias" sem cor crítica.
-  if (Math.floor(cleanFloat(daysRemaining)) <= STOCK_THRESHOLDS.CRITICAL_DAYS) return STOCK_STATUS.CRITICO
+  if (daysRemaining < STOCK_THRESHOLDS.CRITICAL_DAYS) return STOCK_STATUS.CRITICO
   if (daysRemaining < STOCK_THRESHOLDS.LOW_DAYS) return STOCK_STATUS.BAIXO
   if (daysRemaining < STOCK_THRESHOLDS.NORMAL_DAYS) return STOCK_STATUS.NORMAL
   return STOCK_STATUS.ALTO
-}
-
-/**
- * Ordem ESTÁVEL dos tratamentos para escolher a dose de referência (072, decisão do PO 2026-11-12):
- * `start_date` asc com NULL primeiro, desempate por `id`. Sem isso a dose de referência dependia da
- * ordem em que o banco devolveu as linhas — o mesmo medicamento com 2 tratamentos de dose diferente
- * mostrava "doses restantes" diferentes em cada superfície.
- */
-function byReferenceOrder(a: StockProtocol, b: StockProtocol): number {
-  const sa = a.start_date ?? ''
-  const sb = b.start_date ?? ''
-  if (sa !== sb) return sa < sb ? -1 : 1
-  const ia = a.id ?? ''
-  const ib = b.id ?? ''
-  return ia < ib ? -1 : ia > ib ? 1 : 0
 }
 
 /**
@@ -143,12 +125,12 @@ export function stockDoseMetrics(
   // Vigência na data de referência (064/FR-005): tratamento encerrado não entra.
   // `rep`, `dosesPorDia` e `isDaily` DERIVAM desta lista — filtrar só o dailyIntake
   // deixaria doseSize/dosesRemaining vindo de um tratamento morto (analysis F-4).
-  const active = (protocols || []).filter((p) => isProtocolVigentOn(p, asOf)).sort(byReferenceOrder)
+  const active = (protocols || []).filter((p) => isProtocolVigentOn(p, asOf))
   if (active.length === 0 || !(qty > 0)) {
     return { dosesRemaining: 0, runwayDias: 0, dosesPorDia: 0, isDaily: true }
   }
 
-  // Tamanho de UMA tomada (representativo: 1o vigente na ordem estável). Liquido -> ml.
+  // Tamanho de UMA tomada (representativo: 1o protocolo ativo). Liquido -> ml.
   const rep = active[0]
   const dosePorTomada = Number(rep.dosage_per_intake) || 1
   const liquid = isLiquidMedicine(medicine)

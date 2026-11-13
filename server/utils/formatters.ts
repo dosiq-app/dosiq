@@ -1,4 +1,4 @@
-import { calculateTitrationData, STOCK_LOW_DAYS } from '@dosiq/core';
+import { calculateTitrationData } from '@dosiq/core';
 import {
   getCurrentTime as getLocalTime
 } from './dateUtils.js';
@@ -11,6 +11,13 @@ export function getCurrentTime() {
   return getLocalTime();
 }
 
+/**
+ * Calculate days remaining based on stock and daily usage
+ */
+export function calculateDaysRemaining(totalQuantity, dailyUsage) {
+  if (!dailyUsage || dailyUsage <= 0) return null;
+  return Math.floor(totalQuantity / dailyUsage);
+}
 
 /**
  * Formata mensagem de status do estoque.
@@ -27,7 +34,7 @@ function _formatNonDailyStockStatus(daysRemaining, doseMetrics, status) {
     // `~` é reservado em MarkdownV2 → escapar `\~` senão o Telegram falha o parse.
     result += daysRemaining <= 0
       ? `⚠️ *SEM ESTOQUE*\n`
-      : `${daysRemaining <= STOCK_LOW_DAYS ? '⚠️' : '✅'} Acaba em \\~${daysRemaining} dias\n`;
+      : `${daysRemaining <= 7 ? '⚠️' : '✅'} Acaba em \\~${daysRemaining} dias\n`;
   }
   return result;
 }
@@ -38,7 +45,7 @@ function _formatDailyStockStatus(daysRemaining, status) {
   if (daysRemaining !== null) {
     if (daysRemaining <= 0) {
       result += `⚠️ *SEM ESTOQUE*\n`;
-    } else if (daysRemaining <= STOCK_LOW_DAYS) {
+    } else if (daysRemaining <= 7) {
       result += `⚠️ Acaba em ${daysRemaining} dias\n`;
     } else {
       result += `✅ Acaba em ${daysRemaining} dias\n`;

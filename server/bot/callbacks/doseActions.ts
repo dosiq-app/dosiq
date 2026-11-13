@@ -1,7 +1,7 @@
 import { supabase } from '../../services/supabase.js';
 import { getUserIdByChatId } from '../../services/userService.js';
 import { medicineLogService } from '../../services/medicineLogService.js';
-import { escapeMarkdownV2 } from '../../utils/formatters.js';
+import { calculateDaysRemaining, escapeMarkdownV2 } from '../../utils/formatters.js';
 import { setState, getState, clearState } from '../state.js';
 import { partitionDoses } from '../utils/partitionDoses.js';
 import { getServerTimestamp, addDays, addMinutes, parseISO } from '../../utils/dateUtils.js';
@@ -127,28 +127,49 @@ async function createLogAndConsumeStock(userId, protocolId, medicineId, quantity
   await anchorLogToInstance(userId, protocolId, createdLogs.id, takenAt);
 }
 
-/**
- * Sequência de dias com adesão (recibo da dose).
- *
- * 072 (PO 2026-11-12, opção c): o recibo NÃO mostra mais "Estoque baixo / zerado". A conta que
- * fazia isso era uma derivação própria de consumo (sem líquido, sem frequência, sem vigência por
- * data) e divergia da previsão canônica; o `/estoque` e o alerta de estoque já cobrem o aviso.
- */
-async function computeDoseStreak(userId) {
+async function calculateAdherenceAndStockWarnings(userId, medicineId) {
+  const { data: updatedStock } = await supabase
+    .from('stock')
+    .select('quantity')
+    .eq('medicine_id', medicineId)
+    .eq('user_id', userId)
+    .gt('quantity', 0);
+
+  const totalQuantity = updatedStock?.reduce((sum, s) => sum + s.quantity, 0) || 0;
+  
+  const { data: activeProtocols } = await supabase
+    .from('protocols')
+    .select('time_schedule, dosage_per_intake')
+    .eq('medicine_id', medicineId)
+    .eq('user_id', userId)
+    .eq('active', true);
+
+  const dailyUsage = activeProtocols?.reduce((sum, p) => sum + (((p.time_schedule as any[])?.length || 0) * (p.dosage_per_intake || 0)), 0) || 0;
+  const daysRemaining = calculateDaysRemaining(totalQuantity, dailyUsage);
+  
   // Streak ← dose_instances (S3.7): dias consecutivos ≥80% por status, não infere sobre logs.
   // Janela UTC real via getServerTimestamp (getNow() é wall-clock SP → desloca 3h vs UTC). 1 chamada.
   const nowIso = getServerTimestamp();
   const instances = await doseInstanceRepo.getWindow(
     userId, addDays(nowIso, -90).toISOString(), nowIso
   );
-  return computeStreakFromInstances(instances);
+  const streak = computeStreakFromInstances(instances);
+  return { daysRemaining, streak };
 }
 
-function buildConfirmationMessage(medicineName, streak) {
+function buildConfirmationMessage(medicineName, streak, daysRemaining) {
   let confirmMsg = `✅ Dose de *${escapeMarkdownV2(medicineName)}* registrada\\!`;
-
+  
   if (streak > 1) {
     confirmMsg += `\n🔥 *${streak} dias seguidos\\!*`;
+  }
+  
+  if (daysRemaining !== null && daysRemaining <= 7) {
+    if (daysRemaining <= 0) {
+      confirmMsg += `\n\n⚠️ *ATENÇÃO:* Estoque zerado\\!`;
+    } else {
+      confirmMsg += `\n\n⚠️ Estoque baixo: \\~${daysRemaining} dias restantes`;
+    }
   }
   return confirmMsg;
 }
@@ -164,8 +185,8 @@ async function handleTakeDose(bot, callbackQuery) {
     
     await createLogAndConsumeStock(userId, protocolId, medicineId, parseFloat(quantity));
     
-    const streak = await computeDoseStreak(userId);
-    const confirmMsg = buildConfirmationMessage(medicineName, streak);
+    const { daysRemaining, streak } = await calculateAdherenceAndStockWarnings(userId, medicineId);
+    const confirmMsg = buildConfirmationMessage(medicineName, streak, daysRemaining);
 
     const quickActions = {
       inline_keyboard: [

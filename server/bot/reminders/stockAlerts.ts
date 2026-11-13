@@ -1,45 +1,66 @@
 import { _fetchAllPages, _fetchAllPagesByUsers } from './_pagination.js';
 import { createLogger } from '../logger.js';
 import { parseISO } from '../../utils/dateUtils.js';
-import { deriveStockForecast, getTodayLocal } from '@dosiq/core';
+import {
+  calculateDailyIntake,
+  calculateDaysRemaining,
+  isLiquidMedicine,
+  doseToMl,
+  cleanFloat,
+  isStockRunwayAlertExpected,
+} from '@dosiq/core';
 
 const logger = createLogger('StockAlerts');
 
 /**
- * Payload do alerta de estoque baixo de UM medicamento — ou `null` quando não há o que alertar.
+ * Payload do alerta de estoque baixo de UM medicamento — ou `null` quando não há o que alertar
+ * (sem consumo diário, saldo ainda suficiente ou dias não-finitos).
  *
  * Implementação ÚNICA (050 PR 1b): o legado (`_processUserStockAlert`), o enqueue da outbox e o
  * builder do drain chamam esta mesma função. Sem isso o SC-003 compararia duas implementações do
  * alerta em vez de dois caminhos de entrega do MESMO alerta.
- *
- * 072 (ADR-126): a conta (consumo, dias, limiar, regime, doses restantes) é da previsão canônica
- * `deriveStockForecast` do core — esta função só traduz a previsão no payload. Alerta quando
- * `alertExpected`: dias inteiros `<= 7` (D-6; antes `< 7`) em regime contínuo ou PRN. Compra
- * planejada (105) não alerta — quem cobre é o `supply_reminder`. `steps` ausente ⇒ [] ⇒ só a regra
- * do esparso vale: erra para o lado AUDÍVEL (INV-4).
- *
- * `asOf`: o mesmo "hoje" de antes (`getTodayLocal()` = America/Sao_Paulo); corrigir para o fuso do
- * usuário é da spec 077, não daqui (RC3 E-5).
  */
-export function _computeStockAlertPayload(medicineId, stock, protocols, steps: any[] = [], asOf: string = getTodayLocal()) {
-  const forecast = deriveStockForecast({
-    medicineId,
-    medicine: {
-      dosage_unit: stock.dosageUnit,
-      units_per_ml: stock.unitsPerMl,
-      dosage_per_pill: stock.dosagePerPill,
-    },
-    protocols,
-    quantity: stock.qty,
-    steps,
-    asOf,
-  });
-  if (!forecast.alertExpected) return null;
+export function _computeStockAlertPayload(medicineId, stock, protocols, steps: any[] = []) {
+  // 105 (ex-103-G2, FR-G1..G3): onde zerar o estoque É o plano (mensal, etapa de passagem da
+  // escada) não há alarme de falta — quem cobre é o `supply_reminder`. Predicado ÚNICO do core
+  // (INV-1). `steps` ausente ⇒ [] ⇒ só a regra do esparso vale: erra para o lado AUDÍVEL (INV-2).
+  if (!isStockRunwayAlertExpected(medicineId, protocols, steps)) return null;
+
+  // 012 B4 / ADR-067: consumo diário via core (líquido → ml + cadência da frequência).
+  // Antes somava a dose na unidade de tomada CRUA (UI/gotas) contra o saldo em ml →
+  // `floor(ml ÷ UI)` = "0 dias" falso p/ insulina/GLP-1 (FR-013c). `calculateDailyIntake`
+  // converte intake→ml via doseToMl (ADR-065 unit-aware) e aplica frequencyDailyFactor.
+  const medicine = {
+    dosage_unit: stock.dosageUnit,
+    units_per_ml: stock.unitsPerMl,
+    dosage_per_pill: stock.dosagePerPill,
+  };
+
+  const dailyIntake = calculateDailyIntake(medicineId, protocols, medicine);
+  if (dailyIntake <= 0) return null;
+
+  const daysRemaining = calculateDaysRemaining(stock.qty, dailyIntake);
+  if (!Number.isFinite(daysRemaining) || daysRemaining >= 7) return null;
+
+  // Dose-primário (ADR-067): exibir DOSES restantes (saldo ÷ tamanho de uma tomada),
+  // não o saldo cru em ml rotulado "doses". Líquido converte a dose p/ ml (mesma
+  // unidade do saldo); sólido usa unidades. Densidade ausente → doseToMl devolve a
+  // dose crua (sem chute); fallback p/ saldo cru se não houver tamanho de dose.
+  const rep = protocols[0] || {};
+  const dosePorTomada = rep.dosage_per_intake || 1;
+  const doseSize = isLiquidMedicine(medicine)
+    ? doseToMl(dosePorTomada, rep.intake_unit, medicine.units_per_ml, medicine.dosage_per_pill)
+    : dosePorTomada;
+  // cleanFloat antes do floor (R-277): sem isso a dízima de float (0,3÷0,1=2,9999…)
+  // gera off-by-one no nº de doses exibido.
+  const dosesRemaining = doseSize > 0
+    ? Math.floor(cleanFloat(stock.qty / doseSize))
+    : Math.floor(stock.qty);
 
   return {
     medicineName: stock.name,
-    remaining: forecast.dosesRemaining,
-    daysRemaining: forecast.daysRemaining,
+    remaining: dosesRemaining,
+    daysRemaining
   };
 }
 
