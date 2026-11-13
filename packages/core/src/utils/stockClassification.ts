@@ -209,7 +209,7 @@ export function classifyStockMedicines(params: {
       continue
     }
 
-    const paused = live.some((p) => p.active === false && !isEnded(p, today))
+    const paused = live.some((p) => p.active === false && !isEnded(p, today))  // vigency-gate: ok — rótulo PAUSADO da seção (listagem), não consumo; a previsão usa isProtocolVigentOn
     if (paused || qty > 0) {
       out.push({ medicineId: m.id, section: 'inactive', inUseProtocols: [], paused, scheduled: null })
     }
