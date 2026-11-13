@@ -183,7 +183,7 @@ describe('dispatchNotification — modo sem B (096 / ADR-112)', () => {
     const result = await run({ international_transfer_granted_at: null })
     expect(result.totalDelivered).toBe(2) // o aviso não some — só perde o nome
     expect(sent()).not.toContain('Medicamento Teste')
-    expect(sent()).toContain('Hora do seu remédio')
+    expect(sent()).toContain('Hora do remédio')
   })
 
   it('🔴 leitura das settings falhou ⇒ redige (nunca vaza por erro)', async () => {

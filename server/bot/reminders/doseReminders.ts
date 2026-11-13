@@ -3,6 +3,7 @@ import { createLogger } from '../logger.js';
 import { shouldSendGroupedNotification } from '../../services/notificationDeduplicator.js';
 import { getCurrentTime, getProtocolPeriodPrefilter, getServerTimestamp, parseISO, addMinutes } from '../../utils/dateUtils.js';
 import { partitionDoses } from '../utils/partitionDoses.js';
+import { fetchLastInjectionSites } from './lastInjectionSite.js';
 import { dispatchLiveActivityStarts, startSnoozedLiveActivity } from '../../notifications/apns/dispatchLiveActivityStarts.js';
 import { dispatchLiveActivityLifecycle } from '../../notifications/apns/dispatchLiveActivityLifecycle.js';
 import {
@@ -113,9 +114,9 @@ export async function _fetchDueInstancesForReminder(userIds, windowStart, window
   const selectFields = `
     id, user_id, protocol_id, critical_alarm, scheduled_for, medicine_id,
     notified_at, snoozed_until, la_push_token, tolerance_minutes,
-    medicine:medicines(name, dosage_unit, dosage_per_pill, units_per_ml),
+    medicine:medicines(name, dosage_unit, dosage_per_pill, units_per_ml, presentation),
     protocol:protocols(
-      id, name, dosage_per_intake, intake_unit, treatment_plan_id, medicine_id,
+      id, name, dosage_per_intake, intake_unit, treatment_plan_id, medicine_id, frequency,
       treatment_plan:treatment_plans(id, name)
     )
   `;
@@ -268,6 +269,7 @@ function mapInstanceToDose(inst) {
     dosage_unit?: string;
     dosage_per_pill?: number | string | null;
     units_per_ml?: number | string | null;
+    presentation?: string | null;
   }>(inst, { protocol });
   const medicine = resolvedMedicine || {};
   const protocolName = protocol.name || '';
@@ -289,6 +291,7 @@ function mapInstanceToDose(inst) {
     dosagePerPill,
     intakeUnit: protocol.intake_unit ?? null,
     unitsPerMl: medicine.units_per_ml ?? null,
+    ..._copyAttrsOf(medicine, protocol),
     medicineId,
     critical_alarm: inst.critical_alarm ?? false,
     // Horário ORIGINAL agendado da ocorrência (não o instante de saída do push). Sem isto, doses
@@ -298,6 +301,62 @@ function mapInstanceToDose(inst) {
     ..._claimStateOf(inst),
     ..._surfaceStateOf(inst),
   };
+}
+
+/**
+ * 120 B (ADR-124 · RC-SEC S-1): lote do último local de aplicação, só para os usuários com dose
+ * semanal injetável no minuto. A chave do Map é o `user_id` da OCORRÊNCIA (agrupado em `byUser`).
+ * Fail-open: qualquer falha ⇒ Map vazio ⇒ push sem o trecho.
+ * @private
+ */
+async function _fetchLastSitesForWeeklyInjectables(byUser) {
+  try {
+    const targets = Object.keys(byUser).filter((userId) =>
+      byUser[userId].some((inst) => {
+        const { medicine } = resolveInstanceMedicine<{ presentation?: string | null }>(inst, { protocol: inst.protocol || {} });
+        return medicine?.presentation === 'injetavel' && inst.protocol?.frequency === 'semanal';
+      }),
+    );
+    return await fetchLastInjectionSites(supabase as any, targets); // TODO(040-strict): cliente supabase do server é any
+  } catch (err) {
+    logger.error('Falha no lote de local de aplicação (fail-open)', err);
+    return new Map();
+  }
+}
+
+/**
+ * 120 B: atributos que o texto do push usa. `presentation` sai do snapshot da ocorrência (R-299);
+ * `frequency` é do tratamento (cadência é atributo do protocolo, não do medicamento). @private
+ */
+function _copyAttrsOf(medicine, protocol) {
+  return { presentation: medicine.presentation ?? null, frequency: protocol.frequency ?? null };
+}
+
+/** 120 B: o que a dose única leva ao builder para verbo, título de evento e local. @private */
+function _copyFieldsOf(dose) {
+  return {
+    presentation: dose.presentation ?? null,
+    frequency: dose.frequency ?? null,
+    lastInjectionSite: dose.lastInjectionSite ?? null,
+  };
+}
+
+/**
+ * 120 B: bloco (plano/misc) nunca imprime o local (copy-matrix 3.4) — não o carrega no `data`, que a
+ * DLQ grava cru em falha de entrega (`dispatchNotification.ts` → `enqueueToDlq`). @private
+ */
+function _blockDoses(doses) {
+  return doses.map((dose) => {
+    const rest = { ...dose };
+    delete rest.lastInjectionSite;
+    return rest;
+  });
+}
+
+/** Anexa o local só à dose semanal injetável — nunca a outra dose do mesmo usuário. @private */
+function _withLastSite(dose, lastSite) {
+  const eligible = dose.presentation === 'injetavel' && dose.frequency === 'semanal';
+  return { ...dose, lastInjectionSite: eligible ? lastSite : null };
 }
 
 /**
@@ -427,7 +486,7 @@ async function _dispatchSingleBlock(userId, block, currentHHMM, currentHour, dis
       planName: claimedBlock.planName,
       scheduledTime: scheduledLabel,
       hour: currentHour,
-      doses: claimedBlock.doses,
+      doses: _blockDoses(claimedBlock.doses),
       protocolIds: claimedBlock.doses.map(d => d.protocolId),
       critical_alarm: isBlockCritical,
     };
@@ -437,7 +496,7 @@ async function _dispatchSingleBlock(userId, block, currentHHMM, currentHour, dis
       ...suppression,
       scheduledTime: scheduledLabel,
       hour: currentHour,
-      doses: claimedBlock.doses,
+      doses: _blockDoses(claimedBlock.doses),
       protocolIds: claimedBlock.doses.map(d => d.protocolId),
       critical_alarm: isBlockCritical,
     };
@@ -456,6 +515,8 @@ async function _dispatchSingleBlock(userId, block, currentHHMM, currentHour, dis
       intakeUnit: dose.intakeUnit ?? null,
       hour: currentHour,
       critical_alarm: dose.critical_alarm ?? false,
+      // 120 B (ADR-124): o builder só usa o local quando a dose é semanal injetável.
+      ..._copyFieldsOf(dose),
       doseInstanceIds: dose.instanceId ? [dose.instanceId] : undefined,
     };
   }
@@ -722,10 +783,14 @@ async function _checkRemindersFromInstances(dispatcher, correlationId, gate = nu
       correlationId,
     });
 
+    // 120 B (ADR-124): último local de aplicação, só de quem tem dose semanal injetável no minuto.
+    const lastSites = await _fetchLastSitesForWeeklyInjectables(byUser);
+
     for (const userId of Object.keys(byUser)) {
       try {
         const userInstances = byUser[userId];
-        const dosesNow = userInstances.map(mapInstanceToDose);
+        const lastSite = lastSites.get(userId) ?? null;
+        const dosesNow = userInstances.map((inst) => _withLastSite(mapInstanceToDose(inst), lastSite));
         await _dispatchUserReminderBlocks(
           userId,
           dosesNow,

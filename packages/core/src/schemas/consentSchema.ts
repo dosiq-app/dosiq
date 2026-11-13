@@ -107,7 +107,7 @@ export const TRANSFER_CONSENT_COPY = Object.freeze({
     'O app funciona normalmente. Os alarmes do próprio celular continuam completos, porque não saem ' +
     'do aparelho. As notificações push chegam com texto genérico; assistente e medições ficam desligados.',
   contrastWith: '💊 Losartana 50 mg • 1 comprimido — 08:00',
-  contrastWithout: '💊 Hora do seu remédio',
+  contrastWithout: '💊 Hora do remédio',
   table: [
     {
       use: 'Notificações detalhadas',

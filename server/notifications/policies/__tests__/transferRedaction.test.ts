@@ -84,10 +84,23 @@ describe('redactForNoTransfer — contrato por kind (PO-13)', () => {
     expect(out.deeplink).toBe(original.deeplink)
   })
 
-  it('dose (inclusive crítica) = "💊 Hora do seu remédio" — o título não revela criticidade (Q-3)', () => {
+  it('dose (inclusive crítica) = "💊 Hora do remédio" — o título não revela criticidade (Q-3)', () => {
     for (const kind of ['dose_reminder', 'dose_reminder_by_plan', 'dose_reminder_misc']) {
-      expect(redactForNoTransfer(payloadFor(kind)).title).toBe('💊 Hora do seu remédio')
+      expect(redactForNoTransfer(payloadFor(kind)).title).toBe('💊 Hora do remédio')
     }
+  })
+
+  // 120 B (ADR-124 §4 · PO-SEC-2): o local da última aplicação vai no pushBody do semanal injetável;
+  // sem B ele some junto com o resto do texto — payload REAL do builder, não fixture.
+  it('sem B: local de aplicação some (payload real do builder, semanal injetável)', () => {
+    const real = buildNotificationPayload({
+      kind: 'dose_reminder',
+      data: { medicineName: 'Mounjaro', time: '08:00', dosagePerIntake: 1, dosagePerPill: 2.5, dosageUnit: 'mg', presentation: 'injetavel', frequency: 'semanal', lastInjectionSite: 'abdomen_e' },
+    })
+    expect(real.pushBody).toContain('última: Abdômen (esquerdo)')
+    const out = redactForNoTransfer(real)
+    expect(JSON.stringify(out)).not.toMatch(/Abdômen|abdomen|última|Mounjaro/)
+    expect(out.title).toBe('💊 Hora do remédio')
   })
 
   it('body sai escapado p/ MarkdownV2 (Telegram) e pushBody em texto puro', () => {

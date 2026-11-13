@@ -54,6 +54,17 @@ export function getInjectionSiteLabel(value: string | null | undefined): string 
 }
 
 /**
+ * Rótulo PT ESTRITO: só para os 8 valores canônicos; qualquer outro ⇒ null (spec 120 B, RC-SEC
+ * S-2). Use quando o texto sai do app (push): o valor cru do banco nunca pode virar texto.
+ * @param {string|null|undefined} value
+ * @returns {string|null}
+ */
+export function getKnownInjectionSiteLabel(value: string | null | undefined): string | null {
+  if (!value) return null
+  return Object.prototype.hasOwnProperty.call(SITE_LABELS, value) ? SITE_LABELS[value] : null
+}
+
+/**
  * Hint educacional de absorção de um sítio (não-SaMD). null quando vazio/desconhecido.
  * @param {string|null|undefined} value
  * @returns {string|null}
