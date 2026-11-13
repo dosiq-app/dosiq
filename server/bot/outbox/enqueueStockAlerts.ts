@@ -48,7 +48,7 @@ function buildVolumeEntries(
     const protocols = protocolsByMedicine[key] || [];
     if (protocols.length === 0) continue;
 
-    // Mesmo predicado do legado (daysRemaining < 7, consumo diário > 0) — uma implementação só.
+    // Mesmo predicado do legado (previsão canônica 072: dias inteiros <= 7, consumo > 0) — uma implementação só.
     // 105 (E-7): o predicado da escada/esparso cala o volume onde o eixo de COMPRA atua — os dois
     // consultam o MESMO predicado, então o mesmo medicamento nunca gera os dois no mesmo dia.
     const payload = _computeStockAlertPayload(medicineId, stockByMedicine[key], protocols, stepsByUser[userId] || []);

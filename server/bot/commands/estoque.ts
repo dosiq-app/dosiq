@@ -1,7 +1,7 @@
 import { supabase } from '../../services/supabase.js';
 import { getUserIdByChatId } from '../../services/userService.js';
-import { calculateDaysRemaining, formatStockStatus } from '../../utils/formatters.js';
-import { calculateDailyIntake, stockDoseMetrics, isProtocolVigentOn, getTodayLocal } from '@dosiq/core';
+import { formatStockStatus } from '../../utils/formatters.js';
+import { deriveStockForecast, isProtocolVigentOn, getTodayLocal } from '@dosiq/core';
 import { replyIfStockDisabled } from '../services/stockTrackingGuard.js';
 
 export async function handleEstoque(bot, msg) {
@@ -55,16 +55,22 @@ export async function handleEstoque(bot, msg) {
       const totalQuantity = (medicine.stock || []).reduce((sum, s) => sum + s.quantity, 0);
 
 
-      // 012 B4 / ADR-067 + FR-013c: consumo diário via core (converte líquido p/ ml +
-      // aplica frequencyDailyFactor). Antes somava a dose crua (UI/gotas) contra o saldo
-      // em ml → "0 dias" falso p/ insulina/GLP-1, igual ao cron (slice 1).
-      const dailyUsage = calculateDailyIntake(medicine.id, activeProtocols, medicine, today);
-      const daysRemaining = calculateDaysRemaining(totalQuantity, dailyUsage);
-      const doseMetrics = stockDoseMetrics(totalQuantity, activeProtocols, medicine, today);
+      // 072 (ADR-126): consumo, dias e "estoque baixo" vêm da previsão canônica do core. Sem
+      // `titration_steps` aqui (D-3) ⇒ steps=[] ⇒ só a regra do esparso decide o regime (INV-4).
+      // O aviso segue o critério de antes (dias inteiros <= 7, saldo zero incluso), sem olhar o
+      // regime: o /estoque é consulta, não alarme.
+      const forecast = deriveStockForecast({
+        medicineId: medicine.id,
+        medicine,
+        protocols: activeProtocols,
+        quantity: totalQuantity,
+        steps: [],
+        asOf: today,
+      });
+      // A previsão carrega `dosesRemaining` + `isDaily` — o formato dose-primário (ADR-067).
+      message += formatStockStatus(medicine, totalQuantity, forecast.daysRemaining, forecast) + '\n';
 
-      message += formatStockStatus(medicine, totalQuantity, daysRemaining, doseMetrics) + '\n';
-
-      if (daysRemaining !== null && daysRemaining <= 7) {
+      if (forecast.isCritical) {
         hasLowStock = true;
       }
     }
