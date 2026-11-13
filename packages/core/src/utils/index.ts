@@ -161,6 +161,7 @@ export {
   formatActiveIngredientHint,
   formatActiveIngredientFormula,
   formatActiveIngredientShort,
+  activeIngredientParts,
   isLiquidMedicine,
   isLiquidDosageUnit,
   stockUnitLabel,
@@ -172,6 +173,7 @@ export {
   densityFor,
   doseToMl,
 } from './doseUnit'
+export type { DoseParts } from './doseUnit'
 
 // Cartão de emergência — montador único do texto do QR (spec 074)
 export {

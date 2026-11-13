@@ -8,7 +8,8 @@
  * no `getLadderForProtocol` do mobile), o tratamento, os cadastros e as contagens diárias de dose
  * (RPC `report_dose_days`). Sem copy de UI além do rótulo de dose que o relatório já usa.
  */
-import { formatDosePerIntake, formatStepDose, localDayOf, shiftDay } from './report/reportFormat'
+import { formatDosePerIntake, formatStepDose, formatStepDoseShort, localDayOf, shiftDay } from './report/reportFormat'
+import type { DoseParts } from '../utils/doseUnit'
 import type { ReportMedicineRow, ReportProtocolRow, ReportTitrationStepRow } from './report/reportTypes'
 import { isInjectable } from '../utils/injectionSites'
 import {
@@ -29,7 +30,26 @@ export type MeasureBridgeMedicine = Pick<
 export type MeasureBridgeProtocol = Pick<
   ReportProtocolRow,
   'id' | 'medicine_id' | 'frequency' | 'intake_unit' | 'dosage_per_intake' | 'start_date'
->
+> & {
+  /** Medida escolhida (spec 100). `null`/ausente = legado não decidido ⇒ predicado da 069/097. */
+  tracked_measure?: string | null
+}
+
+/**
+ * Elegibilidade da série para `biomarkerType`. A escolha gravada (spec 100) MANDA; o predicado da
+ * 069/097 (semanal OU injetável) é só rede de contenção do legado sem escolha (`null` ou chave
+ * ausente) — nunca filtro por cima da escolha (QA 2026-11-12: GLP-1 oral diário com `peso` perdia o
+ * card e o bloco do PDF; escada com `glicemia` ganhava bloco de peso).
+ */
+export function isMeasureSeriesEligible(
+  biomarkerType: string,
+  protocol: Pick<MeasureBridgeProtocol, 'frequency' | 'tracked_measure'>,
+  medicine: MeasureBridgeMedicine | null
+): boolean {
+  const chosen = protocol.tracked_measure
+  if (chosen != null) return chosen === biomarkerType
+  return biomarkerType === 'peso' && (isInjectable(medicine) || protocol.frequency === 'semanal')
+}
 
 export type MeasureBridgeStepRow = Pick<
   ReportTitrationStepRow,
@@ -45,6 +65,8 @@ export interface MeasureBridgeDoseDay {
 
 export interface LadderStepDays<M> {
   doseLabel: string
+  /** Forma curta estruturada (o que a titulação muda — massa do ativo quando calculável). */
+  doseShort: DoseParts | null
   /** `null` = contínua (última etapa sem fim). */
   durationDays: number | null
   /** Dia local de início (real ou previsto). */
@@ -73,6 +95,7 @@ export function ladderStepDays<M extends MeasureBridgeMedicine>(
   return ordered.map((step) => {
     const stepMedicine = medicines.find((m) => m.id === step.medicine_id) ?? protoMedicine
     const dose = formatStepDose(step, protocol, stepMedicine) ?? '-'
+    const doseShort = formatStepDoseShort(step, protocol, stepMedicine)
     const duration = Number(step.duration_days)
     const durationDays = Number.isFinite(duration) && duration > 0 ? duration : null
     const startedDay = localDayOf(step.started_at, timezone)
@@ -80,7 +103,7 @@ export function ladderStepDays<M extends MeasureBridgeMedicine>(
     const endedDay = localDayOf(step.ended_at, timezone)
     const end = endedDay ?? (start && durationDays ? shiftDay(start, durationDays) : null)
     prevEnd = end
-    return { doseLabel: dose, durationDays, start, end, planned: startedDay === null, medicine: stepMedicine }
+    return { doseLabel: dose, doseShort, durationDays, start, end, planned: startedDay === null, medicine: stepMedicine }
   })
 }
 
@@ -117,6 +140,7 @@ function _seriesSteps(
     return {
       seriesSteps: days.map((d, i) => ({
         doseLabel: d.doseLabel,
+        doseShort: d.doseShort,
         position: i + 1,
         start: d.planned ? null : d.start,
         end: d.end,
@@ -171,8 +195,8 @@ export function splitDayWindow(
 }
 
 /**
- * Série do tratamento, ou `null` se o tratamento não é elegível: semanal OU injetável (regra do PDF
- * da 097). O card da 069 filtra antes, só semanal (R-11 emendada 2026-10-05; spec 100 decide a unificação).
+ * Série do tratamento, ou `null` se o tratamento não é elegível (`isMeasureSeriesEligible`): a
+ * medida escolhida (spec 100) manda; semanal OU injetável só vale para legado sem escolha.
  *
  * - Escada com 2+ etapas: uma etapa por degrau; prevista não vira faixa.
  * - Sem escada ou escada de 1 etapa (E-B6): 1 etapa sintética desde `start_date`, a vigente (AC-8b).
@@ -192,7 +216,7 @@ export function buildProtocolMeasureSeries({
   floor,
 }: BuildProtocolMeasureSeriesArgs): ProtocolMeasureSeries | null {
   const medicine = medicines.find((m) => m.id === protocol.medicine_id) ?? null
-  if (!isInjectable(medicine) && protocol.frequency !== 'semanal') return null
+  if (!isMeasureSeriesEligible(biomarkerType, protocol, medicine)) return null
 
   const { seriesSteps, firstStart } = _seriesSteps(protocol, medicines, steps, timezone, medicine)
 

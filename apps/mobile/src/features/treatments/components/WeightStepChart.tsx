@@ -52,12 +52,13 @@ export default function WeightStepChart({ series, today, showBands }: WeightStep
     const raw = series.steps.map((s) => {
       const left = xFor(s.start)
       const right = s.end ? xFor(s.end) : width
-      return { key: s.index, left, width: Math.max(0, right - left), dose: s.dose }
+      return { key: s.index, left, width: Math.max(0, right - left), dose: s.dose, doseShort: s.doseShort ?? null }
     })
     const anyShort = raw.some((b) => b.width < BAND_SHORT_PX)
+    // Curto = o que a titulação muda (massa do ativo, do core); sem a forma estruturada, corta o texto.
     return raw.map((b) => ({
       ...b,
-      label: b.width < BAND_HIDE_PX ? null : anyShort ? shortDoseLabel(b.dose) : b.dose,
+      label: b.width < BAND_HIDE_PX ? null : anyShort ? (b.doseShort?.value ?? shortDoseLabel(b.dose)) : b.dose,
     }))
     // xFor depende de width/domínio, já nas deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,7 +82,14 @@ export default function WeightStepChart({ series, today, showBands }: WeightStep
   }, [series, showBands, width, domainFrom, today, spanDays])
 
   // Rótulo encurtado ⇒ a unidade sai da faixa e vai para uma legenda (FR-013).
-  const shortUnit = bands.some((b) => b.label && b.label !== b.dose) ? bands[0]?.dose.split(' ')[1] : null
+  // Uma unidade só para todas as faixas encurtadas; unidades diferentes ⇒ sem legenda (não inventa
+  // uma unidade comum que não existe).
+  const shortUnit = useMemo(() => {
+    const units = new Set(
+      bands.filter((b) => b.label && b.label !== b.dose).map((b) => b.doseShort?.unit ?? b.dose.split(' ')[1] ?? '')
+    )
+    return units.size === 1 ? [...units][0] || null : null
+  }, [bands])
 
   const a11yLabel = useMemo(() => formatMeasureSeriesA11y(series), [series])
 

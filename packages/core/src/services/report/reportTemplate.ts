@@ -376,11 +376,14 @@ function weightChart(ladder: ReportLadder, period: ReportWindow): string {
       const x0 = x(s.start)
       const x1 = x(s.end ?? window.to)
       const fill = i % 2 === 0 ? '#f3f4f6' : '#e5e7eb'
-      // Rótulo só se couber na faixa (~5 px por caractere a 9 px); senão a dose fica nas linhas abaixo.
-      const fits = x1 - x0 >= s.dose.length * 5 + 6
+      // Rótulo só se couber na faixa (~5 px por caractere a 9 px): o completo, senão a forma curta
+      // (massa do ativo, a mesma do card); senão a dose fica nas linhas abaixo.
+      const short = s.doseShort ? `${s.doseShort.value} ${s.doseShort.unit}`.trim() : null
+      const room = x1 - x0
+      const label = room >= s.dose.length * 5 + 6 ? s.dose : short && room >= short.length * 5 + 6 ? short : null
       return (
         `<rect x="${x0.toFixed(1)}" y="4" width="${Math.max(1, x1 - x0).toFixed(1)}" height="${plotH}" fill="${fill}"/>` +
-        (fits ? `<text x="${(x0 + 3).toFixed(1)}" y="13" font-size="9" fill="#374151">${e(s.dose)}</text>` : '')
+        (label ? `<text x="${(x0 + 3).toFixed(1)}" y="13" font-size="9" fill="#374151">${e(label)}</text>` : '')
       )
     })
     .join('')

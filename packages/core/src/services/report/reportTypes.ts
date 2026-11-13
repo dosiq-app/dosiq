@@ -33,6 +33,8 @@ export interface ReportProtocolRow {
   active: boolean | null
   paused_at: string | null
   archived_at: string | null
+  /** Medida escolhida (spec 100); `null` = legado não decidido. */
+  tracked_measure?: string | null
 }
 
 export interface ReportMedicineRow {

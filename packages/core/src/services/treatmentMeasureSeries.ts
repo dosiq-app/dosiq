@@ -11,6 +11,7 @@
  * - Etapa iniciada antes da janela é cortada no início (`clipped`).
  */
 import { localDayOf, shiftDay, daysBetween } from './report/reportFormat'
+import type { DoseParts } from '../utils/doseUnit'
 
 export interface MeasureInput {
   type: string
@@ -20,6 +21,8 @@ export interface MeasureInput {
 
 export interface MeasureStepInput {
   doseLabel: string
+  /** Forma curta estruturada da dose (rótulo da faixa do gráfico); ausente = cortar o rótulo (legado). */
+  doseShort?: DoseParts | null
   /** Posição real na escada (1-based). Ausente = conta só as etapas da janela (legado). */
   position?: number
   /** Dia local de início; `null` = sem data (etapa não iniciada — ignorada). */
@@ -38,6 +41,8 @@ export interface DoseDayCount {
 export interface MeasureSeriesStep {
   index: number
   dose: string
+  /** Forma curta estruturada da dose; ausente/null = rótulo cortado (fallback). */
+  doseShort?: DoseParts | null
   start: string
   end: string | null
   /** A etapa começou antes da janela e foi cortada. */
@@ -133,6 +138,7 @@ export function buildTreatmentMeasureSeries({
       // Numera pela escada, não pela janela: etapa 3 cortada pela janela continua "Etapa 3".
       index: s.position ?? seriesSteps.length + 1,
       dose: s.doseLabel,
+      ...(s.doseShort ? { doseShort: s.doseShort } : {}),
       start: clip.start,
       end: clip.end,
       clipped: (s.start as string) < from,

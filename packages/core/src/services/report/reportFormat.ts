@@ -5,12 +5,15 @@
 import { addDays, formatLocalDate, getUserTime, parseISO, parseLocalDate } from '../../utils/dateUtils'
 import { cycleDoseAmount, getDoseCycle } from '../../utils/doseCycle'
 import {
+  activeIngredientParts,
   formatActiveIngredientShort,
   formatDose,
   formatIntakeDose,
   formatNumberPtBR,
   isLiquidMedicine,
+  type DoseParts,
 } from '../../utils/doseUnit'
+import { INTAKE_UNIT_LABELS } from '../../schemas/protocolSchema'
 import { isInjectable } from '../../utils/injectionSites'
 import type { ReportMedicineRow, ReportProtocolRow, ReportTitrationStepRow, ReportWindow } from './reportTypes'
 
@@ -112,6 +115,31 @@ export function formatStepDose(
   }
   const unit = step.intake_unit ?? protocol?.intake_unit ?? null
   return formatIntakeDose(qty, unit, medicine) || null
+}
+
+/**
+ * Forma CURTA e estruturada da dose da etapa — o que a titulação muda. Mesmos ramos de
+ * `formatStepDose`: sólido (comprimido ou sem unidade de tomada) ⇒ massa do ativo pelo MESMO núcleo
+ * do rótulo longo (`activeIngredientParts`), senão a contagem; líquido ⇒ a dose na unidade de tomada
+ * (mg/UI já são a dose; gotas/mL ficam na contagem — não há conversão para massa no core).
+ * Rybelsus 1 cp de 14 mg ⇒ `{ value: '14', unit: 'mg' }`; Mounjaro 2,5 mg ⇒ `{ value: '2,5', unit: 'mg' }`.
+ */
+export function formatStepDoseShort(
+  step: Pick<ReportTitrationStepRow, 'dose' | 'intake_unit'>,
+  protocol: Pick<ReportProtocolRow, 'intake_unit'> | null,
+  medicine: DoseMedicine | null
+): DoseParts | null {
+  if (step.dose == null) return null
+  const qty = Number(step.dose)
+  if (!Number.isFinite(qty)) return null
+  if (step.intake_unit === 'cp' || !isLiquidMedicine(medicine)) {
+    const mass = activeIngredientParts(qty, medicine?.dosage_per_pill, medicine?.dosage_unit)
+    if (mass) return mass
+    return { value: formatNumberPtBR(qty), unit: step.intake_unit === 'cp' ? 'comprimidos' : 'un.' }
+  }
+  const unit = step.intake_unit ?? protocol?.intake_unit ?? 'ml'
+  const label = INTAKE_UNIT_LABELS[unit as keyof typeof INTAKE_UNIT_LABELS] ?? unit
+  return { value: formatNumberPtBR(qty), unit: label }
 }
 
 /** Primeiro horário do tratamento (ordem da §3.3), ou '99:99' sem horário. */

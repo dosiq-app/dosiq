@@ -132,6 +132,7 @@ export { shiftDay, daysBetween } from './report/reportFormat'
 // Ponte tratamento/escada → série (069 Ba), compartilhada pelo relatório e pelo card do tratamento
 export {
   buildProtocolMeasureSeries,
+  isMeasureSeriesEligible,
   ladderStepDays,
   protocolMeasureWindowStart,
   splitDayWindow,
