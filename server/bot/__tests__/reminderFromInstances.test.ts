@@ -471,6 +471,33 @@ describe('checkRemindersViaDispatcher — dose_instances path', () => {
         expect(motivoDespachado()).toBe('native_alarm');
       });
 
+      // 120 B (smoke X-3, QA 13/11 20:45): o alarme toca, sai do conjunto armado e o app emite
+      // `capable=false` 15 s depois; o tick de 20:45:21 cortava a prova ⇒ 3ª superfície. O negativo só
+      // conta se for ANTERIOR ao disparo da dose (teto = scheduled_for, ou snoozed_until se adiada).
+      it('🟢 X-3: leitura do negativo tem teto no disparo da dose (scheduled_for) ⇒ negativo pós-disparo não corta', async () => {
+        process.env.REMINDER_SOURCE = 'instances';
+        armarCiclo({
+          instancias: [instanciaCritica('inst-1')],
+          evidencia: ['inst-1'],
+          negativo: [],          // o banco aplica o teto: o negativo de 15 s depois não volta
+        });
+
+        await checkRemindersViaDispatcher(mockDispatcher, 'corr-x3');
+
+        expect(mockSupabase.lt).toHaveBeenCalledWith('created_at', '2026-06-30T15:15:00.000Z');
+        expect(motivoDespachado()).toBe('native_alarm');
+      });
+
+      it('🟢 X-3: dose ADIADA usa snoozed_until como disparo', async () => {
+        process.env.REMINDER_SOURCE = 'instances';
+        const adiada = { ...instanciaCritica('inst-1'), snoozed_until: '2026-06-30T15:25:00.000Z' };
+        armarCiclo({ instancias: [adiada], evidencia: ['inst-1'], soneca: [], negativo: [] });
+
+        await checkRemindersViaDispatcher(mockDispatcher, 'corr-x3-soneca');
+
+        expect(mockSupabase.lt).toHaveBeenCalledWith('created_at', '2026-06-30T15:25:00.000Z');
+      });
+
       it('🔴 erro ao ler o negativo ⇒ corta em NOW ⇒ push SAI (fail-open) [PO-D2-1]', async () => {
         process.env.REMINDER_SOURCE = 'instances';
         armarCiclo({

@@ -17,6 +17,7 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   - **Reenvio** não muda mais o texto: some o "(Reenvio)" e o "Esta é uma nova tentativa de envio".
   - Botão do Telegram na dose única: "✅ Registrar" (era "✅ Tomar").
   - Sem a autorização de envio para fora do Brasil, o texto genérico passa a ser "💊 Hora do remédio" (era "Hora do seu remédio").
+- **Backend/Infra** (`Fixed`): dose essencial com alarme do celular deixava de suprimir o push quando o aplicativo avisava, segundos depois do alarme tocar, que "não havia alarme armado" (o alarme que acabou de tocar sai da lista). O aviso emitido depois do horário da dose deixa de contar contra aquela dose, e não sai o push repetido junto do alarme e da Live Activity. Encontrado no teste da 0.34.22; em produção, 0 casos nos últimos 30 dias.
 - **Web** (`Changed`, **patch** 4.39.4 → **4.39.5**): o exemplo do push sem autorização, nos detalhes do consentimento, acompanha o texto novo. **Mobile**: o mesmo exemplo entra no próximo build de loja (sem bump nesta fatia).
 - **Core:** `doseVerb` (verbo pela apresentação, fonte única para o servidor e para a fatia A) e `getKnownInjectionSiteLabel` (rótulo só dos 8 locais canônicos; valor desconhecido ⇒ nada).
 

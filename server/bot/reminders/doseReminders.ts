@@ -325,6 +325,19 @@ async function _fetchLastSitesForWeeklyInjectables(byUser) {
 }
 
 /**
+ * 120 B (smoke X-3): instante do disparo mais cedo entre as doses críticas do ciclo — `snoozedUntil`
+ * se adiada, senão `scheduledFor`. Teto da leitura do boletim negativo. Sem data legível ⇒ null (sem
+ * teto: comportamento anterior). @private
+ */
+function _earliestFireAt(criticalDoses) {
+  const times = criticalDoses
+    .map(d => d.snoozedUntil || d.scheduledFor)
+    .filter(t => typeof t === 'string' && !Number.isNaN(Date.parse(t)))
+    .sort((a, b) => Date.parse(a) - Date.parse(b));
+  return times[0] ?? null;
+}
+
+/**
  * 120 B: atributos que o texto do push usa. `presentation` sai do snapshot da ocorrência (R-299);
  * `frequency` é do tratamento (cadência é atributo do protocolo, não do medicamento). @private
  */
@@ -632,7 +645,8 @@ async function _loadCriticalEvidence(userId, criticalDoses) {
   // a leitura não muda nada e não é paga.
   const anyCovered = criticalDoses.some(d => _isDoseCovered(d, evidenceByInstance, snoozeEvidence));
   if (anyCovered || !isCapable) {
-    const cut = await findLatestIncapableAt(supabase, userId);
+    // 120 B (X-3): negativo emitido depois do disparo não corta a prova da dose que já tocou.
+    const cut = await findLatestIncapableAt(supabase, userId, undefined, _earliestFireAt(criticalDoses));
     if (cut) {
       // Releitura com corte (e não filtro em memória): os leitores devolvem `Set`, sem `created_at`.
       // O negativo é declaração explícita "não alarmo" de app 0.34.2+ ⇒ a ausência de prova passa a
