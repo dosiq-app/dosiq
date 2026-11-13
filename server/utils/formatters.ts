@@ -11,13 +11,6 @@ export function getCurrentTime() {
   return getLocalTime();
 }
 
-/**
- * Calculate days remaining based on stock and daily usage
- */
-export function calculateDaysRemaining(totalQuantity, dailyUsage) {
-  if (!dailyUsage || dailyUsage <= 0) return null;
-  return Math.floor(totalQuantity / dailyUsage);
-}
 
 /**
  * Formata mensagem de status do estoque.

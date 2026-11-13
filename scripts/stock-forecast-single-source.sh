@@ -33,7 +33,6 @@ EXCEPTIONS=(
   "packages/core/src/utils/stockForecast.ts|a canônica"
   "packages/core/src/utils/adherenceLogic.ts|define calculateDailyIntake/calculateDaysRemaining (primitivos)"
   "packages/core/src/utils/stock.ts|define stockDoseMetrics/resolveStockStatus (primitivos)"
-  "server/utils/formatters.ts|define o calculateDaysRemaining legado do bot; some com o doseActions"
   "packages/core/src/services/report/reportSections/stock.ts|072 C-6: conceito próprio (soon, piso 0) — relatório 097"
   "apps/mobile/src/features/stock/hooks/_stockDataTransformer.ts|117 Fatia B migra para a canônica"
   "apps/mobile/src/features/stock/screens/StockDetailScreen.tsx|117 Fatia B migra para a canônica"
@@ -42,7 +41,6 @@ EXCEPTIONS=(
   "apps/web/src/features/stock/hooks/useStockData.ts|web legado congelado (072 D-4)"
   "apps/web/src/features/dashboard/hooks/_useDashboardDerived.ts|web legado congelado (072 D-4)"
   "apps/web/src/features/protocols/hooks/_treatmentListUtils.ts|web legado congelado (072 D-4)"
-  "server/bot/callbacks/doseActions.ts|DÍVIDA DECLARADA 072: conta própria no recibo de dose (sem líquido/frequência) — decisão do PO pendente"
 )
 
 is_exception() {
