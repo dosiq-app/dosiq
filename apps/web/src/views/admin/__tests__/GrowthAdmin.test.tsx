@@ -23,6 +23,9 @@ function analytics({ users, withProtocols, glp1Pct, featurePct }: { users: numbe
     totals: {
       users, new_7d: 1, new_30d: 2, users_with_protocols: withProtocols, protocols: withProtocols,
       push_active_users: 1, push_active_pct: glp1Pct, stock_users_pct: 0, critical_alarm_users_pct: 0,
+      signups: users + 10, signups_unconfirmed: 10, signups_new_7d: 3, signups_new_30d: 4,
+      confirmation_pct: Math.round((1000 * users) / (users + 10)) / 10,
+      push_treated_users: Math.round(withProtocols / 2), push_treated_pct: withProtocols ? 50 : 0,
     },
     class_distribution: withProtocols ? [{ class_code: 'A10S', label: 'Antidiabeticos', wedge: 'glp1_antiobesidade', users: 1, protocols: 1, users_pct: glp1Pct }] : [],
     wedge: {
@@ -115,4 +118,29 @@ it('RC5: durante a troca de modo o conteúdo antigo fica marcado como ocupado', 
   resolveCohort(cohortOf(40))
   await screen.findByText(/cadastros desde/)
   expect(container.querySelector('.growth-admin__content')).toHaveAttribute('aria-busy', 'false')
+})
+
+describe('GrowthAdmin — funil de 5 KPIs (spec 123, PO-123-11)', () => {
+  it('ordem Cadastros → Usuários → Com tratamento → Push ativo → Wedge; push sobre com tratamento', async () => {
+    svc.load.mockResolvedValueOnce({ base: BASE, cohort: null })
+    render(<GrowthAdmin />)
+    const kpis = await screen.findByRole('region', { name: 'Indicadores' })
+    const labels = Array.from(kpis.querySelectorAll('.growth-kpi__label')).map((el) => el.textContent?.trim())
+    expect(labels).toEqual(['Cadastros', 'Usuários', 'Com tratamento', 'Push ativo', 'Wedge GLP-1'])
+    const card = (label: string) => within(kpis).getByText(label).closest('.growth-kpi') as HTMLElement
+    expect(within(card('Cadastros')).getByText('105')).toBeTruthy()
+    expect(within(card('Cadastros')).getByText('90,5% confirmam · 10 sem confirmar')).toBeTruthy()
+    expect(within(card('Push ativo')).getByText('30 de 60 usuários com tratamento')).toBeTruthy()
+    expect(card('Push ativo').textContent).toContain('50%')
+  })
+
+  it('cadastro zerado não vira NaN', async () => {
+    const vazio = analytics({ users: 0, withProtocols: 0, glp1Pct: 0, featurePct: 0 })
+    vazio.totals = { ...vazio.totals, signups: 0, signups_unconfirmed: 0, confirmation_pct: 0 }
+    svc.load.mockResolvedValueOnce({ base: vazio, cohort: null })
+    render(<GrowthAdmin />)
+    const kpis = await screen.findByRole('region', { name: 'Indicadores' })
+    expect(kpis.textContent).not.toContain('NaN')
+    expect(kpis.textContent).toContain('0% confirmam · 0 sem confirmar')
+  })
 })

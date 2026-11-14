@@ -16,10 +16,17 @@ export const APPROVAL_WINDOW_DAYS = 7;
 /** Onboarding sem consentimento A por 30 dias entra na fila (FR-009). */
 export const ONBOARDING_GRACE_DAYS = 30;
 /**
- * Cadastro sem e-mail confirmado há 30 dias entra na fila SEM onda 2 nem avisos (FR-016): o
- * endereço pode não existir ou ser de outra pessoa. Vale para qualquer data de criação.
+ * Cadastro sem e-mail confirmado há 3 dias entra na fila SEM onda 2 nem avisos (107 FR-016,
+ * prazo da spec 123 FR-008): o endereço pode não existir ou ser de outra pessoa. Em prod
+ * ninguém confirmou depois de 72 h. `daysBetween` arredonda para baixo e o job é diário ⇒
+ * janela real de 72–96 h. Vale para qualquer data de criação.
  */
-export const UNCONFIRMED_GRACE_DAYS = 30;
+export const UNCONFIRMED_GRACE_DAYS = 3;
+/**
+ * Acima de quantos cadastros não confirmados nas últimas 24 h o push diário ao admin ganha a
+ * linha de pico (spec 123 FR-013). Alarme de anomalia (bot, typo em massa), não da taxa normal.
+ */
+export const UNCONFIRMED_SPIKE_THRESHOLD = 20;
 
 /** `void_reason` gravado quando a reconferência diz que a conta não é mais elegível. */
 export function voidReasonFor(state: string): string {

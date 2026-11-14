@@ -10,6 +10,7 @@ import { GROWTH_COHORTS, SMALL_SAMPLE_THRESHOLD, type GrowthCohortKey } from '@d
 
 export type PlatformFilter = 'all' | 'ios' | 'android' | 'web' | 'none'
 export type PushFilter = 'all' | 'active' | 'inactive'
+export type OnboardingFilter = 'all' | 'pending' | 'done'
 
 export type GrowthTreatment = {
   protocol_id: string
@@ -59,6 +60,15 @@ export type GrowthAnalytics = {
     push_active_pct: number
     stock_users_pct: number
     critical_alarm_users_pct: number
+    /** Spec 123 FR-014 — funil de cadastro (contas criadas, inclusive não confirmadas). Só contagens. */
+    signups: number
+    signups_unconfirmed: number
+    signups_new_7d: number
+    signups_new_30d: number
+    confirmation_pct: number
+    /** Spec 123 FR-015 — push ativo entre quem tem tratamento ativo. */
+    push_treated_users: number
+    push_treated_pct: number
   }
   class_distribution: Array<{ class_code: string; label: string | null; wedge: GrowthTreatment['wedge']; users: number; protocols: number; users_pct: number }>
   wedge: Record<GrowthTreatment['wedge'], GrowthRate>
@@ -88,10 +98,13 @@ export function baselineLabel(pct: number | null | undefined): string | null {
   return `base ${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
 }
 
-export type GrowthFilters = { query: string; platform: PlatformFilter; push: PushFilter }
+export type GrowthFilters = { query: string; platform: PlatformFilter; push: PushFilter; onboarding?: OnboardingFilter }
 
-/** Filtro puro da tabela: busca por e-mail ou id (sem diferenciar caixa) + plataforma já usada + push. */
-export function filterGrowthUsers(users: GrowthUser[] = [], { query, platform, push }: GrowthFilters): GrowthUser[] {
+/**
+ * Filtro puro da tabela: busca por e-mail ou id (sem diferenciar caixa) + plataforma já usada + push
+ * + onboarding (spec 123 FR-016: com as não confirmadas fora, "pendente" = confirmou e não terminou).
+ */
+export function filterGrowthUsers(users: GrowthUser[] = [], { query, platform, push, onboarding = 'all' }: GrowthFilters): GrowthUser[] {
   const q = query.trim().toLowerCase()
   return users.filter((u) => {
     if (q && !(u.email ?? '').toLowerCase().includes(q) && !u.user_id.toLowerCase().includes(q)) return false
@@ -100,6 +113,8 @@ export function filterGrowthUsers(users: GrowthUser[] = [], { query, platform, p
     if (platform !== 'all' && platform !== 'none' && !used.includes(platform)) return false
     if (push === 'active' && !u.push_active) return false
     if (push === 'inactive' && u.push_active) return false
+    if (onboarding === 'pending' && u.onboarding_completed) return false
+    if (onboarding === 'done' && !u.onboarding_completed) return false
     return true
   })
 }
@@ -112,6 +127,7 @@ export function useGrowthAdminState() {
   const [searchQuery, setSearchQuery] = useState('')
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all')
   const [pushFilter, setPushFilter] = useState<PushFilter>('all')
+  const [onboardingFilter, setOnboardingFilter] = useState<OnboardingFilter>('all')
   const [expandedUserIds, setExpandedUserIds] = useState<Set<string>>(() => new Set())
 
   // Pedido mais recente: resposta de um modo que não é mais o atual é descartada (G-2, analysis-A).
@@ -127,10 +143,10 @@ export function useGrowthAdminState() {
   )
 
   const filteredUsers = useMemo(
-    () => filterGrowthUsers(data?.users ?? [], { query: searchQuery, platform: platformFilter, push: pushFilter }),
-    [data, searchQuery, platformFilter, pushFilter]
+    () => filterGrowthUsers(data?.users ?? [], { query: searchQuery, platform: platformFilter, push: pushFilter, onboarding: onboardingFilter }),
+    [data, searchQuery, platformFilter, pushFilter, onboardingFilter]
   )
-  const hasActiveFilters = searchQuery.trim() !== '' || platformFilter !== 'all' || pushFilter !== 'all'
+  const hasActiveFilters = searchQuery.trim() !== '' || platformFilter !== 'all' || pushFilter !== 'all' || onboardingFilter !== 'all'
 
   const load = useCallback(async () => {
     const seq = ++requestSeq.current
@@ -168,6 +184,7 @@ export function useGrowthAdminState() {
     setSearchQuery('')
     setPlatformFilter('all')
     setPushFilter('all')
+    setOnboardingFilter('all')
   }, [])
 
   return {
@@ -185,6 +202,8 @@ export function useGrowthAdminState() {
     setPlatformFilter,
     pushFilter,
     setPushFilter,
+    onboardingFilter,
+    setOnboardingFilter,
     filteredUsers,
     hasActiveFilters,
     resetFilters,

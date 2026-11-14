@@ -158,6 +158,8 @@ export const pruneAdminAlertDataSchema = z.object({
   red: z.number().int().nonnegative(),
   /** Avisos D+60/D+83 (ou onda 2) que precisam sair por e-mail e ainda não foram marcados. */
   emailsDue: z.number().int().nonnegative(),
+  /** Cadastros não confirmados em 24 h quando acima do limite (spec 123 FR-013); 0 = sem pico. Opcional: payload antigo segue válido. */
+  unconfirmed24h: z.number().int().nonnegative().default(0),
 });
 
 // Schemas para ações interativas (Gate 4 preliminar)

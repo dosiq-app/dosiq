@@ -106,7 +106,8 @@
 /* ---------- KPIs ---------- */
 .growth-kpis {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  /* Spec 123 FR-014: funil de 5 cards. Abaixo de 1280px (sidebar de 256px) quebra 3 → 2 → 1. */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 1rem;
 }
@@ -545,6 +546,12 @@
 }
 
 /* ---------- Tablet (768–1024px) ---------- */
+@media (max-width: 1279px) {
+  .growth-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 1024px) {
   .growth-kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));

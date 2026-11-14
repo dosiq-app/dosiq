@@ -38,6 +38,7 @@ import {
   ONBOARDING_RULE_START,
   PRUNE_CLOCK_DAYS,
   UNCONFIRMED_GRACE_DAYS,
+  UNCONFIRMED_SPIKE_THRESHOLD,
   WAVE2_GRACE_DAYS,
   voidReasonFor,
 } from './pruneRules.js';
@@ -69,6 +70,8 @@ export interface PruneEnqueueResult {
   emailsDue: number;
   overdue: number;
   red: number;
+  /** Cadastros não confirmados criados nas últimas 24 h (spec 123 FR-013). Só contagem. */
+  unconfirmed24h: number;
   adminAlerted: boolean;
   aborted?: string;
 }
@@ -185,6 +188,12 @@ function unconsentedClock(
   return { reason: 'legacy_no_consent', scheduled_at: addDays(markedAt, WAVE2_GRACE_DAYS) };
 }
 
+/** Criada há menos de 24 h (epoch; futuro não conta). */
+function isWithin24h(createdAt: string, now: Date): boolean {
+  const age = now.getTime() - Date.parse(createdAt);
+  return age >= 0 && age < 86_400_000;
+}
+
 /** Etapa 1 — abre a linha no início de cada relógio. */
 async function openNewRows(ctx: Ctx): Promise<void> {
   const { supabase, now, result } = ctx;
@@ -206,6 +215,8 @@ async function openNewRows(ctx: Ctx): Promise<void> {
   if (unconsented.error) throw new Error(`prune_unconsented_accounts falhou: ${unconsented.error.message}`);
   const marks = await fetchWave2Marks(supabase);
   for (const acc of (unconsented.data ?? []) as Array<{ user_id: string; created_at: string; email_confirmed?: boolean }>) {
+    // Pico (123 FR-013): não confirmada ⊂ esta lista (sem sessão não há consentimento — analysis-S).
+    if (acc.email_confirmed === false && isWithin24h(acc.created_at, now)) result.unconfirmed24h += 1;
     if (hasLive.has(acc.user_id)) continue;
     const clock = unconsentedClock(acc, marks.get(acc.user_id), now);
     if (clock) await open(acc.user_id, clock);
@@ -313,7 +324,8 @@ async function alertAdmin(ctx: Ctx, rows: LiveRow[]): Promise<void> {
     if (s.overdue) result.overdue += 1;
     if (s.red) result.red += 1;
   }
-  if (result.overdue + result.red + result.emailsDue === 0) return;
+  const spike = result.unconfirmed24h > UNCONFIRMED_SPIKE_THRESHOLD ? result.unconfirmed24h : 0;
+  if (result.overdue + result.red + result.emailsDue + spike === 0) return;
   if (!adminUserId) {
     capture(new Error('prune_admin_alert sem ADMIN_USER_ID'), { job: 'prune_enqueue', correlationId });
     return;
@@ -322,7 +334,7 @@ async function alertAdmin(ctx: Ctx, rows: LiveRow[]): Promise<void> {
     const sent = await dispatcher.dispatch({
       userId: adminUserId,
       kind: 'prune_admin_alert',
-      data: { overdue: result.overdue, red: result.red, emailsDue: result.emailsDue },
+      data: { overdue: result.overdue, red: result.red, emailsDue: result.emailsDue, unconfirmed24h: spike },
       context: { correlationId },
     });
     result.adminAlerted = sent?.success === true;
@@ -336,7 +348,7 @@ export async function runPruneEnqueue(deps: PruneEnqueueDeps): Promise<PruneEnqu
   const env = deps.env ?? process.env;
   const result: PruneEnqueueResult = {
     enabled: isPruneEnabled(env), enqueued: 0, voided: 0, reactivated: 0,
-    pushNoticed: 0, emailsDue: 0, overdue: 0, red: 0, adminAlerted: false,
+    pushNoticed: 0, emailsDue: 0, overdue: 0, red: 0, unconfirmed24h: 0, adminAlerted: false,
   };
   if (!result.enabled) {
     logger.warn('Fila DESLIGADA por kill-switch (CONSENT_PRUNE_ENABLED)', { correlationId: deps.correlationId });
