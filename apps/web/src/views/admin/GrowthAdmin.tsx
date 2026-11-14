@@ -11,7 +11,7 @@
 // a razão "com tratamento / usuários" do KPI, sobre dois totais da própria RPC).
 
 import { Fragment, type ReactNode } from 'react'
-import { ArrowLeft, RefreshCw, ChevronDown, ChevronRight, Users, Pill, BellRing, Target } from 'lucide-react'
+import { ArrowLeft, RefreshCw, ChevronDown, ChevronRight, Users, UserPlus, Pill, BellRing, Target } from 'lucide-react'
 import { FREQUENCY_LABELS, GROWTH_COHORTS, type GrowthCohortKey } from '@dosiq/core'
 import { parseISO } from '@utils/dateUtils'
 import {
@@ -111,6 +111,13 @@ function KpiHeader({ data, reference }: { data: GrowthAnalytics; reference: Grow
   const rt = reference?.totals
   return (
     <section className="growth-kpis" aria-label="Indicadores">
+      {/* Spec 123 FR-014: funil — cada card usa o anterior como denominador (push e wedge: com tratamento). */}
+      <Kpi
+        icon={<UserPlus size={14} />}
+        label="Cadastros"
+        value={t.signups ?? 0}
+        detail={`${fmtPct(t.confirmation_pct ?? 0)} confirmam · ${t.signups_unconfirmed ?? 0} sem confirmar`}
+      />
       <Kpi icon={<Users size={14} />} label="Usuários" value={t.users} detail={`+${t.new_7d} em 7 dias · +${t.new_30d} em 30 dias`} />
       <Kpi
         icon={<Pill size={14} />}
@@ -121,9 +128,9 @@ function KpiHeader({ data, reference }: { data: GrowthAnalytics; reference: Grow
       <Kpi
         icon={<BellRing size={14} />}
         label="Push ativo"
-        value={fmtPct(t.push_active_pct)}
-        basePct={rt?.push_active_pct}
-        detail={`${t.push_active_users} de ${t.users} usuários`}
+        value={fmtPct(t.push_treated_pct ?? 0)}
+        basePct={rt?.push_treated_pct}
+        detail={`${t.push_treated_users ?? 0} de ${t.users_with_protocols} usuários com tratamento`}
       />
       <Kpi
         icon={<Target size={14} />}
@@ -306,7 +313,7 @@ function Skeleton() {
   return (
     <div aria-busy="true" aria-label="Carregando analytics">
       <div className="growth-kpis">
-        {[0, 1, 2, 3].map((i) => <div key={i} className="growth-kpi growth-skeleton growth-skeleton--kpi" />)}
+        {[0, 1, 2, 3, 4].map((i) => <div key={i} className="growth-kpi growth-skeleton growth-skeleton--kpi" />)}
       </div>
       <div className="growth-panels">
         {[0, 1].map((i) => <div key={i} className="growth-panel growth-skeleton growth-skeleton--panel" />)}
@@ -407,6 +414,11 @@ export default function GrowthAdmin({ onBack }: { onBack?: () => void }) {
                   <option value="all">Push: todos</option>
                   <option value="active">Push ativo</option>
                   <option value="inactive">Push inativo</option>
+                </select>
+                <select aria-label="Onboarding" value={state.onboardingFilter} onChange={(e) => state.setOnboardingFilter(e.target.value as any)}>
+                  <option value="all">Onboarding: todos</option>
+                  <option value="pending">Onboarding pendente</option>
+                  <option value="done">Onboarding concluído</option>
                 </select>
               </div>
             </div>

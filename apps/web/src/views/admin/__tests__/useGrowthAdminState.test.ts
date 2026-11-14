@@ -52,6 +52,14 @@ describe('filterGrowthUsers', () => {
     expect(filterGrowthUsers(USERS, { query: '', platform: 'android', push: 'active' })).toHaveLength(0)
   })
 
+  it('onboarding (123 FR-016): pendente/concluído; ausente = todos', () => {
+    const lista = [...USERS, user({ user_id: 'dddddddd-0000-4000-8000-000000000000', email: 'dani@exemplo.com', onboarding_completed: false })]
+    expect(filterGrowthUsers(lista, { query: '', platform: 'all', push: 'all', onboarding: 'pending' }).map((u) => u.email)).toEqual(['dani@exemplo.com'])
+    expect(filterGrowthUsers(lista, { query: '', platform: 'all', push: 'all', onboarding: 'done' })).toHaveLength(3)
+    expect(filterGrowthUsers(lista, { query: '', platform: 'all', push: 'all' })).toHaveLength(4)
+    expect(filterGrowthUsers(lista, { query: '', platform: 'all', push: 'inactive', onboarding: 'pending' })).toHaveLength(0)
+  })
+
   it('lista ausente vira vazia', () => {
     expect(filterGrowthUsers(undefined, { query: 'x', platform: 'all', push: 'all' })).toEqual([])
   })

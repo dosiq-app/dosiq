@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WEDGE_CLASS_PREFIXES, classifyWedge, inferMeasure } from '../trackedMeasure'
 
-const MIGRATION = resolve(__dirname, '../../../../../docs/migrations/20261110_admin_growth_cohort.sql')
+const MIGRATION = resolve(__dirname, '../../../../../docs/migrations/20261114_admin_growth_confirmed.sql')
 
 /** Extrai a lista marcada `-- WEDGE_CLASS_PREFIXES` do SQL (linha seguinte ao marcador). */
 function sqlWedgePrefixes(): string[] {
