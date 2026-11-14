@@ -84,7 +84,10 @@ export function createOutboxRepository(
       const { error } = await client
         .from('notification_outbox')
         .upsert(rows, { onConflict: 'user_id,kind,period_key,subject_id', ignoreDuplicates: true });
-      if (error) throw new Error(`outbox.enqueue: ${error.message}`);
+      if (error) {
+        // Preserva o código Postgres (ex.: 23503 FK) p/ o chamador distinguir usuário órfão de falha real.
+        throw Object.assign(new Error(`outbox.enqueue: ${error.message}`), { code: error.code });
+      }
       // Não retornamos "quantas de fato inseriram" (ignoreDuplicates não expõe isso de forma
       // confiável); retornamos o total tentado — o log agregado (FR-007) usa o count do drain.
       return rows.length;
