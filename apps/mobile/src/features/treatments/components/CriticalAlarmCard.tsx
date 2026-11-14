@@ -6,6 +6,7 @@ const { BellRing, BellOff, CheckCircle2, AlertTriangle, ChevronRight } = LucideI
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 import { useCriticalAlarmDeviceStatus } from '@platform/alarms/useCriticalAlarmDeviceStatus'
 import { requestPushOrOpenSettings } from '@platform/notifications/pushPermission'
+import { PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import type { CriticalAlarmDeviceStatus } from '@platform/alarms/alarmService'
 
@@ -156,7 +157,7 @@ export default function CriticalAlarmCard({
   const band = global || criticalAlarm ? bandFor(status, scope) : null
   // C-33: pede o push no ponto de intenção (diálogo do SO); sem diálogo possível ⇒ Ajustes.
   const requestPush = async () => {
-    await requestPushOrOpenSettings({ supabase }).catch(() => Linking.openSettings())
+    await requestPushOrOpenSettings({ supabase, entryPoint: PERMISSION_ENTRY_POINTS.CRITICAL_ALARM }).catch(() => Linking.openSettings())
     refresh()
   }
 

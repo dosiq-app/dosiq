@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react'
 import * as Notifications from 'expo-notifications'
 import { getPushPermissionStatus } from './pushPermission'
 import { registerPushToken } from './registerPushToken'
+import { usePushTokenRetry } from './usePushTokenRetry'
 import { ensurePushChannel } from './ensurePushChannel'
 import { ensureTitrationCategories, handleTitrationNotificationAction, isTitrationAction } from './titrationNotificationActions'
 import {
@@ -144,6 +145,8 @@ export function usePushNotifications({ supabase, session, canRegister = false })
   // a cada renovação de token e a cada re-login — inclusive o da conferência de senha da exclusão de
   // conta, que re-registrava o aparelho 0,2s DEPOIS do RPC de exclusão (smoke 28/09, iOS).
   const userId = session?.user?.id ?? null
+  // 120 FR-007: token perdido após a concessão volta a ser tentado a cada foreground.
+  usePushTokenRetry({ supabase, userId, canRegister })
 
   useEffect(() => {
     if (!userId || !supabase) return

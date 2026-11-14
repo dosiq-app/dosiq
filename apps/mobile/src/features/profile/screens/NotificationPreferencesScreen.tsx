@@ -10,16 +10,16 @@ import {
   Linking,
   Modal,
   FlatList,
-  AppState,
   Platform,
 } from 'react-native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
 const { Bell, Smartphone, Send, Globe, ChevronRight, Check, AlertTriangle } = LucideIcons as any
-import { useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '@platform/auth/hooks/useAuth'
 import { useProfile } from '@profile/hooks/useProfile'
-import { getPushPermissionStatus, getPushChannelState, enablePushAtIntent, requestPushOrOpenSettings } from '@platform/notifications/pushPermission'
+import { enablePushAtIntent, requestPushOrOpenSettings } from '@platform/notifications/pushPermission'
+import { usePushReachability } from '@platform/notifications/usePushReachability'
+import { PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
 import { registerPushToken } from '@platform/notifications/registerPushToken'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { updateNotificationSettings } from '../services/profileService'
@@ -449,8 +449,10 @@ export default function NotificationPreferencesScreen({ navigation }) {
   const [quietHoursStart, setQuietHoursStart] = useState('22:00')
   const [quietHoursEnd, setQuietHoursEnd] = useState('07:00')
   const [digestTime, setDigestTime] = useState('07:00')
-  const [hasPermission, setHasPermission] = useState(false)
-  const [channelState, setChannelState] = useState('ok')
+  // 120 E-7: permissão efetiva + canal do push vêm do hook único (reavalia no foco e no AppState).
+  const reach = usePushReachability({ userId: user?.id ?? null })
+  const hasPermission = reach.granted === true
+  const channelState = reach.channel
   // Ref de permissão (R-010: declarado junto aos states, antes de effects/handlers).
   // null = ainda não sabido; usado p/ agir só na transição negado→concedido.
   const wasGrantedRef = useRef(null)
@@ -504,42 +506,18 @@ export default function NotificationPreferencesScreen({ navigation }) {
   }, [user, settings, mobilePushEnabled, isTelegramConnected, webPushEnabled, notificationMode,
       quietHoursEnabled, quietHoursStart, quietHoursEnd, digestTime, refresh])
 
-  const checkPermission = useCallback(async () => {
-    try {
-      // Leitura PURA do status — NUNCA dispara o prompt do SO.
-      const { granted } = await getPushPermissionStatus()
-      setHasPermission(granted)
-      setChannelState(await getPushChannelState())
-      // Transição real negado→concedido (ex.: voltou das Configs do SO autorizando):
-      // registra o device E liga o canal — autorizar é intenção clara de receber push.
-      // userId explícito evita getUser() redundante (já temos user do useAuth).
-      if (wasGrantedRef.current === false && granted) {
-        registerPushToken({ supabase, userId: user?.id } as any).catch(() => {})
-        setMobilePushEnabled(true)
-        persist({ mobilePushEnabled: true })
-      }
-      wasGrantedRef.current = granted
-    } catch (err) {
-      debugLog('NotificationPreferencesScreen', `Erro permissão: ${err.message}`)
-    }
-  }, [persist, user])
-
-  // Re-checa permissão ao focar a tela (navegação)...
-  useFocusEffect(
-    useCallback(() => {
-      startTransition(() => { checkPermission() })
-    }, [checkPermission])
-  )
-
-  // ...e ao voltar do background (ex.: retorno das Configurações do SO). Isto NÃO
-  // é foco de navegação — a tela nunca perdeu foco; só o app foi pro background.
-  // Sem este listener o toggle não atualizava ao reconceder a permissão no SO.
+  // Transição real negado→concedido (ex.: voltou dos Ajustes do SO autorizando): registra o device
+  // E liga o canal — autorizar é intenção clara de receber push. userId explícito evita getUser().
   useEffect(() => {
-    const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') checkPermission()
-    })
-    return () => sub.remove()
-  }, [checkPermission])
+    const granted = reach.granted
+    if (granted === null) return
+    if (wasGrantedRef.current === false && granted) {
+      registerPushToken({ supabase, userId: user?.id } as any).catch(() => {})
+      setMobilePushEnabled(true)
+      persist({ mobilePushEnabled: true })
+    }
+    wasGrantedRef.current = granted
+  }, [reach.granted, persist, user])
 
   async function handleMobilePushToggle(val) {
     // C-31: canal desligado só volta pelos Ajustes do Android (o app não reativa canal).
@@ -549,11 +527,12 @@ export default function NotificationPreferencesScreen({ navigation }) {
     }
     if (val && !hasPermission && Platform.OS === 'android') {
       // 054 C-33: no Android sempre pede (o canAskAgain do expo erra); sem diálogo ⇒ Ajustes.
-      if (!(await requestPushOrOpenSettings({ supabase }))) return
-      setHasPermission(true)
+      if (!(await requestPushOrOpenSettings({ supabase, entryPoint: PERMISSION_ENTRY_POINTS.SETTINGS }))) return
+      wasGrantedRef.current = true // o próprio pedido já registrou o token
+      await reach.refresh()
     } else if (val && !hasPermission) {
       // Ponto de intenção: pede permissão e registra o token se concedido.
-      const { granted, blocked } = await enablePushAtIntent({ supabase })
+      const { granted, blocked } = await enablePushAtIntent({ supabase, entryPoint: PERMISSION_ENTRY_POINTS.SETTINGS })
       if (!granted) {
         if (blocked) {
           Alert.alert(
@@ -567,7 +546,8 @@ export default function NotificationPreferencesScreen({ navigation }) {
         }
         return
       }
-      setHasPermission(true)
+      wasGrantedRef.current = true // o próprio pedido já registrou o token
+      await reach.refresh()
     }
     setMobilePushEnabled(val)
     persist({ mobilePushEnabled: val })

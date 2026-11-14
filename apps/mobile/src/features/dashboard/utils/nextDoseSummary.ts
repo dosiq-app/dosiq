@@ -5,7 +5,7 @@
 // (INV-3): a tela nunca promete uma dose que o lembrete não vai tocar.
 import { getNextOccurrence, formatWeekdayDayMonthPtBR, formatLocalDate, parseLocalDate } from '@dosiq/core'
 
-function whenLabel(date: string, now: Date): string {
+export function whenLabel(date: string, now: Date): string {
   const today = formatLocalDate(now)
   if (date === today) return 'hoje'
   const tomorrow = parseLocalDate(today)

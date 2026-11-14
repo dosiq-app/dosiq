@@ -17,6 +17,7 @@ import { useToast } from '@shared/components/feedback/Toast'
 import { useStockTracking } from '@shared/hooks/useStockTracking'
 import { useConsentGate } from '@platform/consent/useConsentGate'
 import { enablePushAtIntent } from '@platform/notifications/pushPermission'
+import { PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { endSession } from '@platform/session/endSession'
 import { ROUTES } from '@navigation/routes'
@@ -99,7 +100,7 @@ export default function OnboardingConsentStep() {
 
       // Ponto de intenção: só pede permissão de push se a pessoa LIGOU o lembrete no passo de tratamento.
       if (remind) {
-        const { granted } = await enablePushAtIntent({ supabase }).catch(() => ({ granted: false }))
+        const { granted } = await enablePushAtIntent({ supabase, entryPoint: PERMISSION_ENTRY_POINTS.ONBOARDING }).catch(() => ({ granted: false }))
         if (!granted) show('Tudo bem! Você pode ligar os lembretes depois em Configurações.', { variant: 'info', duration: 6000 })
       }
 

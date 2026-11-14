@@ -52,6 +52,8 @@ import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatte
 import OemBatteryAssistantCard from '@features/oemAssistant/components/OemBatteryAssistantCard'
 import { pickPromoCard } from '@dashboard/utils/pickPromoCard'
 import { hasRemindableTreatment } from '@dashboard/utils/hasRemindableTreatment'
+import TodayPushPermission from '@dashboard/components/TodayPushPermission'
+import { useTodayPushPermission } from '@dashboard/hooks/useTodayPushPermission'
 import StockUpsellCard from '@dashboard/components/StockUpsellCard'
 import { colors, spacing, typography, borderRadius, shadows } from '@shared/styles/tokens'
 
@@ -380,9 +382,12 @@ function TodayBannersSection({
   applyUpdate,
   handleNudgeAction,
   dismissNudge,
+  permissionCard = null,
 }: any) {
   return (
     <>
+      {/* 120 D-1 (rev. 13/11, 121 FR-002): permissão primeiro na faixa de alertas, acima do hero. */}
+      {permissionCard}
       {stockTrackingEnabled && <TodayStockAlert refreshKey={stockRefreshKey} />}
       {priorityDoses.length > 0 ? (
         <HeroDoseCard doses={priorityDoses} onPress={() => setBulkModal({ mode: 'hero', items: heroItems })} />
@@ -399,7 +404,7 @@ function TodayBannersSection({
 
 function TodayScreenContent({
   data, stale, loading, refresh,
-  timeline, carryOver, lookAhead, protocols, stats, hasAnyTreatment, nextDoseLabel,
+  timeline, carryOver, lookAhead, protocols, scheduledProtocols, stats, hasAnyTreatment, nextDoseLabel,
   isComplex, shifts, groupedTimeline, countsByShift,
   expandedShifts, toggleShift,
   modalProtocol, modalScheduledTime, modalInstanceId, modalEntryPoint, medicineName, handleOpenRegister, handleRegisterSuccess, handleCloseRegister,
@@ -412,7 +417,9 @@ function TodayScreenContent({
   const { nudge: dashboardNudge, dismiss: dismissNudge, handleAction: handleNudgeAction, refresh: refreshNudge } = useNudges('dashboard')
   const { enabled: stockTrackingEnabled } = useStockTracking()
   const { visible: stockUpsellVisible, dismiss: dismissStockUpsell } = useStockUpsell(data?.timezone)
-  const { visible: oemAssistantVisible, reason: oemReason, dismiss: dismissOemAssistant } = useOemBatteryAssistant({ hasTreatment: hasRemindableTreatment(protocols) })
+  // 120 E-7: alcance do push — fonte única do card de permissão e do gate do card de bateria (S-2).
+  const { reach: pushReach, remindable: remindableProtocols, visible: permissionVisible } = useTodayPushPermission({ data, protocols, scheduledProtocols })
+  const { visible: oemAssistantVisible, reason: oemReason, dismiss: dismissOemAssistant } = useOemBatteryAssistant({ hasTreatment: hasRemindableTreatment(protocols), pushUsable: pushReach.usable })
   const [evoRefreshTick, setEvoRefreshTick] = useState(0)
   const [speedDialOpen, setSpeedDialOpen] = useState(false)
   const [measureLogOpen, setMeasureLogOpen] = useState(false)
@@ -436,7 +443,7 @@ function TodayScreenContent({
     return [...carryOver, ...todayUrgent, ...aheadImminent]
       .sort((a: any, b: any) => (a.scheduledFor || '').localeCompare(b.scheduledFor || ''))
   }, [carryOver, timeline, lookAhead])
-  const promoCard = pickPromoCard({ hasHero: priorityDoses.length > 0, nudge: otaBanner ?? dashboardNudge, stockVisible: stockUpsellVisible, oemVisible: oemAssistantVisible })
+  const promoCard = pickPromoCard({ hasHero: priorityDoses.length > 0, nudge: otaBanner ?? dashboardNudge, stockVisible: stockUpsellVisible, oemVisible: oemAssistantVisible, permissionVisible })
 
   const instancesByKey = useMemo(() => timeline.reduce((map: any, d: any) => {
     if (d.instanceId && d.protocol?.id && d.scheduledTime) {
@@ -492,6 +499,7 @@ function TodayScreenContent({
           applyUpdate={applyUpdate}
           handleNudgeAction={handleNudgeAction}
           dismissNudge={dismissNudge}
+          permissionCard={<TodayPushPermission reach={pushReach} protocols={remindableProtocols} />}
         />
         <OptionalDoseSection
           title="Doses pendentes"
@@ -822,7 +830,7 @@ export default function TodayScreen({ route, navigation }) {
   return (
     <TodayScreenContent
       data={data} stale={stale} loading={loading} refresh={refresh}
-      timeline={timelineWithMeasures} carryOver={carryOver} lookAhead={lookAhead} protocols={protocols} stats={stats}
+      timeline={timelineWithMeasures} carryOver={carryOver} lookAhead={lookAhead} protocols={protocols} scheduledProtocols={scheduledProtocols} stats={stats}
       hasAnyTreatment={hasAnyTreatment} nextDoseLabel={nextDoseLabel}
       refreshTodayMeasures={refreshTodayMeasures} todayMeasures={todayMeasures}
       isComplex={isComplex} shifts={shifts} groupedTimeline={groupedTimeline}

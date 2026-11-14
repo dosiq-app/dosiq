@@ -54,6 +54,16 @@ export const EVENTS = {
   // Notificações
   NOTIFICATION_PERMISSION_GRANTED: 'notification_permission_granted',
   NOTIFICATION_PERMISSION_DENIED: 'notification_permission_denied',
+  // 120 US4: o diálogo do SO apareceu (post-hoc, junto da decisão — nunca antes do pedido).
+  // entry_point (PERMISSION_ENTRY_POINTS), surface. Negação instantânea do Android (sem diálogo) não emite.
+  NOTIFICATION_PERMISSION_PROMPT_SHOWN: 'notification_permission_prompt_shown',
+  NOTIFICATION_PERMISSION_PRIMER_DISMISSED: 'notification_permission_primer_dismissed', // entry_point
+  // 120 smoke: "Agora não" / "Não mostrar de novo" no card da Hoje (adiamento 7 dias, teto 3).
+  // reason (undetermined|denied|channel_blocked), snooze_count (1..3; 3 = não mostra mais), surface.
+  PUSH_PERMISSION_CARD_SNOOZED: 'push_permission_card_snoozed',
+  // 120 FR-007: falha ao registrar o token de push. reason = PUSH_TOKEN_FAILURE_REASONS (enum fechado,
+  // NUNCA a mensagem do erro — pode carregar URL/token; RC-SEC S-5).
+  PUSH_TOKEN_REGISTER_FAILED: 'push_token_register_failed',
   // 054: resposta ao diálogo de Alertas Críticos do iOS (só quando ele de fato apareceu).
   CRITICAL_ALERT_PERMISSION_GRANTED: 'critical_alert_permission_granted', // surface
   CRITICAL_ALERT_PERMISSION_DENIED: 'critical_alert_permission_denied',   // surface
@@ -139,6 +149,27 @@ export const ENTRY_POINTS = {
   // 069 Bb: medida registrada pelo CTA dos vazios do card "Peso durante o tratamento".
   MEASURE_SERIES: 'measure_series',
 }
+
+// Ponto de pedido da PERMISSÃO de push (120 US4). Eixo próprio: não é a origem da criação de
+// tratamento (ENTRY_POINTS), apesar da mesma chave `entry_point` no evento.
+export const PERMISSION_ENTRY_POINTS = {
+  ONBOARDING: 'onboarding',
+  TREATMENT_FORM: 'treatment_form',
+  TODAY_BANNER: 'today_banner',
+  SETTINGS: 'settings',
+  CRITICAL_ALARM: 'critical_alarm',
+} as const
+export type PermissionEntryPoint = (typeof PERMISSION_ENTRY_POINTS)[keyof typeof PERMISSION_ENTRY_POINTS]
+
+// Motivo da falha de registro do token (120 FR-007 / RC-SEC S-5).
+export const PUSH_TOKEN_FAILURE_REASONS = {
+  NO_TOKEN: 'no_token',
+  NO_USER: 'no_user',
+  NETWORK: 'network',
+  SERVER: 'server',
+  UNKNOWN: 'unknown',
+} as const
+export type PushTokenFailureReason = (typeof PUSH_TOKEN_FAILURE_REASONS)[keyof typeof PUSH_TOKEN_FAILURE_REASONS]
 
 // Motivo de fechar o pedido de medida sem salvar (069 A2). `swipe` = fechar sem botão (fundo ou
 // voltar do Android): o sheet não tem gesto de arrastar (analysis-A2 G-6).

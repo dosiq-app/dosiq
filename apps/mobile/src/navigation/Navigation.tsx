@@ -50,6 +50,7 @@ import { usePushNotifications } from '../platform/notifications/usePushNotificat
 import { syncDeviceActivity } from '../platform/telemetry/syncDeviceActivity'
 import { VersionGateOverlay } from '../platform/versionGate/VersionGateOverlay'
 import { StockTrackingProvider } from '@shared/hooks/useStockTracking'
+import { PushPrimerProvider } from '@platform/notifications/PushPrimerProvider'
 import { logScreenView, setUserId, logEvent } from '../platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '../platform/analytics/analyticsEvents'
 import { ensureDeviceOwner } from '../platform/session/localDataWipe'
@@ -370,6 +371,8 @@ function NavigationTree({
   // mesma ref disparavam "navigation hasn't been initialized" na troca.
   return (
     <StockTrackingProvider session={session}>
+    {/* 120 E-3: preparo de notificação na raiz — abre só por chamada explícita (openPushPrimer). */}
+    <PushPrimerProvider>
     <View style={styles.flex}>
     <NavigationContainer
       ref={navigationRef}
@@ -477,6 +480,7 @@ function NavigationTree({
       onConfirmed={() => { setRegularizationDeclined(false) }}
     />
     </View>
+    </PushPrimerProvider>
     </StockTrackingProvider>
   )
 }

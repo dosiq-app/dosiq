@@ -336,6 +336,8 @@ export {
 // Verbo da dose pela apresentação (120, D-9) — push do servidor e prévia no app
 export { doseVerb } from './doseVerb'
 export type { DoseVerb } from './doseVerb'
+export { DOSE_DETAIL_SEP, formatDoseAmount, formatDoseListItem } from './doseAmountLabel'
+export type { DoseAmountItem } from './doseAmountLabel'
 
 // Mapa corporal de sítios — geometria pura compartilhada web↔mobile (071, ADR-096)
 export {

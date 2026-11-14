@@ -396,8 +396,12 @@ escada que termina em manutenção **não encerra**, e marcar `weaning_complete`
 
 | Evento | Status | Dispara quando | Props | Pergunta |
 |---|---|---|---|---|
-| `notification_permission_granted` | ✅ mobile | prompt do SO respondido com concessão (já concedido não emite) | `surface` | cobertura do canal de cue |
-| `notification_permission_denied` | ✅ mobile | prompt do SO respondido com negação | `surface` | usuários sem cue externo |
+| `notification_permission_granted` | ✅ mobile | prompt do SO respondido com concessão (já concedido não emite) | `surface`, `entry_point` (120) | cobertura do canal de cue |
+| `notification_permission_denied` | ✅ mobile | prompt do SO respondido com negação (Android: só se o diálogo apareceu — resposta ≥ 400 ms) | `surface`, `entry_point` (120) | usuários sem cue externo |
+| `notification_permission_prompt_shown` | ✅ mobile (120) | o diálogo do SO **apareceu**; emitido junto da decisão, nunca antes do pedido. Negação instantânea do Android (sem diálogo) não emite | `entry_point: onboarding\|treatment_form\|today_banner\|settings\|critical_alarm`, `surface` | taxa `granted ÷ prompt_shown` por ponto de pedido (SC-002) |
+| `notification_permission_primer_dismissed` | ✅ mobile (120) | "Agora não" no preparo antes do diálogo (o SO não foi chamado) | `entry_point`, `surface` | o preparo afasta ou converte? |
+| `push_permission_card_snoozed` | ✅ mobile (120) | "Agora não" (ou "Não mostrar de novo", no 3º) no card de lembretes desligados da Hoje — card some por 7 dias; no 3º, de vez | `reason: undetermined\|denied\|channel_blocked`, `snooze_count: 1\|2\|3` (3 = não mostra mais), `surface` | o card é recusado? e quantos param de ver o aviso de vez (sumiço do card distinguível de bug) |
+| `push_token_register_failed` | ✅ mobile (120) | falha ao registrar o token de push depois da concessão (retry no próximo foreground) | `reason: no_token\|no_user\|network\|server\|unknown` (enum fechado — **nunca** a mensagem do erro), `surface` | permissão concedida e zero push (B5) |
 | `critical_alert_permission_granted` | ✅ mobile (iOS) | diálogo de Alertas Críticos respondido com concessão (só quando apareceu; spec 054). O mesmo pedido, com push ainda não perguntado, também emite `notification_permission_*` | `surface` | conversão do sheet do alarme crítico |
 | `critical_alert_permission_denied` | ✅ mobile (iOS) | diálogo de Alertas Críticos respondido com negação | `surface` | alarme crítico em modo normal |
 | `notification_preference_changed` | ✅ mobile | canal (`notification_preference`) muda — só quando difere do gravado | `new_preference: telegram\|mobile_push\|both\|none`, `surface` | **push desligado + uso mantido = gostar alto** (sinal mais forte) |

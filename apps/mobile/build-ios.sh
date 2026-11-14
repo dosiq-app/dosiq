@@ -1,11 +1,12 @@
 #!/bin/bash
 # build-ios.sh — Prepara certificados e roda eas build local
-# Uso: bash build-ios.sh [development|preview|device|production] [--no-install]
+# Uso: bash build-ios.sh [development|preview|device|device-dev|production] [--no-install]
 #
 # Perfis (spec 051-A · canais de OTA declarados em eas.json):
 #   development → .app (simulador) · canal `development` · uso diário
 #   preview     → .app (simulador) · canal `preview`     · alvo do smoke de OTA
 #   device      → .ipa (ad hoc)    · canal `device`      · APARELHO FÍSICO registrado (065/PO-8)
+#   device-dev  → .ipa (ad hoc)    · dev client do `device`: JS via metro (`npx expo start --dev-client`)
 #   production  → .ipa             · canal `production`  · TestFlight/App Store
 #
 # ℹ️ development/preview no iOS saem como build de SIMULADOR (não exigem Distribution
@@ -45,13 +46,16 @@ parse_build_args "$@"
 # Falhar cedo e explícito: perfil desconhecido só apareceria como erro do EAS depois do
 # prebuild + pod install (minutos perdidos).
 case "$PROFILE" in
-  development|preview|device|production) ;;
+  development|preview|device|device-dev|production) ;;
   *)
     echo "❌ Perfil inválido: '$PROFILE'"
-    echo "   Use: development | preview | device | production"
+    echo "   Use: development | preview | device | device-dev | production"
     exit 1
     ;;
 esac
+# `device-dev` = `device` + dev client: mesma assinatura ad hoc e instalação no aparelho.
+IS_DEVICE=0
+{ [ "$PROFILE" = "device" ] || [ "$PROFILE" = "device-dev" ]; } && IS_DEVICE=1
 
 # Bundle ID e Credenciais unificados
 BUNDLE_ID="com.coelhotv.dosiq"
@@ -60,7 +64,7 @@ PLIST_FILE="$SCRIPT_DIR/GoogleService-Info.plist"
 # `device` (ad hoc) assina com o MESMO Apple Distribution certificate do production — só o
 # provisioning profile difere (lista de UDIDs em vez de App Store). Pular a verificação aqui
 # devolveria o erro no FIM do build, depois do prebuild + pod install.
-if [ "$PROFILE" = "production" ] || [ "$PROFILE" = "device" ]; then
+if [ "$PROFILE" = "production" ] || [ "$IS_DEVICE" -eq 1 ]; then
   echo "🔍 Verificando Distribution Certificate no keychain..."
   # Filtra pelo Team ID, não pelo nome: desde a migração p/ conta organization (spec 054, 2026-10),
   # cert novo sai com o nome da empresa — o antigo ("Antonio Coelho") segue válido até 05/2027.
@@ -115,7 +119,7 @@ mkdir -p "$TARGET_DIR"
 # 3. Definir nome e extensão do arquivo
 # `.ipa` para tudo que instala em aparelho FÍSICO (production via TestFlight, device via ad hoc);
 # `.app` só para os perfis de simulador.
-if [ "$PROFILE" = "production" ] || [ "$PROFILE" = "device" ]; then
+if [ "$PROFILE" = "production" ] || [ "$IS_DEVICE" -eq 1 ]; then
   EXT="ipa"
 else
   EXT="app"
@@ -141,7 +145,7 @@ echo "🚀 Submit:  $( [ "$PROFILE" = "production" ] && echo "SIM (TestFlight �
 if [ "$PROFILE" = "production" ]; then
   echo "🏷️  Tag:     NÃO — build alpha/loja só registra procedência; tag = fechar o train (release-tag.sh)"
 fi
-if [ "$PROFILE" = "device" ]; then
+if [ "$IS_DEVICE" -eq 1 ]; then
   echo "📲 Ad hoc:  instala em APARELHO FÍSICO registrado (eas device:list) — substitui o app da"
   echo "            App Store no aparelho, mesmos dados. Para voltar ao real, reinstalar pela loja."
 fi
@@ -203,7 +207,7 @@ if [ "$PROFILE" = "production" ]; then
 fi
 
 # 4.0 Instalação automática no aparelho físico (só `device`; falha não derruba o script)
-if [ "$PROFILE" = "device" ] && [ "$NO_INSTALL" -eq 0 ]; then
+if [ "$IS_DEVICE" -eq 1 ] && [ "$NO_INSTALL" -eq 0 ]; then
   install_ios_device "$FINAL_PATH"
 fi
 

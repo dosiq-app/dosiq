@@ -86,22 +86,22 @@ describe('permissão de push (ensurePushPermission)', () => {
   it('prompt concedido → granted', async () => {
     notif.getPermissionsAsync.mockResolvedValue({ status: 'undetermined', canAskAgain: true })
     notif.requestPermissionsAsync.mockResolvedValue({ status: 'granted', canAskAgain: true })
-    await ensurePushPermission()
-    expect(eventsOf(EVENTS.NOTIFICATION_PERMISSION_GRANTED)).toEqual([{ surface: SURFACES.MOBILE }])
+    await ensurePushPermission({ entryPoint: 'onboarding' })
+    expect(eventsOf(EVENTS.NOTIFICATION_PERMISSION_GRANTED)).toEqual([{ surface: SURFACES.MOBILE, entry_point: 'onboarding' }])
   })
 
   it('prompt negado → denied', async () => {
     notif.getPermissionsAsync.mockResolvedValue({ status: 'undetermined', canAskAgain: true })
     notif.requestPermissionsAsync.mockResolvedValue({ status: 'denied', canAskAgain: false })
-    await ensurePushPermission()
-    expect(eventsOf(EVENTS.NOTIFICATION_PERMISSION_DENIED)).toEqual([{ surface: SURFACES.MOBILE }])
+    await ensurePushPermission({ entryPoint: 'onboarding' })
+    expect(eventsOf(EVENTS.NOTIFICATION_PERMISSION_DENIED)).toEqual([{ surface: SURFACES.MOBILE, entry_point: 'onboarding' }])
   })
 
   it('já concedido ou negado sem repedir → sem prompt, sem evento', async () => {
     notif.getPermissionsAsync.mockResolvedValueOnce({ status: 'granted', canAskAgain: true })
-    await ensurePushPermission()
+    await ensurePushPermission({ entryPoint: 'onboarding' })
     notif.getPermissionsAsync.mockResolvedValueOnce({ status: 'denied', canAskAgain: false })
-    await ensurePushPermission()
+    await ensurePushPermission({ entryPoint: 'onboarding' })
     expect(mockLogEvent).not.toHaveBeenCalled()
   })
 })

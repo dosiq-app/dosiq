@@ -146,7 +146,7 @@ private func actionsView(_ context: ActivityViewContext<DoseActivityAttributes>,
 @available(iOS 17.0, *)
 private func registerButton(_ a: DoseActivityAttributes, color: Color) -> some View {
     Button(intent: DoseRegisterIntent(instanceId: a.instanceId, treatmentId: a.treatmentId)) {
-        Text("Tomar").font(.subheadline).fontWeight(.semibold).foregroundColor(.black)
+        Text("Registrar").font(.subheadline).fontWeight(.semibold).foregroundColor(.black)
             .frame(maxWidth: .infinity, minHeight: 44).background(color).cornerRadius(12)
     }.buttonStyle(.plain)
 }
