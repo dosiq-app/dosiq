@@ -34,6 +34,7 @@ import { getServerTimestamp, getSaoPauloTime, getRawNow } from '../server/utils/
 import {
   initSentry,
   captureServerException,
+  captureServerEvent,
   flushSentry,
   withServerIsolation,
   withServerMonitor,
@@ -47,6 +48,7 @@ import {
   summarizeTick,
   resolveLaLeadMinutes,
   FAIL_OPEN_PLAN,
+  TickGateTimeoutError,
 } from '../server/notifications/tick/tickGate.js';
 
 const logger = createLogger('CronNotify');
@@ -277,8 +279,15 @@ export async function resolveTickPlan(now, correlationId) {
     });
     plan = planTick(work, { now, outboxKinds: OUTBOX_KINDS, reminderSource: process.env.REMINDER_SOURCE });
   } catch (err) {
-    logger.error('[tick_gate] gate falhou — falha aberta, todos os jobs rodam', err, { correlationId });
-    captureServerException(err, { correlationId, job: 'tick_gate' });
+    if (err instanceof TickGateTimeoutError) {
+      // Timeout de transporte: a RPC é ~15 ms no banco e a falha aberta não perde aviso ⇒ warning
+      // (DOSIQ-SERVER-9). Erro de RPC e resposta malformada seguem como error abaixo.
+      logger.warn('[tick_gate] gate estourou o timeout — falha aberta, todos os jobs rodam', { correlationId });
+      captureServerEvent('[tick_gate] timeout do gate — falha aberta', { level: 'warning', correlationId, job: 'tick_gate' });
+    } else {
+      logger.error('[tick_gate] gate falhou — falha aberta, todos os jobs rodam', err, { correlationId });
+      captureServerException(err, { correlationId, job: 'tick_gate' });
+    }
     plan = FAIL_OPEN_PLAN;
   }
   // E-5: 1 linha por tick, no log da Vercel. Só booleanos/contagens (RC-SEC S-3).
