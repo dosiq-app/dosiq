@@ -36,7 +36,9 @@ export default function TodayPushPermission({ reach, protocols }: Props) {
   if (wentToSettings && reach.usable) setWentToSettings(false)
 
   // Memos
-  const reminder = useMemo(() => nextDoseReminder(protocols, getNow()), [protocols])
+  // RC6 #953 (AP-366): sem memo — o "agora" vale a cada render; memo só em [protocols] congelava
+  // "hoje às 16:00" depois de a hora passar com o app aberto. Custo: poucos protocolos.
+  const reminder = nextDoseReminder(protocols, getNow())
   const multiple = useMemo(() => protocols.filter((p) => hasRemindableTreatment([p])).length > 1, [protocols])
 
   // Effects
