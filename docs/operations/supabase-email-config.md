@@ -112,16 +112,19 @@ Dosiq — Ativação de conta
         <a class="email-btn" href="{{ .ConfirmationURL }}" style="display: inline-block; background: linear-gradient(135deg, #006a5e, #008577); color: #ffffff; padding: 14px 36px; border-radius: 20px; text-decoration: none; font-weight: 700; font-size: 16px; box-shadow: 0 8px 20px rgba(0, 106, 94, 0.15);">Confirmar Conta</a>
       </div>
 
+      <!-- Spec 123 FR-012 (RC-SEC S-1): aviso a quem não se cadastrou, logo abaixo do botão -->
+      <p class="email-body-text" style="font-size: 14px; line-height: 1.5; color: #3e4946; margin: 0 0 24px; text-align: center;"><strong style="color: #191c1d;">Se você não se cadastrou no dosiq, ignore este e-mail.</strong> Nenhuma conta será criada.</p>
+
       <!-- Caixa Híbrida de Código OTP -->
       <div class="otp-box" style="background-color: #f2f4f5; padding: 16px; border-radius: 16px; text-align: center; margin: 24px 0;">
-        <p class="otp-text" style="margin: 0 0 8px; font-size: 13px; color: #3e4946;">Se o aplicativo solicitar um código de confirmação, utilize:</p>
+        <p class="otp-text" style="margin: 0 0 8px; font-size: 13px; color: #3e4946;">Ou digite este código no app:</p>
         <span class="otp-token" style="font-family: 'Public Sans', 'Inter', monospace, sans-serif; font-size: 32px; font-weight: 700; color: #006a5e; letter-spacing: 4px; display: inline-block; padding: 6px 16px; background: #ffffff; border-radius: 10px; border: 1px dashed #bdc9c5; box-shadow: 0 2px 8px rgba(0,0,0,0.02);">{{ .Token }}</span>
       </div>
 
       <!-- Bloco de Alerta do Design System (card-alert-warning) -->
       <div class="warning-box" style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 12px; margin: 24px 0;">
         <p class="warning-text" style="margin: 0; font-size: 12px; line-height: 1.5; color: #7b5700;">
-          <strong class="warning-title" style="color: #271900;">Aviso sobre acessos e uso único:</strong> Os acessos acima são seguros, válidos por 1 hora e podem ser usados **apenas uma vez**. Caso ocorra erro de "link inválido", basta solicitar um novo envio pelo aplicativo.
+          <strong class="warning-title" style="color: #271900;">Aviso sobre acessos e uso único:</strong> Os acessos acima são seguros, válidos por 1 hora e podem ser usados <strong>apenas uma vez</strong>. Caso ocorra erro de "link inválido", basta solicitar um novo envio pelo aplicativo.
         </p>
       </div>
 
@@ -217,7 +220,7 @@ Dosiq — Instruções para redefinir sua senha
       <!-- Bloco de Alerta -->
       <div class="warning-box" style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 12px; margin: 24px 0;">
         <p class="warning-text" style="margin: 0; font-size: 12px; line-height: 1.5; color: #7b5700;">
-          <strong class="warning-title" style="color: #271900;">Aviso de Segurança e Uso Único:</strong> O link e o código acima expiram em **1 hora** e perdem a validade após o primeiro clique ou preenchimento. Se você não solicitou, sua conta continuará 100% segura.
+          <strong class="warning-title" style="color: #271900;">Aviso de Segurança e Uso Único:</strong> O link e o código acima expiram em <strong>1 hora</strong> e perdem a validade após o primeiro clique ou preenchimento. Se você não solicitou, sua conta continuará 100% segura.
         </p>
       </div>
 
@@ -313,7 +316,7 @@ Dosiq — Link de acesso rápido
       <!-- Bloco de Alerta -->
       <div class="warning-box" style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 12px; margin: 24px 0;">
         <p class="warning-text" style="margin: 0; font-size: 12px; line-height: 1.5; color: #7b5700;">
-          <strong class="warning-title" style="color: #271900;">Aviso de Segurança:</strong> Este acesso é válido por **1 hora** e perde a validade após o primeiro clique ou preenchimento. Se você não solicitou este acesso, pode ignorar com segurança.
+          <strong class="warning-title" style="color: #271900;">Aviso de Segurança:</strong> Este acesso é válido por <strong>1 hora</strong> e perde a validade após o primeiro clique ou preenchimento. Se você não solicitou este acesso, pode ignorar com segurança.
         </p>
       </div>
 
@@ -480,7 +483,7 @@ Segurança Dosiq — Confirmação de novo e-mail
       <!-- Bloco de Alerta -->
       <div class="warning-box" style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 12px; margin: 24px 0;">
         <p class="warning-text" style="margin: 0; font-size: 12px; line-height: 1.5; color: #7b5700;">
-          <strong class="warning-title" style="color: #271900;">Aviso de Segurança e Uso Único:</strong> O link e o código expiram em **1 hora** e podem ser usados **uma única vez**. Se você não solicitou essa troca, ignore este e-mail.
+          <strong class="warning-title" style="color: #271900;">Aviso de Segurança e Uso Único:</strong> O link e o código expiram em <strong>1 hora</strong> e podem ser usados <strong>uma única vez</strong>. Se você não solicitou essa troca, ignore este e-mail.
         </p>
       </div>
 
@@ -566,7 +569,7 @@ Seu convite para a plataforma Dosiq chegou!
       <!-- Bloco de Alerta -->
       <div class="info-box" style="background-color: #eff6ff; border-left: 4px solid #005db6; padding: 16px; border-radius: 12px; margin: 24px 0;">
         <p class="info-text" style="margin: 0; font-size: 12px; line-height: 1.5; color: #001b3d;">
-          <strong style="color: #005db6;">Onboarding Seguro:</strong> Ao aceitar o convite, você poderá definir sua senha pessoal para o primeiro acesso. O link acima é válido por **1 hora**.
+          <strong style="color: #005db6;">Onboarding Seguro:</strong> Ao aceitar o convite, você poderá definir sua senha pessoal para o primeiro acesso. O link acima é válido por <strong>1 hora</strong>.
         </p>
       </div>
 

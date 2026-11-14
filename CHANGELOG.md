@@ -7,6 +7,14 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Painel de crescimento conta só e-mail confirmado; cadastro não confirmado vai para a fila em 3 dias (spec 123, Fatia S)
+
+- **Web** (`Changed`/`Added`, **minor** 4.39.5 → **4.40.0**; admin): o painel de Crescimento & Wedge passa a contar **só contas com e-mail confirmado**, na base e no recorte pós-v0.34, para todo o histórico. A conta não confirmada sai da tabela de contas e de todos os blocos. Os indicadores viram um funil de 5 cards: **Cadastros** (contas criadas, % que confirma e quantas estão sem confirmar) → **Usuários** → **Com tratamento** → **Push ativo** → **Wedge GLP-1**. **Push ativo** passa a ser medido sobre quem tem tratamento ativo (antes era sobre todos os usuários). Na tabela de contas, entra o filtro **Onboarding: todos / pendente / concluído**.
+- **Backend** (`Changed`): o cadastro com e-mail nunca confirmado entra na fila de exclusão (spec 107) depois de **3 dias** (antes eram 30). A exclusão continua dependendo de aprovação manual no admin.
+- **Backend** (`Added`): o push diário de exclusões ao admin ganha a linha "N cadastros sem confirmação em 24 h" quando passa de 20. É só uma contagem: não leva e-mail, domínio nem id.
+- **Backend** (`Changed`, banco): migração `20261114_admin_growth_confirmed` (`get_admin_growth_analytics`, mesma assinatura, campos novos aditivos).
+- **Process** (`Changed`): o e-mail "Confirm signup" ganha, logo abaixo do botão, o aviso "Se você não se cadastrou no dosiq, ignore este e-mail. Nenhuma conta será criada.". A caixa do código passa a dizer "Ou digite este código no app:". Os asteriscos literais dos templates viram negrito. O template é aplicado no painel do Supabase.
+
 ### CI: gates de repositório rodam no PR (AP-375)
 
 - **Process** (`no-user-impact`): `npm run lint:gates` (unit-label, vigency, stock-forecast, migration-grants) passa a ser a lista única usada pelo `npm run lint` da main e pelo passo de PR. Antes o PR rodava só o unit-label, e os outros três gates só acusavam depois do merge (main vermelha após #948 e #950).
