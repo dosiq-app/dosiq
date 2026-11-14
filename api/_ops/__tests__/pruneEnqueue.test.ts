@@ -249,13 +249,13 @@ describe('runPruneEnqueue — cadastro não confirmado (FR-016)', () => {
   const cenario = () => createFakeSupabase({
     users: [
       { id: 'NC_VELHO', email: 'x@example.com', created_at: '2025-03-01T00:00:00Z', email_confirmed: false },
-      { id: 'NC_NOVO', email: 'y@example.com', created_at: '2027-01-01T00:00:00Z', email_confirmed: false },
+      { id: 'NC_NOVO', email: 'y@example.com', created_at: '2027-01-14T00:00:00Z', email_confirmed: false },
       { id: 'LEG', email: 'legado@x.test', created_at: '2025-03-01T00:00:00Z' }, // confirmado, sem onda 2
     ],
     tables: {},
   }, () => AGORA.toISOString())
 
-  it('> 30 d sem confirmar ⇒ fila direta, decidível já, sem aviso; < 30 d e legado confirmado ⇒ fora', async () => {
+  it('> 3 d sem confirmar ⇒ fila direta, decidível já, sem aviso; < 3 d e legado confirmado ⇒ fora', async () => {
     const { supabase, state } = cenario()
     const { dispatcher, enviados } = dispatcherOk()
     const r = await runPruneEnqueue({ supabase, dispatcher, adminUserId: ADMIN, now: AGORA, env: {} })
@@ -266,5 +266,65 @@ describe('runPruneEnqueue — cadastro não confirmado (FR-016)', () => {
     expect(r.emailsDue).toBe(0)
     expect(r.pushNoticed).toBe(0)
     expect(enviados.filter((e) => e.kind === 'consent_prune_notice')).toHaveLength(0)
+  })
+})
+
+describe('runPruneEnqueue — prazo de 3 dias e pico de não confirmados (spec 123 FR-008/FR-013)', () => {
+  const AGORA = new Date('2027-01-15T12:00:00Z')
+  const antes = (ms: number) => new Date(AGORA.getTime() - ms).toISOString()
+  const HORA = 3_600_000
+
+  it('fronteira do prazo: 2 d 23 h fora, 3 d 0 h dentro (daysBetween arredonda p/ baixo)', async () => {
+    const { supabase, state } = createFakeSupabase({
+      users: [
+        { id: 'QUASE', email: 'a@example.com', created_at: antes(3 * DIA - HORA), email_confirmed: false },
+        { id: 'TRES', email: 'b@example.com', created_at: antes(3 * DIA), email_confirmed: false },
+      ],
+      tables: {},
+    }, () => AGORA.toISOString())
+    const { dispatcher } = dispatcherOk()
+    await runPruneEnqueue({ supabase, dispatcher, adminUserId: ADMIN, now: AGORA, env: {} })
+    expect(state.tables.prune_queue.map((q) => q.user_id)).toEqual(['TRES'])
+  })
+
+  const comNovas = (n: number, extra: any[] = []) => createFakeSupabase({
+    users: [
+      ...Array.from({ length: n }, (_, i) => ({ id: `NC${i}`, email: `n${i}@example.com`, created_at: antes(HORA), email_confirmed: false })),
+      ...extra,
+    ],
+    tables: {},
+  }, () => AGORA.toISOString())
+
+  it.each([[19, false], [20, false], [21, true]])('%i não confirmadas em 24 h ⇒ alerta=%s', async (n, alerta) => {
+    const { supabase } = comNovas(n as number)
+    const { dispatcher, enviados } = dispatcherOk()
+    const r = await runPruneEnqueue({ supabase, dispatcher, adminUserId: ADMIN, now: AGORA, env: {} })
+    expect(r.unconfirmed24h).toBe(n)
+    const alertas = enviados.filter((e) => e.kind === 'prune_admin_alert')
+    expect(alertas.length > 0).toBe(alerta)
+    if (alerta) {
+      expect(alertas[0].data).toEqual({ overdue: 0, red: 0, emailsDue: 0, unconfirmed24h: 21 })
+      expect(JSON.stringify(alertas[0])).not.toContain('@')
+    }
+  })
+
+  it('criada há 24 h ou 25 h não conta; confirmada não conta', async () => {
+    const { supabase } = comNovas(21, [
+      { id: 'H24', email: 'c@example.com', created_at: antes(24 * HORA), email_confirmed: false },
+      { id: 'H25', email: 'd@example.com', created_at: antes(25 * HORA), email_confirmed: false },
+      { id: 'OK', email: 'e@example.com', created_at: antes(HORA) },
+    ])
+    const { dispatcher } = dispatcherOk()
+    const r = await runPruneEnqueue({ supabase, dispatcher, adminUserId: ADMIN, now: AGORA, env: {} })
+    expect(r.unconfirmed24h).toBe(21)
+  })
+
+  it('falha do push do pico não derruba o job (capture)', async () => {
+    const { supabase } = comNovas(21)
+    const capture = vi.fn()
+    const dispatcher = { dispatch: async () => { throw new Error('rede') } }
+    const r = await runPruneEnqueue({ supabase, dispatcher, adminUserId: ADMIN, now: AGORA, env: {}, capture } as any)
+    expect(r.adminAlerted).toBe(false)
+    expect(capture).toHaveBeenCalledTimes(1)
   })
 })

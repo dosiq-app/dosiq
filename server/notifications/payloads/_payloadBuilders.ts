@@ -434,12 +434,17 @@ export function buildConsentPruneNoticePayload(
 export function buildPruneAdminAlertPayload(
   data: z.input<typeof pruneAdminAlertDataSchema>
 ): NotificationPayload {
-  const { overdue, red, emailsDue } = pruneAdminAlertDataSchema.parse(data);
-  const title = red > 0 ? '🔴 Exclusões perto do limite da política' : 'Exclusões aguardando decisão';
+  const { overdue, red, emailsDue, unconfirmed24h } = pruneAdminAlertDataSchema.parse(data);
+  const onlySpike = overdue + red + emailsDue === 0;
+  const title = red > 0
+    ? '🔴 Exclusões perto do limite da política'
+    : onlySpike ? 'Pico de cadastros sem confirmação' : 'Exclusões aguardando decisão';
   const partes: string[] = [];
   if (overdue > 0) partes.push(overdue === 1 ? '1 conta vencida sem decisão' : `${overdue} contas vencidas sem decisão`);
   if (red > 0) partes.push(red === 1 ? '1 a 10 dias ou menos do limite' : `${red} a 10 dias ou menos do limite`);
   if (emailsDue > 0) partes.push(emailsDue === 1 ? '1 aviso por e-mail a enviar' : `${emailsDue} avisos por e-mail a enviar`);
+  // Spec 123 FR-013: só contagem (sem e-mail, domínio ou id). O enqueue só manda > 0 acima do limite.
+  if (unconfirmed24h > 0) partes.push(`${unconfirmed24h} cadastros sem confirmação em 24 h`);
   const plain = `${partes.join(' · ')}. Abra o admin web para decidir.`;
   return { title, body: escapeMarkdownV2(plain), pushBody: plain };
 }
