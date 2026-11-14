@@ -87,7 +87,7 @@ A supressão exige **prova daquela ocorrência** — um evento `alarm_scheduled`
 ```
 reminder (tem o instanceId de cada dose)
   ├─ lê evidência EM LOTE para as doses críticas do ciclo
-  ├─ lê capacidade do USUÁRIO (emitiu alarm_scheduled nos últimos 7 dias)
+  ├─ lê capacidade do USUÁRIO (já emitiu alarm_scheduled alguma vez — sem janela)
   ▼
 decide POR BLOCO:
    todas as doses com prova          → suprime  → status suprimida_alarme   (dose COBERTA)
@@ -103,7 +103,7 @@ desfazer:
 | eixo | granularidade | onde vive |
 |---|---|---|
 | evidência | por **OCORRÊNCIA** | `dose_critical_events.dose_instance_id` |
-| capacidade | por **USUÁRIO** | emitiu `alarm_scheduled` na janela de 7 dias |
+| capacidade | por **USUÁRIO** | já emitiu `alarm_scheduled` alguma vez (sem janela desde 2026-11-14 — a janela de 7 d calava o paciente que parou de abrir o app; DOSIQ-SERVER-4) |
 | envio | por **APARELHO** | `notification_devices` |
 
 Não é hipotético: um paciente é capaz e tem **zero** aparelho (só Telegram); o maior consumidor
@@ -138,7 +138,7 @@ crítico tem **6** aparelhos.
 
 ### Boletim de capacidade invalida a prova (082 D2)
 
-A capacidade por usuário (`alarm_scheduled` nos últimos 7 dias) não enxerga o aparelho que **deixou**
+A capacidade por usuário (já emitiu `alarm_scheduled`) não enxerga o aparelho que **deixou**
 de conseguir tocar (notificação negada, canal de alarme bloqueado, alarme exato revogado, app restrito
 em segundo plano). Desde a 082 D2 o app (0.34.4+, #930) emite o evento **`device_capability`** em `dose_critical_events`
 (`dose_instance_id` NULL — a capacidade é do usuário; `detail` em allowlist fechada: `capable`,

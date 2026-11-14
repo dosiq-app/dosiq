@@ -15,35 +15,12 @@
 // sem coorte, `cohort: null` e uma chamada só, sem `p_since` (funciona contra a assinatura antiga e a
 // nova — ordem de deploy). Falha de qualquer uma ⇒ 500 genérico, nunca payload parcial.
 import { GROWTH_COHORTS } from '@dosiq/core'
-
-/** Uuid canônico (qualquer versão). A env é config, mas entra no SQL — valida antes. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+import { parseExcludedUserIds } from '../../../server/utils/excludedUserIds.js'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
 const FORBIDDEN_KEYS = new Set(['name', 'push_token'])
 const GENERIC_ERROR = 'Falha ao carregar analytics'
-
-/**
- * Lê `GROWTH_EXCLUDED_USER_IDS` (uuids separados por vírgula). Ausente/vazia ⇒ []. Inválido é
- * descartado com log (só a contagem — o valor pode ser lixo arbitrário). Dedupe e minúsculas.
- */
-export function parseExcludedUserIds(raw: string | undefined): string[] {
-  if (!raw) return []
-  const ids: string[] = []
-  let invalid = 0
-  for (const piece of raw.split(',')) {
-    const id = piece.trim().toLowerCase()
-    if (id === '') continue
-    if (!UUID_RE.test(id)) {
-      invalid += 1
-      continue
-    }
-    if (!ids.includes(id)) ids.push(id)
-  }
-  if (invalid > 0) console.warn(`[Admin API] growth: ${invalid} id(s) inválido(s) em GROWTH_EXCLUDED_USER_IDS descartado(s)`)
-  return ids
-}
 
 /** Inteiro da query limitado a [min, max]; ausente ou não numérico ⇒ fallback. */
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
@@ -88,7 +65,7 @@ export async function handleGetGrowthAnalytics(req, res, supabase) {
   const params: RpcParams = {
     p_limit: clampInt(req.query?.limit, DEFAULT_LIMIT, 1, MAX_LIMIT),
     p_offset: clampInt(req.query?.offset, 0, 0, Number.MAX_SAFE_INTEGER),
-    p_excluded_user_ids: parseExcludedUserIds(process.env.GROWTH_EXCLUDED_USER_IDS),
+    p_excluded_user_ids: parseExcludedUserIds(process.env.GROWTH_EXCLUDED_USER_IDS, 'Admin API growth'),
   }
   const cohortKey = resolveCohort(req.query?.cohort)
   try {

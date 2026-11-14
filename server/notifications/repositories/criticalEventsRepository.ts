@@ -12,20 +12,12 @@
 //   envio      → por APARELHO (decidido no canal, não aqui)
 
 import { createLogger } from '../../bot/logger.js'
-import { addDays, getNow } from '../../utils/dateUtils.js'
+import { getNow } from '../../utils/dateUtils.js'
 
 const logger = createLogger('CriticalEventsRepository')
 
 /** Evento que prova que o alarme daquela ocorrência foi armado no aparelho (ADR-056). */
 const EVENT_ALARM_SCHEDULED = 'alarm_scheduled'
-
-/**
- * Janela da capacidade do USUÁRIO (decisão do P1.5 — sinal comportamental, não versão do app: um
- * mesmo usuário tem aparelhos 0.19.1 e 0.32.0, e a versão não prediz a evidência).
- * Números medidos em prod 2026-09-11: 3 de 8 pacientes críticos são capazes em 7 d · 5 de 8 em 30 d.
- * É parâmetro — mudar a janela muda quem cai em `suprimida_sem_prova`.
- */
-export const ALARM_CAPABILITY_WINDOW_DAYS = 7
 
 /**
  * Teto explícito por leitura. O PostgREST trunca em 1000 sem avisar (AP-186), e aqui o truncamento
@@ -251,22 +243,26 @@ export async function findInstancesWithSnoozeEvidence(
  * registrou. Incapaz + sem prova ⇒ a ausência é ambígua e o push é suprimido (política
  * conservadora do D1), gravando `suprimida_sem_prova` para que o silêncio seja CONTADO.
  *
+ * 🔴 Capacidade = o usuário JÁ emitiu `alarm_scheduled` alguma vez — SEM janela de tempo. Até a
+ * correção (DOSIQ-SERVER-4, 2026-11-14) a janela era de 7 d, e ela confundia duas populações: o app
+ * antigo que não sabe emitir e o app que SABE emitir mas parou de ser aberto. O segundo perdia o
+ * alarme local (cobre 72 h) e, no 8º dia sem abrir o app, virava "incapaz" — o servidor suprimia o
+ * push justamente do paciente para quem ele era o último canal (2 pacientes em 0.34.0, ~3 doses
+ * críticas/dia caladas em prod). Saber emitir é propriedade do app instalado, não da semana; o
+ * aparelho 0.34.2+ que perde o alarme avisa por `device_capability` (`findLatestIncapableAt`).
+ *
  * @returns `true` também em erro de leitura — fail-open aqui significa "trate como capaz", que é
  *          o ramo que envia.
  */
 export async function isUserAlarmCapable(
   client: SupabaseLike,
-  userId: string,
-  now: Date = getNow()
+  userId: string
 ): Promise<boolean> {
-  const since = addDays(now, -ALARM_CAPABILITY_WINDOW_DAYS)
-
   const { data, error } = await client
     .from('dose_critical_events')
     .select('id')
     .eq('user_id', userId)
     .eq('event', EVENT_ALARM_SCHEDULED)
-    .gte('created_at', since.toISOString())
     .limit(1)
 
   if (error) {

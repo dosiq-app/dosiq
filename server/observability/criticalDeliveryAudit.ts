@@ -18,6 +18,7 @@
  */
 import { getRawNow, parseTimestamp } from '../utils/dateUtils.js'
 import { captureServerEvent } from './sentry.js'
+import { EXCLUDED_USER_IDS_ENV, parseExcludedUserIds } from '../utils/excludedUserIds.js'
 
 /** Janela de casamento entre a dose agendada e a linha de log do bloco que a cobriu. */
 export const MATCH_WINDOW_BEFORE_MS = 10 * 60 * 1000
@@ -501,6 +502,8 @@ export async function runCriticalDeliveryAudit(params: {
   logger: LoggerLike
   correlationId?: string
   now?: Date
+  /** Contas internas (smoke) fora da apuração. Ausente ⇒ lê `GROWTH_EXCLUDED_USER_IDS`. */
+  excludedUserIds?: string[]
 }): Promise<CriticalDeliveryReport> {
   const { supabase, logger, correlationId } = params
   truncatedReads = []
@@ -508,8 +511,18 @@ export async function runCriticalDeliveryAudit(params: {
   const windowEnd = params.now ?? getRawNow()
   const windowStart = parseTimestamp(windowEnd.getTime() - 24 * 60 * 60 * 1000)
 
-  const { doses, logs, criticalUserIds, settings, devices, activeUserIds } =
-    await fetchAuditInputs(supabase, windowStart, windowEnd)
+  const inputs = await fetchAuditInputs(supabase, windowStart, windowEnd)
+  const { logs, settings, devices } = inputs
+
+  // Contas de smoke em prod (DOSIQ-SERVER-4): saem da APURAÇÃO — doses e pacientes —, nunca da
+  // entrega. Sem isso o alerta dispara todo dia pelas contas internas e esconde o caso real.
+  const excluded = new Set(
+    params.excludedUserIds ?? parseExcludedUserIds(process.env[EXCLUDED_USER_IDS_ENV], 'critical_delivery_audit')
+  )
+  const doses = inputs.doses.filter((d) => !excluded.has(d.user_id))
+  const criticalUserIds = inputs.criticalUserIds.filter((id) => !excluded.has(id))
+  const activeUserIds = inputs.activeUserIds.filter((id) => !excluded.has(id))
+  const internalDosesExcluded = inputs.doses.length - doses.length
 
   const withDevice = new Set(devices.map((d) => d.user_id))
   const settingsByUser = new Map(settings.map((row) => [row.user_id, row]))
@@ -597,7 +610,12 @@ export async function runCriticalDeliveryAudit(params: {
         : {}),
       noChannelAllTypes: report.noChannelAllTypes,
       residualSilence: report.residualSilence,
-      logRate: { doses: doses.length, linhas: logs.length, truncado: report.truncatedReads },
+      logRate: {
+        doses: doses.length,
+        linhas: logs.length,
+        truncado: report.truncatedReads,
+        dosesInternasExcluidas: internalDosesExcluded,
+      },
     },
   })
 

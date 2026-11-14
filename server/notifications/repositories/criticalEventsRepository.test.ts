@@ -1,11 +1,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { addDays, parseISO } from '../../utils/dateUtils.js'
+import { parseISO } from '../../utils/dateUtils.js'
 import {
   findInstancesWithAlarmEvidence,
   isUserAlarmCapable,
   findInstancesWithSnoozeEvidence,
   findLatestIncapableAt,
-  ALARM_CAPABILITY_WINDOW_DAYS,
 } from './criticalEventsRepository'
 
 afterEach(() => {
@@ -113,15 +112,16 @@ describe('isUserAlarmCapable', () => {
     expect(await isUserAlarmCapable(client, 'u1')).toBe(true)
   })
 
-  it('a janela é a documentada e entra no filtro por created_at', async () => {
-    const client = makeClient({ data: [] })
-    const now = parseISO('2026-09-11T12:00:00.000Z')
+  it('🔴 SEM janela de tempo: quem emitiu há meses continua capaz (DOSIQ-SERVER-4)', async () => {
+    // Paciente em 0.34.0 que parou de abrir o app: o último `alarm_scheduled` é antigo. Com janela
+    // ele virava incapaz e o push crítico era suprimido — o filtro por data não pode voltar.
+    const client = makeClient({ data: [{ id: 'e-antigo' }] })
 
-    await isUserAlarmCapable(client, 'u1', now)
+    expect(await isUserAlarmCapable(client, 'u1')).toBe(true)
 
-    const gteCall = client._spy.mock.calls.find((c: unknown[]) => c[0] === 'gte')
-    expect(gteCall?.[2]).toBe(addDays(now, -ALARM_CAPABILITY_WINDOW_DAYS).toISOString())
-    expect(ALARM_CAPABILITY_WINDOW_DAYS).toBe(7)
+    const methods = client._spy.mock.calls.map((c: unknown[]) => c[0])
+    expect(methods).not.toContain('gte')
+    expect(client._spy.mock.calls).toContainEqual(['eq', 'event', 'alarm_scheduled'])
   })
 })
 
