@@ -39,6 +39,7 @@ import {
 } from '@treatments/services/titrationService'
 import { SURFACES } from '@platform/analytics/analyticsEvents'
 import { ROUTES } from '@navigation/routes'
+import { useOfferPushPrimerOnLeave } from '@platform/notifications/offerPushPrimer'
 
 const { ArrowLeft, Edit3, Trash2, Clock, Lock } = LucideIcons as any
 
@@ -65,6 +66,8 @@ export default function TitrationFormScreen() {
   const seedMedicine = route.params?.medicine ?? null
   const seedDose = route.params?.currentDose ?? null
   const treatmentPlanId: string | null = route.params?.treatmentPlanId ?? null
+  // 120 D-6: tratamento novo com escada ⇒ preparo de notificação ao sair daqui (fim do fluxo).
+  useOfferPushPrimerOnLeave(route.params?.pushPrimer ?? null)
 
   const goBack = useCallback(() => {
     lightTap()

@@ -52,10 +52,6 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'denied', canAskAgain: false })),
 }))
 
-jest.mock('../requestPushPermission', () => ({
-  requestPushPermission: jest.fn(() => Promise.resolve({ granted: true })),
-}))
-
 jest.mock('../getExpoPushToken', () => ({
   getExpoPushToken: jest.fn(() => Promise.resolve('ExponentPushToken[test]')),
 }))

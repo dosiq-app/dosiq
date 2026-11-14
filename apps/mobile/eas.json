@@ -43,6 +43,11 @@
         "simulator": false
       }
     },
+    "device-dev": {
+      "extends": "device",
+      "developmentClient": true,
+      "channel": "device-dev"
+    },
     "production": {
       "channel": "production",
       "env": {},

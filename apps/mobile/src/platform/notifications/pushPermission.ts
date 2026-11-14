@@ -15,10 +15,11 @@
 
 import * as Notifications from 'expo-notifications'
 import { Linking, Platform } from 'react-native'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { registerPushToken } from './registerPushToken'
 import { debugLog } from '@shared/utils/debugLog'
 import { logEvent } from '@platform/analytics/productAnalytics'
-import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
+import { EVENTS, SURFACES, type PermissionEntryPoint } from '@platform/analytics/analyticsEvents'
 import { ANDROID_PUSH_CHANNEL } from '@dosiq/core'
 
 // 054 C-23: no iOS, Alertas Críticos permitidos deixam o app "autorizado" mesmo com alerta/som/banner
@@ -54,10 +55,18 @@ export async function getPushChannelState(): Promise<'ok' | 'blocked' | 'silence
   }
 }
 
+// 120 US4 / E-6: o diálogo do SO de fato apareceu ⇒ `prompt_shown` + decisão, JUNTOS e post-hoc
+// (nunca antes do pedido: no Android só se sabe depois, pela demora). `entry_point` em ambos.
+async function _logDecision(granted: boolean, entryPoint: PermissionEntryPoint) {
+  const props = { surface: SURFACES.MOBILE, entry_point: entryPoint }
+  await logEvent(EVENTS.NOTIFICATION_PERMISSION_PROMPT_SHOWN, props)
+  await logEvent(granted ? EVENTS.NOTIFICATION_PERMISSION_GRANTED : EVENTS.NOTIFICATION_PERMISSION_DENIED, props)
+}
+
 // Pede permissão apenas em ponto de intenção. Nunca repete prompt já negado.
 // Retorna { granted, blocked }: blocked=true quando negado e não dá p/ repedir
 // (caller deve oferecer abrir Configurações do SO).
-export async function ensurePushPermission() {
+export async function ensurePushPermission({ entryPoint }: { entryPoint: PermissionEntryPoint }) {
   const { status, canAskAgain } = _effective(await Notifications.getPermissionsAsync())
   if (status === 'granted') return { granted: true, blocked: false }
   if (canAskAgain) {
@@ -65,10 +74,7 @@ export async function ensurePushPermission() {
     const granted = res.granted
     // 065 US5: só aqui o prompt do SO de fato apareceu — é a DECISÃO da pessoa. Já concedido ou
     // negado sem poder repedir não é decisão nova e não emite. O prompt só existe com o app aberto.
-    await logEvent(
-      granted ? EVENTS.NOTIFICATION_PERMISSION_GRANTED : EVENTS.NOTIFICATION_PERMISSION_DENIED,
-      { surface: SURFACES.MOBILE }
-    )
+    await _logDecision(granted, entryPoint)
     return { granted, blocked: !granted && res.canAskAgain === false }
   }
   // negado + não pode repedir → só via Configurações do SO
@@ -83,42 +89,81 @@ export async function ensurePushPermission() {
 // sem diálogo — e só aí (resposta instantânea) cabe abrir os Ajustes.
 const INSTANT_DENIAL_MS = 400
 
-export async function requestPushOrOpenSettings({ supabase }: { supabase: unknown }): Promise<boolean> {
+// 120 smoke: o Android não diz ANTES se ainda vai perguntar. Guardamos o que ele já mostrou: negou
+// na hora (sem diálogo) ⇒ próxima vez o preparo já fala em Ajustes, não em "o sistema vai perguntar".
+export const PUSH_OS_BLOCKED_KEY = 'dosiq:push-os-blocked'
+
+async function _setOsBlocked(blocked: boolean) {
+  try {
+    if (blocked) await AsyncStorage.setItem(PUSH_OS_BLOCKED_KEY, '1')
+    else await AsyncStorage.removeItem(PUSH_OS_BLOCKED_KEY)
+  } catch {
+    // memória de UX: falhar só deixa a cópia neutra
+  }
+}
+
+export type PushAskMode = 'ask' | 'settings' | 'unknown'
+
+/**
+ * O que acontece ao tocar no CTA do preparo — para a cópia não prometer um diálogo que não vem.
+ * 'ask' = o SO pergunta · 'settings' = abre os Ajustes · 'unknown' = Android negado sem histórico
+ * (pode perguntar ou não — C-33). Leitura pura; falha ⇒ 'unknown'.
+ */
+export async function getPushAskMode(): Promise<PushAskMode> {
+  try {
+    const { status, canAskAgain, granted } = _effective(await Notifications.getPermissionsAsync())
+    if (granted) return 'ask'
+    if (Platform.OS !== 'android') return canAskAgain ? 'ask' : 'settings'
+    if (status === 'undetermined') return 'ask'
+    return (await AsyncStorage.getItem(PUSH_OS_BLOCKED_KEY)) === '1' ? 'settings' : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+export async function requestPushOrOpenSettings({ supabase, entryPoint }: { supabase: unknown; entryPoint: PermissionEntryPoint }): Promise<boolean> {
   if (Platform.OS !== 'android') {
-    const res = await enablePushAtIntent({ supabase })
+    const res = await enablePushAtIntent({ supabase, entryPoint })
     if (!res.granted && res.blocked) Linking.openSettings()
     return res.granted
+  }
+  // 120: já concedido ⇒ sem pedido e sem evento (não é decisão); só garante o token.
+  if (_effective(await Notifications.getPermissionsAsync().catch(() => null)).granted) {
+    await _registerQuietly(supabase)
+    return true
   }
   const startedAt = Date.now()
   const res = _effective(await Notifications.requestPermissionsAsync())
   if (res.granted) {
-    await logEvent(EVENTS.NOTIFICATION_PERMISSION_GRANTED, { surface: SURFACES.MOBILE })
-    try {
-      await registerPushToken({ supabase })
-    } catch (err) {
-      debugLog('pushPermission', 'registerPushToken falhou', err?.message)
-    }
+    await _setOsBlocked(false)
+    await _logDecision(true, entryPoint)
+    await _registerQuietly(supabase)
     return true
   }
   if (Date.now() - startedAt < INSTANT_DENIAL_MS) {
-    // Sem diálogo: o Android já não pergunta ⇒ Ajustes.
+    // Sem diálogo: o Android já não pergunta ⇒ Ajustes (e nenhum evento — não houve decisão).
+    await _setOsBlocked(true)
     Linking.openSettings()
   } else {
-    await logEvent(EVENTS.NOTIFICATION_PERMISSION_DENIED, { surface: SURFACES.MOBILE })
+    await _logDecision(false, entryPoint)
   }
   return false
 }
 
+// A falha já vira `push_token_register_failed` dentro do `registerPushToken` (120 E-5); aqui só não
+// derruba o fluxo de intenção — o retry vem no próximo foreground (`usePushNotifications`).
+async function _registerQuietly(supabase: unknown) {
+  try {
+    await registerPushToken({ supabase })
+  } catch (err) {
+    debugLog('pushPermission', 'registerPushToken falhou', err?.message)
+  }
+}
+
 // One-call para pontos de intenção: pede (se cabível) e, se concedido, registra
 // o token imediatamente (para os lembretes funcionarem já, sem esperar relaunch).
-export async function enablePushAtIntent({ supabase }) {
-  const { granted, blocked } = await ensurePushPermission()
-  if (granted) {
-    try {
-      await registerPushToken({ supabase })
-    } catch (err) {
-      debugLog('pushPermission', 'registerPushToken falhou', err?.message)
-    }
-  }
+export async function enablePushAtIntent({ supabase, entryPoint }: { supabase: unknown; entryPoint: PermissionEntryPoint }) {
+  const { granted, blocked } = await ensurePushPermission({ entryPoint })
+  if (granted) await _registerQuietly(supabase)
   return { granted, blocked }
 }

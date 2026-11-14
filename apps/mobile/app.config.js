@@ -12,7 +12,7 @@ const BUILD_PROFILE = process.env.EAS_BUILD_PROFILE || 'production'
 // default só vale para os casos em que errar barato é melhor que errar caro.
 const UPDATE_CHANNEL = process.env.EAS_BUILD_PROFILE || 'development'
 
-const APP_VERSION = '0.34.22' // R-182: versão semântica (sem prefixo 'v')
+const APP_VERSION = '0.34.23' // R-182: versão semântica (sem prefixo 'v')
 const [major, minor, patch] = APP_VERSION.split('.').map(Number)
 // buildNumber/versionCode derivado da versão semântica: major*10000 + minor*100 + patch
 // 0.2.4 → 204 | 0.3.0 → 300 | 1.0.0 → 10000
@@ -32,6 +32,15 @@ const variants = {
   // O `name` difere de propósito: é a única pista visível de qual binário está no aparelho.
   device: {
     name: 'Dosiq device',
+    slug: 'dosiq-app',
+    iosBundleIdentifier: 'com.coelhotv.dosiq',
+    androidPackage: 'com.coelhotv.dosiq',
+  },
+  // Dev client no aparelho FÍSICO (120 smoke): o `device` + `developmentClient` — carrega o JS do
+  // metro (`expo start --dev-client`); só mudança nativa pede binário novo. Mesmo bundle id/App
+  // Group/Alertas Críticos do `device` (perfis do EAS — o `expo run:ios` não os tem).
+  'device-dev': {
+    name: 'Dosiq device dev',
     slug: 'dosiq-app',
     iosBundleIdentifier: 'com.coelhotv.dosiq',
     androidPackage: 'com.coelhotv.dosiq',
@@ -309,7 +318,10 @@ module.exports = {
       // SDK 54: expo install --fix aponta como plugins nativos (config dinâmico não
       // escreve sozinho); sem uso de config custom, entram sem 2º argumento.
       'expo-secure-store',
-      'expo-web-browser'
+      'expo-web-browser',
+      // 120 C-01: tira o cache `didAsk` de permissões do Expo do Auto Backup (canAskAgain falso após
+      // restore). DEPOIS do expo-secure-store: escreve XMLs próprios que incluem as regras dele.
+      './withExcludePermissionCacheFromBackup.js'
     ],
     extra: {
       // RE-004: variáveis públicas via EXPO_PUBLIC_*

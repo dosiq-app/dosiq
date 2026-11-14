@@ -130,7 +130,7 @@ export default function ProtocolFormScreen() {
   // mostra os erros e não chama onSaved — a navegação não acontece.
   const handleOpenTitration = useCallback(() => {
     submit({
-      onSaved: (result) => {
+      onSaved: (result, extras) => {
         const protocolId = editId ?? result?.id
         if (!protocolId) return
         const params = {
@@ -138,6 +138,8 @@ export default function ProtocolFormScreen() {
           medicine,
           currentDose: form.values.dosage_per_intake,
           treatmentPlanId: form.values.treatment_plan_id ?? null,
+          // 120 D-6: preparo de notificação ao sair da escada (só no CREATE — extras vem nulo no EDIT).
+          pushPrimer: extras?.pushPrimer ?? null,
         }
         // CREATE: o tratamento já foi salvo — trocar o form (stale, e re-salvar duplicaria) pelo
         // DETALHE antes de abrir a escada. Ao voltar da escada, cai no detalhe (com a timeline).

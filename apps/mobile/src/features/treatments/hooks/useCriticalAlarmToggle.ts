@@ -10,6 +10,7 @@
 import { useCallback, useState } from 'react'
 import { Alert, Linking, Platform } from 'react-native'
 import { enablePushAtIntent, getPushPermissionStatus } from '@platform/notifications/pushPermission'
+import { PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { getCriticalAlertSetting, requestCriticalAlertPermission } from '@platform/alarms/alarmService'
 import { triggerAlarmResync } from '@platform/alarms/alarmResyncBus'
@@ -34,14 +35,14 @@ function showBlockedAlert() {
 
 /** Fluxo de antes: o alarme depende da permissão de notificação. */
 async function enableWithPush() {
-  const { granted, blocked } = await enablePushAtIntent({ supabase })
+  const { granted, blocked } = await enablePushAtIntent({ supabase, entryPoint: PERMISSION_ENTRY_POINTS.CRITICAL_ALARM })
   if (!granted && blocked) showBlockedAlert()
   return granted
 }
 
 /** Registra o token sem bloquear: com o crítico concedido o alarme toca mesmo sem push (S6). */
 function registerPushBestEffort() {
-  enablePushAtIntent({ supabase }).catch(() => {})
+  enablePushAtIntent({ supabase, entryPoint: PERMISSION_ENTRY_POINTS.CRITICAL_ALARM }).catch(() => {})
 }
 
 export function useCriticalAlarmToggle({ setCritical, onEnabledAndroid }: Params) {

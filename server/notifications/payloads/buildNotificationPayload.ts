@@ -7,7 +7,8 @@ import { getServerTimestamp } from '../../utils/dateUtils.js';
 
 import { escapeMarkdownV2 } from '../../utils/formatters.js';
 
-import { DOSAGE_UNIT_LABELS, INTAKE_UNIT_LABELS, doseVerb, getKnownInjectionSiteLabel } from '@dosiq/core';
+import { DOSE_DETAIL_SEP, doseVerb, formatDoseAmount, formatDoseListItem, getKnownInjectionSiteLabel } from '@dosiq/core';
+import type { DoseAmountItem } from '@dosiq/core';
 
 import {
   kindSchema,
@@ -148,55 +149,10 @@ export function buildNotificationPayload({ kind, data, context = {} }: { kind: s
 // 120 B (D-9 · copy-matrix-B.md): o título carrega a ação e o nome; o corpo, só dose e hora.
 // O mesmo texto vale para push, Telegram e Inbox — exceto o local da última aplicação, que vai
 // SÓ no `pushBody` (ADR-124; o `body` é o do Telegram e o que a Inbox grava/mostra).
-const SEP = ' · ';
+const SEP = DOSE_DETAIL_SEP;
 const MAX_SHOWN = 10;
 
-const formatNumber = (n: number): string => String(n).replace('.', ',');
-
-// 120 B (smoke C-B1): espaço inquebrável DENTRO da dose — a quebra de linha só cai entre itens,
-// nunca em "Selozok 2 / × 25 mg".
-const NBSP = '\u00A0';
-
-/**
- * Quantidade da dose, sem o nome do remédio. Exemplos: "50 mg" · "2 × 25 mcg" · "20 gotas" ·
- * "10 UI" · "1,5 un.". Sem nenhuma informação de dose ⇒ null (o corpo fica só com a hora).
- */
-const isPositive = (n: number | undefined | null): n is number => n !== undefined && n !== null && n > 0;
-
-const unitLabelOf = (labels: Record<string, string>, unit: string): string => labels?.[unit] || unit;
-
-const formatDoseAmount = (
-  qty: number | undefined | null,
-  dosagePerPill: number | undefined | null,
-  unit: string | undefined,
-  intakeUnit: string | undefined | null,
-  dosage?: string,
-): string | null => {
-  // Líquidos (022): unidade de tomada real (gotas/ml/UI), sem a concentração.
-  if (intakeUnit && isPositive(qty)) {
-    return `${formatNumber(qty)}${NBSP}${unitLabelOf(INTAKE_UNIT_LABELS as Record<string, string>, intakeUnit)}`;
-  }
-  if (isPositive(dosagePerPill) && unit) {
-    // 012 Fase D (FR-015b c): case canônico do acrônimo ('ui' → 'UI'); sem label → unit cru.
-    const strength = `${formatNumber(dosagePerPill)}${NBSP}${unitLabelOf(DOSAGE_UNIT_LABELS as Record<string, string>, unit)}`;
-    return isPositive(qty) && qty !== 1 ? `${formatNumber(qty)}${NBSP}×${NBSP}${strength}` : strength;
-  }
-  if (dosage) return dosage;
-  return isPositive(qty) ? `${formatNumber(qty)}${NBSP}un.` : null;
-};
-
-type DoseLike = {
-  medicineName: string;
-  dosagePerIntake?: number;
-  dosagePerPill?: number | null;
-  dosageUnit?: string;
-  intakeUnit?: string | null;
-};
-
-const formatDoseItem = (d: DoseLike): string => {
-  const amount = formatDoseAmount(d.dosagePerIntake, d.dosagePerPill, d.dosageUnit, d.intakeUnit);
-  return amount ? `${d.medicineName} ${amount}` : d.medicineName;
-};
+type DoseLike = DoseAmountItem;
 
 const isWeeklyInjectable = (presentation: string | null | undefined, frequency: string | null | undefined): boolean =>
   presentation === 'injetavel' && frequency === 'semanal';
@@ -248,7 +204,7 @@ const dosesWord = (count: number): string => `${count} dose${count === 1 ? '' : 
 function formatDoseList(doses: DoseLike[]): { plain: string; markdown: string } {
   const shown = doses.slice(0, MAX_SHOWN);
   const extra = doses.length - shown.length;
-  const items = shown.map(formatDoseItem);
+  const items = shown.map(formatDoseListItem);
   let plain = items.join(SEP);
   let markdown = items.map((item) => `  – ${escapeMarkdownV2(item)}`).join('\n');
   if (extra > 0) {

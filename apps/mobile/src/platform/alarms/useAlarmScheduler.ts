@@ -169,6 +169,8 @@ function buildGroupedDose(it) {
     medicineName: it.medicineName,
     protocolId: it.protocolId,
     medicineId: it.medicineId,
+    // 120 T-A13c: verbo do alarme de 1 dose agrupada ("Essencial: aplicar X").
+    presentation: it.presentation ?? null,
     dosagePerIntake: it.dosagePerIntake,
     dosagePerPill: it.dosagePerPill,
     dosageUnit: it.dosageUnit,
@@ -218,6 +220,22 @@ async function _scheduleSnoozedAlarms(snoozed: any[]) {
   }
 }
 
+/**
+ * 082 D2: ids de trigger que o boletim confere contra o que o SO guardou (`String(ts)` no grupo).
+ * 120 T-A13d / X-3: só o trigger que o SO vai de fato guardar — `scheduleAlarm` ignora horário
+ * passado em silêncio, e o alarme que ACABOU de tocar (dose ainda pendente) entrava como "esperado e
+ * não armado": o boletim negativo cortava a prova e o push crítico saía junto do alarme (smoke B
+ * 13/11). Soneca já vem filtrada por `snoozeFireAt > now`.
+ */
+function _expectedTriggerIds(snoozed: any[], groups: Map<number, any[]>, nowMs: number): string[] {
+  const ids = snoozed.map((it) => String(it.instanceId))
+  for (const [ts, groupItems] of groups.entries()) {
+    if (ts <= nowMs) continue
+    ids.push(groupItems.length === 1 ? String(groupItems[0].instanceId) : String(ts))
+  }
+  return ids
+}
+
 function _groupItemsByTimestamp(items: any[]) {
   const groups = new Map<number, any[]>()
   for (const it of items.filter((x) => x.snoozeFireAt == null)) {
@@ -260,15 +278,13 @@ export async function syncAlarms({ userId, protocols, tz }: any) {
 
   const snoozed = items.filter((it) => it.snoozeFireAt != null)
   await _scheduleSnoozedAlarms(snoozed)
-  // 082 D2: ids de trigger agendados — o boletim confere quantos o SO de fato guardou.
-  const scheduledIds: string[] = snoozed.map((it) => String(it.instanceId))
 
   const groups = _groupItemsByTimestamp(items)
+  const scheduledIds = _expectedTriggerIds(snoozed, groups, now.getTime())
 
   for (const [ts, groupItems] of groups.entries()) {
     if (groupItems.length === 1) {
       const it = groupItems[0]
-      scheduledIds.push(String(it.instanceId))
       await alarmService.scheduleAlarm({
         doseInstanceId: it.instanceId,
         medicineName: it.medicineName,
@@ -288,7 +304,6 @@ export async function syncAlarms({ userId, protocols, tz }: any) {
       // janela do grupo como UNIÃO das janelas individuais. Usar o MENOR barraria um disparo que é
       // legítimo para a dose mais folgada do lote, e a recusa é por lote (FR-005 emendada).
       const maxEarlyWindow = Math.max(...groupItems.map((it) => it.earlyWindowMinutes ?? 120))
-      scheduledIds.push(String(ts))
 
       await alarmService.scheduleAlarm({
         doseInstanceId: String(ts),

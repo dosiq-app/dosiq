@@ -205,3 +205,36 @@ describe('throttle e recuperação (PO-D2-3)', () => {
     ])
   })
 })
+
+// 120 T-A13d / X-3 (smoke B 13/11): o sync logo após o disparo contava como "esperado e não armado"
+// o alarme que ACABOU de tocar (`scheduleAlarm` ignora horário passado em silêncio) ⇒ capable=false
+// cortava a prova e o push crítico saía junto do alarme.
+describe('X-3 — alarme que já tocou não é esperado', () => {
+  it('🔴 dose pendente com disparo no passado (alarme tocou, SO já não o guarda) ⇒ sem negativo', async () => {
+    mockItems = [item('i1', '2026-03-05T11:59:45.000Z')] // now = 12:00:00
+    mockFacts = capable({ criticalArmedIds: [] })
+    await sync()
+    expect(calls('device_capability').filter((b) => b.detail.capable === false)).toHaveLength(0)
+  })
+
+  it('passado + futuro: só o futuro conta como esperado', async () => {
+    mockItems = [item('i0', '2026-03-05T11:59:45.000Z'), item('i1')]
+    mockFacts = capable({ criticalArmedIds: ['i1'] })
+    await sync()
+    expect(calls('device_capability')[0].detail).toMatchObject({ capable: true, critical_expected: 1, critical_armed: 1 })
+  })
+
+  it('disparo exatamente agora ⇒ fora (o SO não arma horário que não é futuro)', async () => {
+    mockItems = [item('i1', '2026-03-05T12:00:00.000Z')]
+    mockFacts = capable({ criticalArmedIds: [] })
+    await sync()
+    expect(calls('device_capability')).toHaveLength(0)
+  })
+
+  it('guard: futuro não armado continua negativo', async () => {
+    mockItems = [item('i1')]
+    mockFacts = capable({ criticalArmedIds: [] })
+    await sync()
+    expect(calls('device_capability')[0].detail.capable).toBe(false)
+  })
+})

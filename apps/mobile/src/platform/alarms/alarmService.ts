@@ -13,7 +13,8 @@
 //  - cancelAll usa cancelTriggerNotifications() → cancela só triggers do Notifee,
 //       NÃO toca as notificações do expo-notifications (push remoto preservado).
 
-import { createDoseInstanceRepository, createCriticalAuditService, parseISO, formatConcentration, getRawNow } from '@dosiq/core'
+import { createDoseInstanceRepository, createCriticalAuditService, parseISO, getRawNow } from '@dosiq/core'
+import { getAlarmCopy } from './alarmCopy'
 // 067 A2: guarda bilateral de janela + trilha/aviso da anomalia. O `triggerAlarmResync` corrige o
 // agendamento a partir do banco quando a soneca recai sobre um disparo torto (FR-006).
 import { evaluateDoseWindow } from './doseWindow'
@@ -119,24 +120,6 @@ export function isPushUsable(settings): boolean {
 }
 let criticalStatusMemo: { at: number; value: boolean } | null = null
 let legacyChannelsMigrated = false
-
-/**
- * Pede a permissão de notificação do SO (POST_NOTIFICATIONS no Android 13+,
- * autorização no iOS). É a MESMA permissão do push — alarme e push a compartilham.
- * Ponto de intenção: ligar o toggle do alarme (R-239).
- * @returns {Promise<boolean>} concedida (AUTHORIZED ou PROVISIONAL)
- */
-export async function requestAlarmPermission() {
-  try {
-    const settings = await notifee.requestPermission()
-    return (
-      settings.authorizationStatus === AuthorizationStatus.AUTHORIZED ||
-      settings.authorizationStatus === AuthorizationStatus.PROVISIONAL
-    )
-  } catch {
-    return false
-  }
-}
 
 /**
  * Spec 054 (FR-003): Critical Alerts autorizado neste aparelho? Lido AO VIVO do SO — funciona no
@@ -353,7 +336,7 @@ export async function ensureAlarmCategories() {
     {
       id: ALARM_CHANNEL_ID,
       actions: [
-        { id: ALARM_ACTION.TAKEN, title: 'Tomei', foreground: false },
+        { id: ALARM_ACTION.TAKEN, title: 'Registrar', foreground: false },
         { id: ALARM_ACTION.SNOOZE, title: 'Soneca 5 min', foreground: false },
         { id: ALARM_ACTION.SKIP, title: 'Pular', foreground: false, destructive: true },
       ],
@@ -480,73 +463,6 @@ export async function migrateLegacyAlarmChannels() {
   debugLog('[alarmService] migração de canais legados', clean ? 'completa' : 'parcial')
 }
 
-function _getSingleDoseDesc(name, dosagePerPill, dosageUnit, quantity) {
-  const dosageInfo = dosagePerPill && dosageUnit ? ` (${formatConcentration(dosagePerPill, dosageUnit)})` : ''
-  const intakeInfo = ` • ${quantity ?? '1'} un.`
-  return `${name}${dosageInfo}${intakeInfo}`
-}
-
-function _getGroupedAlarmCopy(doses, time) {
-  if (doses.length === 0) {
-    return {
-      title: '💊 Hora da dose',
-      body: 'Está na hora do seu remédio.',
-    }
-  }
-
-  if (doses.length === 1) {
-    const d = doses[0]
-    const desc = _getSingleDoseDesc(d.medicineName, d.dosagePerPill, d.dosageUnit, d.dosagePerIntake)
-    return {
-      title: '💊 Remédio essencial',
-      body: `Hora de tomar ${desc}${time ? ` — ${time}` : ''}.`,
-    }
-  }
-
-  const firstPlan = doses[0].treatmentPlanName
-  const samePlan = firstPlan && doses.every((d) => d.treatmentPlanName === firstPlan)
-
-  if (samePlan) {
-    return {
-      title: '📂 Plano essencial',
-      body: `Hora dos remédios do plano ${firstPlan}${time ? ` — ${time}` : ''}.`,
-    }
-  }
-
-  return {
-    title: '📋 Doses essenciais',
-    body: `Doses pendentes para as ${time || ''}.`,
-  }
-}
-
-function _getSingleAlarmCopy(medicineName, data, time) {
-  const name = medicineName || data?.medicineName || 'sua dose'
-  const desc = _getSingleDoseDesc(name, data?.dosagePerPill, data?.dosageUnit, data?.quantityTaken)
-  return {
-    title: '💊 Remédio essencial',
-    body: `Hora de tomar ${desc}${time ? ` — ${time}` : ''}.`,
-  }
-}
-
-// Monta o copy clínico customizado e acolhedor dos alarmes
-function getAlarmCopy({ medicineName, data }) {
-  const time = data?.scheduledTime
-  const isGrouped = data?.isGrouped === 'true'
-
-  if (isGrouped) {
-    let doses = []
-    try {
-      doses = JSON.parse(data.groupedDoses || '[]')
-    } catch {
-      // fallback
-    }
-
-    return _getGroupedAlarmCopy(doses, time)
-  }
-
-  return _getSingleAlarmCopy(medicineName, data, time)
-}
-
 // Monta o objeto de notificação compartilhado por agendamento e nag.
 // isCritical: só o iOS diferencia. Android = canal único resolvido (062 D-2); deve rodar após ensureAlarmSetup.
 // Spec 054: `critical` exige dose crítica E autorização (C-1) — sem ela o iOS descartaria tudo.
@@ -586,7 +502,7 @@ function buildNotification({ doseInstanceId, medicineName, data, notificationId,
       fullScreenAction: { id: 'default' },
       pressAction: { id: 'default', launchActivity: 'default' },
       actions: [
-        { title: 'Tomei', pressAction: { id: ALARM_ACTION.TAKEN } },
+        { title: 'Registrar', pressAction: { id: ALARM_ACTION.TAKEN } },
         { title: 'Soneca', pressAction: { id: ALARM_ACTION.SNOOZE } },
         { title: 'Pular', pressAction: { id: ALARM_ACTION.SKIP } },
       ],
@@ -995,7 +911,6 @@ export async function cancelAll() {
 }
 
 export const alarmService = {
-  requestAlarmPermission,
   openFullScreenIntentSettings,
   needsFullScreenIntentAccess,
   ensureAlarmCriticalChannel,

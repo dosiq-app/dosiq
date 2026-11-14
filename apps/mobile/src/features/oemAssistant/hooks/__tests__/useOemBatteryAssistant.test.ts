@@ -211,3 +211,31 @@ describe('useOemBatteryAssistant', () => {
     expect(result.current.visible).toBe(false)
   })
 })
+
+// 120 S-2 / T-A08b — fonte única de "push utilizável": o card da 068 lê o alcance da 120.
+describe('gate do push pela 120 (S-2)', () => {
+  it('evaluate: pushUsable informado manda sobre o notificationsAllowed do notifee', () => {
+    expect(evaluateOemAssistant(true, 'samsung', facts({ batteryOptimized: true, notificationsAllowed: true }), false)).toBeNull()
+    expect(evaluateOemAssistant(true, 'samsung', facts({ batteryOptimized: true, notificationsAllowed: false }), true)).toBe('battery')
+  })
+
+  it('🔴 push não utilizável pela 120 ⇒ card da 068 oculto', async () => {
+    mockProbe.mockResolvedValue(facts({ batteryOptimized: true, notificationsAllowed: true }))
+    const { result } = renderHook(() => useOemBatteryAssistant({ pushUsable: false }))
+    await waitFor(() => expect(result.current.reason).toBeDefined())
+    expect(result.current.visible).toBe(false)
+  })
+
+  it('push utilizável pela 120 ⇒ card segue o gate de bateria', async () => {
+    mockProbe.mockResolvedValue(facts({ batteryOptimized: true }))
+    const { result } = renderHook(() => useOemBatteryAssistant({ pushUsable: true }))
+    await waitFor(() => expect(result.current.visible).toBe(true))
+  })
+
+  it('alcance ainda lendo (null) ⇒ oculto (desconhecido nunca vira positivo)', async () => {
+    mockProbe.mockResolvedValue(facts({ batteryOptimized: true }))
+    const { result } = renderHook(() => useOemBatteryAssistant({ pushUsable: null }))
+    await waitFor(() => expect(result.current.reason).toBeDefined())
+    expect(result.current.visible).toBe(false)
+  })
+})

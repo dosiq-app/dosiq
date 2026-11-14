@@ -9,9 +9,11 @@
 import { useCallback, useState } from 'react'
 import { treatmentPlanService } from '../services/treatmentPlanService'
 import { medicineService } from '@medications/services/medicineService'
-import { SURFACES } from '@platform/analytics/analyticsEvents'
-import { getPushPermissionStatus, enablePushAtIntent } from '@platform/notifications/pushPermission'
-import { supabase } from '@platform/supabase/nativeSupabaseClient'
+import { SURFACES, PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
+import { offerPushPrimer } from '@platform/notifications/offerPushPrimer'
+import { usePushPrimer, type OpenPushPrimerArgs } from '@platform/notifications/pushPrimerContext'
+import { nextDoseReminder } from '@dashboard/utils/nextDoseReminder'
+import { getNow } from '@dosiq/core'
 import { resolveTrackedMeasure } from '../utils/trackedMeasureField'
 
 // Densidade (units_per_ml) é física do medicamento, capturada no tratamento quando
@@ -23,6 +25,16 @@ async function persistDensity(form) {
     await medicineService.update(medicine_id, { units_per_ml: Number(String(units_per_ml).replace(',', '.')) }, { surface: SURFACES.MOBILE })
   } catch {
     // Não bloqueia o tratamento; RPC usa fallback 20 se densidade não gravar.
+  }
+}
+
+// 120 US2 / D-4 / D-6: preparo do tratamento recém-salvo — prévia do push da próxima dose dele.
+function buildFormPrimerArgs(payload, medicine): OpenPushPrimerArgs {
+  const reminder = nextDoseReminder([{ ...payload, active: payload?.active ?? true, medicine }], getNow())
+  return {
+    entryPoint: PERMISSION_ENTRY_POINTS.TREATMENT_FORM,
+    anchor: 'Tratamento salvo',
+    preview: reminder ? { title: reminder.title, body: reminder.body, medicineName: reminder.medicineName, verb: reminder.verb } : null,
   }
 }
 
@@ -54,12 +66,13 @@ async function resolveInlinePlan(planField, show) {
 export function useProtocolFormSubmit({ editId, existing = null, form, medicine = null, planField, mutation, show, onValidateFail }) {
   // States
   const [submitting, setSubmitting] = useState(false)
+  const { openPushPrimer } = usePushPrimer()
 
   // Handlers
   // `options.onSaved`: quando fornecido (ex.: linha "Evolução do tratamento" — T018), salva o
   // protocolo SEM goBack e chama onSaved(result) pra encadear a navegação (create-on-transition).
   // FormActions passa o evento de press como 1º arg, por isso o typeof guard.
-  const submit = useCallback(async (options?: { onSaved?: (result: any) => void }) => {
+  const submit = useCallback(async (options?: { onSaved?: (result: any, extras?: { pushPrimer: OpenPushPrimerArgs | null }) => void }) => {
     const onSaved =
       options && typeof options.onSaved === 'function' ? options.onSaved : null
     if (submitting) return
@@ -105,20 +118,16 @@ export function useProtocolFormSubmit({ editId, existing = null, form, medicine 
         ? await mutation.update(editId, payload, { goBack: !onSaved, previous: existing, measureSource: measure.source })
         : await mutation.create(payload, { goBack: !onSaved, measureSource: measure.source })
 
-      // Ponto de intenção #2: ao criar tratamento manualmente, se NUNCA pedimos
-      // push (status undetermined), pede agora — é o momento em que lembretes de
-      // dose fazem sentido. Só na 1ª vez (undetermined); depois nunca mais (sem nag).
-      if (!editId && result) {
-        const { status } = await getPushPermissionStatus()
-        if (status === 'undetermined') {
-          await enablePushAtIntent({ supabase }).catch(() => {})
-        }
-      }
+      // Ponto de intenção #2 (120 US2/E-3): o pedido SAIU do submit. O preparo abre na raiz DEPOIS de
+      // navegar (`goBack` já desmontou o form) — sem await: não segura o submit. Na escada (`onSaved`)
+      // os args vão junto e o preparo abre no fim do fluxo (D-6, `useOfferPushPrimerOnLeave`).
+      const primerArgs = !editId && result ? buildFormPrimerArgs(payload, medicine) : null
+      if (primerArgs && !onSaved) void offerPushPrimer(openPushPrimer, primerArgs)
 
       // T018: encadeia a navegação para o cadastro da escada com o protocolo já salvo.
       if (result && onSaved) {
         setSubmitting(false)
-        onSaved(result)
+        onSaved(result, { pushPrimer: primerArgs })
         return
       }
 
@@ -128,7 +137,7 @@ export function useProtocolFormSubmit({ editId, existing = null, form, medicine 
       const verb = editId ? 'atualizar' : 'criar'
       show(err?.message ?? `Erro ao ${verb} tratamento`, { variant: 'error' })
     }
-  }, [editId, existing, form, medicine, planField, mutation, show, submitting, onValidateFail])
+  }, [editId, existing, form, medicine, planField, mutation, show, submitting, onValidateFail, openPushPrimer])
 
   return { submit, submitting }
 }

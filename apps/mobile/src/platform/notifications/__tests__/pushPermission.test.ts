@@ -14,7 +14,8 @@ jest.mock('@platform/analytics/productAnalytics', () => ({ logEvent: (...a: any[
 
 import { getPushPermissionStatus, ensurePushPermission } from '../pushPermission'
 import { registerPushToken } from '../registerPushToken'
-import { enablePushAtIntent, getPushChannelState, requestPushOrOpenSettings } from '../pushPermission'
+import { enablePushAtIntent, getPushChannelState, requestPushOrOpenSettings, getPushAskMode, PUSH_OS_BLOCKED_KEY } from '../pushPermission'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const RN = require('react-native')
 const ORIGINAL_OS = RN.Platform.OS
@@ -39,7 +40,7 @@ describe('pushPermission — push efetivo (054 C-23)', () => {
 
   it('🔴 ensurePushPermission não registra token nem pede de novo: manda para Ajustes', async () => {
     get.mockResolvedValue({ status: 'granted', canAskAgain: true, ios: { allowsAlert: false } })
-    expect(await enablePushAtIntent({ supabase: {} })).toEqual({ granted: false, blocked: true })
+    expect(await enablePushAtIntent({ supabase: {}, entryPoint: 'settings' })).toEqual({ granted: false, blocked: true })
     expect(req).not.toHaveBeenCalled()
     expect(registerPushToken).not.toHaveBeenCalled()
   })
@@ -57,14 +58,14 @@ describe('pushPermission — push efetivo (054 C-23)', () => {
   it('Android ignora o campo do iOS', async () => {
     RN.Platform.OS = 'android'
     get.mockResolvedValue({ status: 'granted', canAskAgain: true })
-    expect((await ensurePushPermission()).granted).toBe(true)
+    expect((await ensurePushPermission({ entryPoint: 'settings' })).granted).toBe(true)
   })
 
   it('prompt concedido mas sem alerta ⇒ evento de NEGAÇÃO', async () => {
     get.mockResolvedValue({ status: 'undetermined', canAskAgain: true })
     req.mockResolvedValue({ status: 'granted', canAskAgain: false, ios: { allowsAlert: false } })
-    expect((await ensurePushPermission()).granted).toBe(false)
-    expect(mockLogEvent.mock.calls[0][0]).toBe('notification_permission_denied')
+    expect((await ensurePushPermission({ entryPoint: 'settings' })).granted).toBe(false)
+    expect(mockLogEvent.mock.calls.map((c) => c[0])).toEqual(['notification_permission_prompt_shown', 'notification_permission_denied'])
   })
 })
 
@@ -106,7 +107,7 @@ describe('requestPushOrOpenSettings — Android sempre pede (054 C-33)', () => {
 
   it('🔴 pede ao SO mesmo com canAskAgain:false; concedido registra token', async () => {
     req.mockResolvedValue({ status: 'granted', canAskAgain: true })
-    expect(await requestPushOrOpenSettings({ supabase: {} })).toBe(true)
+    expect(await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'settings' })).toBe(true)
     expect(req).toHaveBeenCalled()
     expect(registerPushToken).toHaveBeenCalled()
   })
@@ -114,7 +115,7 @@ describe('requestPushOrOpenSettings — Android sempre pede (054 C-33)', () => {
   it('🔴 negado na hora (sem diálogo) ⇒ abre Ajustes', async () => {
     const spy = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined)
     req.mockResolvedValue({ status: 'denied', canAskAgain: false })
-    expect(await requestPushOrOpenSettings({ supabase: {} })).toBe(false)
+    expect(await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'settings' })).toBe(false)
     expect(spy).toHaveBeenCalled()
   })
 
@@ -122,8 +123,117 @@ describe('requestPushOrOpenSettings — Android sempre pede (054 C-33)', () => {
     const spy = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined)
     const now = jest.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(5000)
     req.mockResolvedValue({ status: 'denied', canAskAgain: false })
-    expect(await requestPushOrOpenSettings({ supabase: {} })).toBe(false)
+    expect(await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'settings' })).toBe(false)
     expect(spy).not.toHaveBeenCalled()
     now.mockRestore()
+  })
+})
+
+// smoke 120: o preparo diz o que o CTA fará — não promete diálogo quando o SO já bloqueou.
+describe('getPushAskMode', () => {
+  const store = AsyncStorage as unknown as { getItem: jest.Mock; setItem: jest.Mock; removeItem: jest.Mock }
+
+  it('iOS: pode perguntar ⇒ ask; negado ⇒ settings', async () => {
+    get.mockResolvedValueOnce({ status: 'undetermined', canAskAgain: true })
+    expect(await getPushAskMode()).toBe('ask')
+    get.mockResolvedValueOnce({ status: 'denied', canAskAgain: false })
+    expect(await getPushAskMode()).toBe('settings')
+  })
+
+  it('Android negado: sem histórico ⇒ unknown; com a marca ⇒ settings', async () => {
+    RN.Platform.OS = 'android'
+    get.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    store.getItem.mockResolvedValueOnce(null)
+    expect(await getPushAskMode()).toBe('unknown')
+    store.getItem.mockResolvedValueOnce('1')
+    expect(await getPushAskMode()).toBe('settings')
+    expect(store.getItem).toHaveBeenCalledWith(PUSH_OS_BLOCKED_KEY)
+  })
+
+  it('Android: negação instantânea grava a marca; concessão apaga', async () => {
+    RN.Platform.OS = 'android'
+    jest.spyOn(RN.Linking, 'openSettings').mockResolvedValue(undefined)
+    get.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    req.mockResolvedValueOnce({ status: 'denied', canAskAgain: false })
+    await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'today_banner' })
+    expect(store.setItem).toHaveBeenCalledWith(PUSH_OS_BLOCKED_KEY, '1')
+    req.mockResolvedValueOnce({ status: 'granted', canAskAgain: true })
+    await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'today_banner' })
+    expect(store.removeItem).toHaveBeenCalledWith(PUSH_OS_BLOCKED_KEY)
+  })
+
+  it('leitura falhou ⇒ unknown', async () => {
+    get.mockRejectedValueOnce(new Error('x'))
+    expect(await getPushAskMode()).toBe('unknown')
+  })
+})
+
+// 120 US4 / E-6 — `prompt_shown` com `entry_point`, emitido JUNTO da decisão, só quando houve diálogo.
+describe('pushPermission — medição por ponto de pedido (120 PO-120-5)', () => {
+  const { Linking } = RN
+  const names = () => mockLogEvent.mock.calls.map((c) => c[0])
+
+  it('iOS undetermined ⇒ prompt_shown + decisão, ambos com entry_point', async () => {
+    get.mockResolvedValue({ status: 'undetermined', canAskAgain: true })
+    req.mockResolvedValue({ status: 'granted', canAskAgain: true })
+    await ensurePushPermission({ entryPoint: 'treatment_form' })
+    expect(mockLogEvent.mock.calls).toEqual([
+      ['notification_permission_prompt_shown', { surface: 'mobile', entry_point: 'treatment_form' }],
+      ['notification_permission_granted', { surface: 'mobile', entry_point: 'treatment_form' }],
+    ])
+  })
+
+  it('iOS já concedido ou negado sem repedir ⇒ nenhum evento', async () => {
+    get.mockResolvedValue({ status: 'granted', canAskAgain: true })
+    await ensurePushPermission({ entryPoint: 'onboarding' })
+    get.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    await ensurePushPermission({ entryPoint: 'onboarding' })
+    expect(mockLogEvent).not.toHaveBeenCalled()
+  })
+
+  it('Android com diálogo (≥400 ms) e negado ⇒ prompt_shown + denied', async () => {
+    RN.Platform.OS = 'android'
+    jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined)
+    const now = jest.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(5000)
+    get.mockResolvedValue({ status: 'denied', canAskAgain: true })
+    req.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'today_banner' })
+    expect(names()).toEqual(['notification_permission_prompt_shown', 'notification_permission_denied'])
+    expect(mockLogEvent.mock.calls[1][1]).toEqual({ surface: 'mobile', entry_point: 'today_banner' })
+    now.mockRestore()
+  })
+
+  it('🔴 Android negação instantânea (sem diálogo) ⇒ nenhum evento (boundary PO-120-5)', async () => {
+    RN.Platform.OS = 'android'
+    jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined)
+    get.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    req.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'today_banner' })
+    expect(mockLogEvent).not.toHaveBeenCalled()
+  })
+
+  it('🔴 Android já concedido ⇒ registra o token sem pedir e sem evento', async () => {
+    RN.Platform.OS = 'android'
+    get.mockResolvedValue({ status: 'granted', canAskAgain: true })
+    expect(await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'settings' })).toBe(true)
+    expect(req).not.toHaveBeenCalled()
+    expect(registerPushToken).toHaveBeenCalled()
+    expect(mockLogEvent).not.toHaveBeenCalled()
+  })
+
+  it('🔴 C-01: Android denied + canAskAgain:false sem decisão ⇒ ainda pede ao SO (PO-120-11)', async () => {
+    RN.Platform.OS = 'android'
+    get.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    req.mockResolvedValue({ status: 'granted', canAskAgain: true })
+    expect(await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'treatment_form' })).toBe(true)
+    expect(req).toHaveBeenCalledTimes(1)
+  })
+
+  it('INV-2: iOS negado não repede ⇒ Ajustes', async () => {
+    const spy = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined)
+    get.mockResolvedValue({ status: 'denied', canAskAgain: false })
+    expect(await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'today_banner' })).toBe(false)
+    expect(req).not.toHaveBeenCalled()
+    expect(spy).toHaveBeenCalled()
   })
 })

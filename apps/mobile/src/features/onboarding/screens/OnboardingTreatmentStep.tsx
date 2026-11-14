@@ -24,6 +24,7 @@ import {
   MONTHLY_CHOICE,
   MONTHLY_INTERVAL_DAYS,
   INTAKE_UNIT_LABELS,
+  doseVerb,
 } from '@dosiq/core'
 import { useFormState } from '@shared/hooks/useFormState'
 import FormInput from '@shared/components/form/FormInput'
@@ -87,16 +88,17 @@ function FrequencySelectorSegment({ selected, monthlyAvailable, settled, onSelec
   )
 }
 
-function OnboardingReminderCard({ remind, setRemind }) {
+// 120 D-4: verbo pela apresentação ("aplicar" para injetável) e sem possessivo (INV-3).
+function OnboardingReminderCard({ remind, setRemind, verb = 'tomar' }) {
   return (
     <View style={styles.reminderCard}>
       <View style={styles.reminderIcon}>
         <Clock size={18} color={colors.primary[700]} strokeWidth={2} />
       </View>
       <View style={styles.reminderText}>
-        <Text style={styles.reminderTitle}>Me avise a hora de tomar</Text>
+        <Text style={styles.reminderTitle}>{`Me avise a hora de ${verb}`}</Text>
         <Text style={styles.reminderSub}>
-          Notificação no celular — o sistema vai pedir a sua autorização, você precisa permitir.
+          Notificação no celular. O sistema vai pedir autorização: toque em Permitir.
         </Text>
       </View>
       <Switch
@@ -306,7 +308,7 @@ export default function OnboardingTreatmentStep() {
             onBlur={form.handleBlur}
           />
 
-          <OnboardingReminderCard remind={remind} setRemind={setRemind} />
+          <OnboardingReminderCard remind={remind} setRemind={setRemind} verb={doseVerb(medicine?.presentation)} />
         </ScrollView>
 
         <FormActions

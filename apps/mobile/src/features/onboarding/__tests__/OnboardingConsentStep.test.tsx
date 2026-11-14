@@ -96,6 +96,15 @@ describe('OnboardingConsentStep (S1)', () => {
     expect(ctx.finish).toHaveBeenCalled()
   })
 
+  it('120 PO-120-4: lembrete desligado no passo de tratamento ⇒ S1 não pede notificação', async () => {
+    const ctx = renderStep({ writeSetup: jest.fn(() => Promise.resolve({ remind: false })) })
+    await press(HEALTH_CONSENT_COPY.label)
+    await press(COPY.cta)
+    expect(ctx.writeSetup).toHaveBeenCalledTimes(1)
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(ctx.finish).toHaveBeenCalled()
+  })
+
   it('A grant falha ⇒ 0 escrita, erro visível', async () => {
     mockGrantV04.mockResolvedValue({ ok: false, transferOk: false })
     const ctx = renderStep()

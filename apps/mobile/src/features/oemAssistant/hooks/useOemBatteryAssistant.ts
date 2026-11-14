@@ -2,7 +2,8 @@
 //
 // Gate (FR-001 revisada + decisão do PO 2026-11-08, analysis-pr1.md §Correções 1):
 //   não-Android                          → oculto
-//   notificações não liberadas (≠ true)  → oculto (o pedido certo é a permissão — onboarding/082)
+//   push não utilizável                  → oculto (Hoje: `usePushReachability().usable` da 120, S-2;
+//                                          tela: notifee. O pedido certo é a permissão — card da 120)
 //   card: sem tratamento ativo na Hoje   → oculto (nada a proteger; smoke conta nova 2026-11-10)
 //   backgroundRestricted === true        → VISÍVEL em qualquer fabricante (passo 1: segundo plano)
 //   xiaomi/samsung + otimizado === true  → VISÍVEL (Motorola/genérico: só se restrito — 2026-11-10)
@@ -32,10 +33,14 @@ export type AssistantReason = 'restricted' | 'battery' | null
 export function evaluateOemAssistant(
   isAndroid: boolean,
   family: OemFamily,
-  facts: Pick<DeviceFacts, 'backgroundRestricted' | 'batteryOptimized' | 'notificationsAllowed'> | null
+  facts: Pick<DeviceFacts, 'backgroundRestricted' | 'batteryOptimized' | 'notificationsAllowed'> | null,
+  /** 120 S-2: alcance do push pela 120 (`usePushReachability().usable`). Informado ⇒ manda sobre o
+   * `notificationsAllowed` do notifee; `undefined` (tela) ⇒ comportamento anterior. */
+  pushUsable?: boolean | null
 ): AssistantReason {
   if (!isAndroid || !facts) return null
-  if (facts.notificationsAllowed !== true) return null
+  const pushOk = pushUsable === undefined ? facts.notificationsAllowed : pushUsable
+  if (pushOk !== true) return null
   if (facts.backgroundRestricted === true) return 'restricted'
   // Motorola sai (2026-11-10): Android quase puro, "Otimizado" basta; só restrito abre o card.
   if ((family === 'xiaomi' || family === 'samsung') && facts.batteryOptimized === true) {
@@ -62,9 +67,11 @@ export interface OemAssistantState {
 export interface OemAssistantOptions {
   /** Card só com algo a proteger: `hasRemindableTreatment` (ativo, com horário, ≠ quando_necessário). Omitido (tela) ⇒ não restringe. */
   hasTreatment?: boolean
+  /** 120 S-2: fonte única de "push utilizável" (card da Hoje). Omitido (tela) ⇒ lê o notifee. */
+  pushUsable?: boolean | null
 }
 
-export function useOemBatteryAssistant({ hasTreatment = true }: OemAssistantOptions = {}): OemAssistantState {
+export function useOemBatteryAssistant({ hasTreatment = true, pushUsable }: OemAssistantOptions = {}): OemAssistantState {
   // 1. States
   const [dismissed, setDismissed] = useState<boolean | null>(null) // null = storage não lido
   const [reason, setReason] = useState<AssistantReason | undefined>(undefined)
@@ -94,7 +101,7 @@ export function useOemBatteryAssistant({ hasTreatment = true }: OemAssistantOpti
     const gen = ++probeGen.current
     try {
       const probed = await probeDevice()
-      const next = evaluateOemAssistant(true, family, probed)
+      const next = evaluateOemAssistant(true, family, probed, pushUsable)
       if (mounted.current && gen === probeGen.current) {
         setReason(next)
         setActivity(probed.powerManagerActivity ?? null)
@@ -113,7 +120,7 @@ export function useOemBatteryAssistant({ hasTreatment = true }: OemAssistantOpti
       }
       return null
     }
-  }, [family])
+  }, [family, pushUsable])
 
   // 3. Effects
   // Cada tela tem sua instância do hook: o "Já ajustei" da tela grava o dismiss, e a Hoje (que
