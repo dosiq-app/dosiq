@@ -7,6 +7,11 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Dose essencial volta a avisar quem parou de abrir o app; contas de smoke saem da apuração diária (082, DOSIQ-SERVER-4)
+
+- **Backend** (`Fixed`, **patch** comportamental, sem version source): o servidor deixava de mandar o push da dose essencial quando o paciente passava 7 dias sem abrir o app. O alarme local cobre só 72 h e o servidor passava a tratar o celular como "incapaz de alarmar", então a dose ficava sem aviso nenhum. Isso afetava 2 pacientes em 0.34.0, com cerca de 3 doses por dia. Agora o celular conta como capaz se o app já registrou um alarme alguma vez, e o push volta a sair. O app antigo que nunca registrou alarme segue a regra de antes.
+- **Backend** (`Changed`): a apuração diária de entrega de dose essencial (Sentry, 05:00) passa a ignorar as contas internas listadas em `GROWTH_EXCLUDED_USER_IDS`, a mesma lista que já tira essas contas do painel de crescimento. A exclusão vale só para a medição, nunca para a entrega. O evento informa quantas doses internas ficaram de fora.
+
 ### Painel de crescimento conta só e-mail confirmado; cadastro não confirmado vai para a fila em 3 dias (spec 123, Fatia S)
 
 - **Web** (`Changed`/`Added`, **minor** 4.39.5 → **4.40.0**; admin): o painel de Crescimento & Wedge passa a contar **só contas com e-mail confirmado**, na base e no recorte pós-v0.34, para todo o histórico. A conta não confirmada sai da tabela de contas e de todos os blocos. Os indicadores viram um funil de 5 cards: **Cadastros** (contas criadas, % que confirma e quantas estão sem confirmar) → **Usuários** → **Com tratamento** → **Push ativo** → **Wedge GLP-1**. **Push ativo** passa a ser medido sobre quem tem tratamento ativo (antes era sobre todos os usuários). Na tabela de contas, entra o filtro **Onboarding: todos / pendente / concluído**.

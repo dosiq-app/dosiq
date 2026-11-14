@@ -478,6 +478,60 @@ describe('emissão ao Sentry (FR-009/FR-010)', () => {
   })
 })
 
+describe('contas internas fora da apuração (DOSIQ-SERVER-4)', () => {
+  const SMOKE = '58ff7850-0000-4000-8000-000000000001'
+
+  afterEach(() => {
+    delete process.env.GROWTH_EXCLUDED_USER_IDS
+  })
+
+  function smokeOnlyDay() {
+    return makeSupabase({
+      dose_instances: [
+        { id: 'd1', user_id: SMOKE, protocol_id: P, scheduled_for: DENTRO.toISOString(), critical_alarm: true },
+      ],
+      notification_log: [],
+      protocols: [{ user_id: SMOKE, critical_alarm: true, active: true }],
+      user_settings: [{ user_id: SMOKE, telegram_chat_id: null, consent_revoked_at: null }],
+      notification_devices: [],
+    })
+  }
+
+  it('🔴 dia em que só a conta de smoke falhou NÃO alerta (lista lida da env)', async () => {
+    process.env.GROWTH_EXCLUDED_USER_IDS = ` ${SMOKE.toUpperCase()} `
+    const report = await runCriticalDeliveryAudit({ supabase: smokeOnlyDay(), logger: loggerStub, now: NOW })
+
+    expect(captureServerEvent).not.toHaveBeenCalled()
+    expect(report.criticalNoDelivery.total).toBe(0)
+    expect(report.noChannelPatients.total).toBe(0)
+  })
+
+  it('MUTAÇÃO DE CONTROLE: sem a lista, o mesmo dia alerta', async () => {
+    await runCriticalDeliveryAudit({ supabase: smokeOnlyDay(), logger: loggerStub, now: NOW })
+    expect(captureServerEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('paciente real segue no alerta e a contagem de excluídas vai no logRate', async () => {
+    const supabase = makeSupabase({
+      dose_instances: [
+        { id: 'd1', user_id: SMOKE, protocol_id: P, scheduled_for: DENTRO.toISOString(), critical_alarm: true },
+        { id: 'd2', user_id: U, protocol_id: P, scheduled_for: DENTRO.toISOString(), critical_alarm: true },
+      ],
+      notification_log: [],
+      protocols: [{ user_id: U, critical_alarm: true, active: true }],
+      user_settings: [{ user_id: U, telegram_chat_id: null, consent_revoked_at: null }],
+      notification_devices: [],
+    })
+    await runCriticalDeliveryAudit({ supabase, logger: loggerStub, now: NOW, excludedUserIds: [SMOKE] })
+
+    const [, ctx] = vi.mocked(captureServerEvent).mock.calls[0]
+    const extras = (ctx?.extras ?? {}) as Record<string, any>
+    expect(extras.criticalNoDelivery).toMatchObject({ total: 1 })
+    expect(extras.items.map((i: { userId: string }) => i.userId)).toEqual([U])
+    expect(extras.logRate).toMatchObject({ doses: 1, dosesInternasExcluidas: 1 })
+  })
+})
+
 /** Profundidade máxima de um objeto — 1 para as chaves de topo, +1 por nível aninhado. */
 function profundidadeMaxima(valor: unknown, nivel = 1): number {
   if (valor === null || typeof valor !== 'object') return nivel - 1
