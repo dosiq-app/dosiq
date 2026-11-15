@@ -4,7 +4,7 @@
 
 import { z } from 'zod'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
-import { parseLocalDate, getTodayLocal, addDays, createDoseInstanceRepository } from '@dosiq/core'
+import { parseLocalDate, getTodayLocal, addDays, createDoseInstanceRepository, classifyWedge } from '@dosiq/core'
 import { debugLog } from '@shared/utils/debugLog'
 
 // Repo de instâncias (leitura de adesão ← dose_instances, S3.6). RLS escopa por user_id.
@@ -120,7 +120,9 @@ export async function getMedicinesData(medicineIds) {
 
   const { data, error } = await supabase
     .from('medicines')
-    .select('id, name, type, presentation, dosage_per_pill, dosage_unit, concentration_volume_ml, units_per_ml')
+    // 121 A (FR-001, RC3 E-3): `therapeutic_class_code` classifica o perfil wedge/misto da Hoje.
+    // R-295: coluna `text` com SELECT de `authenticated` em prod e QA (MCP 2026-11-15).
+    .select('id, name, type, presentation, dosage_per_pill, dosage_unit, concentration_volume_ml, units_per_ml, therapeutic_class_code')
     .in('id', medicineIds)
 
   if (error) throw error
@@ -134,7 +136,8 @@ export async function getMedicinesData(medicineIds) {
       dosage_per_pill: m.dosage_per_pill,
       dosage_unit: m.dosage_unit,
       concentration_volume_ml: m.concentration_volume_ml,
-      units_per_ml: m.units_per_ml
+      units_per_ml: m.units_per_ml,
+      therapeutic_class_code: m.therapeutic_class_code ?? null
     }
     return acc
   }, {})
@@ -239,4 +242,25 @@ export async function getDoseLogDatesForPeriod(userId, days = 30) {
 
   if (error) throw error
   return data ?? []
+}
+
+/**
+ * 121 A (smoke 2026-11-15): início da jornada GLP-1 — o `start_date` mais antigo entre TODOS os
+ * tratamentos (ativos e encerrados) cujo medicamento é wedge. Troca Ozempic → Mounjaro com o antigo
+ * encerrado não pode encurtar a janela "Tratamento" do peso. Lido só ao abrir essa janela.
+ * Conjunto pequeno por usuário (dezenas de protocolos), longe do teto de ~1000 linhas (AP-186).
+ * R-295: colunas e FK `protocols_medicine_id_fkey` verificadas no QA em 2026-11-15.
+ */
+export async function getGlp1JourneyStart(userId) {
+  z.string().uuid().parse(userId)
+  const { data, error } = await supabase
+    .from('protocols')
+    .select('start_date, medicine:medicines(therapeutic_class_code)')
+    .eq('user_id', userId)
+  if (error) throw error
+  const starts = (data ?? [])
+    .filter((p) => p.start_date && classifyWedge(p.medicine?.therapeutic_class_code) === 'glp1_antiobesidade')
+    .map((p) => p.start_date)
+    .sort()
+  return starts[0] ?? null
 }

@@ -142,7 +142,7 @@ describe('buildProtocolMeasureSeries — elegibilidade e etapas', () => {
       ['5 mg (≈ 0,5 mL)', '2026-08-29', '2026-09-26', 88, 1, 2, 2, false],
       ['7,5 mg (≈ 0,75 mL)', '2026-09-26', null, 86.5, 1, 1, 1, true],
     ])
-    expect(r?.state).toBe('B0')
+    expect(r?.state).toBe('chart')
   })
 
   it('etapa prevista não vira faixa e a janela começa na 1ª etapa iniciada', () => {
@@ -165,17 +165,17 @@ describe('buildProtocolMeasureSeries — elegibilidade e etapas', () => {
     expect(r?.series.steps).toEqual([expect.objectContaining({ dose: '5 mg (≈ 0,5 mL)', start: '2026-08-01', current: true })])
   })
 
-  it('start_date futuro ⇒ sem etapa e B3 (E-B6)', () => {
+  it('start_date futuro ⇒ sem etapa e empty (E-B6)', () => {
     const r = buildProtocolMeasureSeries(args({ protocol: { ...PROTO, start_date: '2026-11-01' }, steps: [], measures: [peso('2026-10-01', 90)] }))
     expect(r?.series.steps).toEqual([])
     expect(r?.series.points).toEqual([])
-    expect(r?.state).toBe('B3')
+    expect(r?.state).toBe('empty')
   })
 
   it('start_date nulo sem escada ⇒ série vazia, sem erro', () => {
     const r = buildProtocolMeasureSeries(args({ protocol: { ...PROTO, start_date: null }, steps: [] }))
     expect(r?.series.steps).toEqual([])
-    expect(r?.state).toBe('B3')
+    expect(r?.state).toBe('empty')
   })
 
   it('escada só com etapas previstas ⇒ sem faixa', () => {

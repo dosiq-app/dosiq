@@ -10,7 +10,7 @@
  *   binário de `computeAdherenceFromInstances`); pausado/pulado/pendente fora.
  * - Etapa iniciada antes da janela é cortada no início (`clipped`).
  */
-import { localDayOf, shiftDay, daysBetween } from './report/reportFormat'
+import { localDayOf } from './report/reportFormat'
 import type { DoseParts } from '../utils/doseUnit'
 
 export interface MeasureInput {
@@ -61,11 +61,11 @@ export interface TreatmentMeasureSeries {
   lastDay: string | null
 }
 
-/** Estados do card/gráfico (069 FR-009), avaliados B-0 → B-2 → B-1 → B-3. */
-export type MeasureSeriesState = 'B0' | 'B1' | 'B2' | 'B3'
-
-export const MEASURE_SERIES_MIN_POINTS = 3
-export const MEASURE_SERIES_MIN_SPAN_DAYS = 14
+/**
+ * Estado do gráfico de peso (ADR-125 §3, revoga o limiar 3×14d da 069 B-0..B-3):
+ * `empty` = 0 dias com pesagem · `single` = 1 (só o número) · `chart` = ≥ 2 (linha).
+ */
+export type MeasureSeriesState = 'chart' | 'single' | 'empty'
 
 export interface BuildTreatmentMeasureSeriesArgs {
   biomarkerType: string
@@ -157,16 +157,9 @@ export function buildTreatmentMeasureSeries({
   }
 }
 
-/**
- * Estado do gráfico (069 FR-009). `today` = dia local de referência (relatório: último dia do
- * período). B-0 exige ≥ 3 dias com medida E ≥ 14 dias entre a primeira e a última.
- */
-export function pickMeasureSeriesState(series: TreatmentMeasureSeries, today: string): MeasureSeriesState {
+/** Estado do gráfico (ADR-125): conta dias locais com pesagem (1 ponto por dia). */
+export function pickMeasureSeriesState(series: TreatmentMeasureSeries): MeasureSeriesState {
   const n = series.points.length
-  const d1 = series.firstDay
-  if (n >= MEASURE_SERIES_MIN_POINTS && d1 && series.lastDay) {
-    return daysBetween(d1, series.lastDay) >= MEASURE_SERIES_MIN_SPAN_DAYS ? 'B0' : 'B2'
-  }
-  if (n >= 1 && d1 && today >= shiftDay(d1, MEASURE_SERIES_MIN_SPAN_DAYS)) return 'B1'
-  return 'B3'
+  if (n >= 2) return 'chart'
+  return n === 1 ? 'single' : 'empty'
 }

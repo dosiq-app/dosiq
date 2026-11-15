@@ -237,11 +237,13 @@ describe('renderReportHtml — gráfico de peso por etapa (DS-7, PO-15)', () => 
     return m
   }
 
-  it('desenha pontos sem linha e uma linha por etapa com média, pesagens e doses', () => {
+  it('desenha pontos ligados em linha reta (ADR-125) e uma linha por etapa com média, pesagens e doses', () => {
     const html = renderReportHtml(withWeight())
     expect(html).toContain('Peso durante o tratamento')
     expect(html.match(/<circle /g)?.length).toBeGreaterThanOrEqual(3)
-    expect(html).not.toMatch(/<polyline|<path d="M[^"]*L/)
+    // Uma polyline só (sem suavização: nenhuma curva Bézier, nenhuma média desenhada).
+    expect(html.match(/<polyline /g)).toHaveLength(1)
+    expect(html).not.toMatch(/<path d="[^"]*[CQS]/)
     expect(html).toContain('Etapa 2 (no período) — Peso médio 92 kg · 3 pesagens · Doses tomadas: 1 de 1')
     // Dose e datas ficam só na escada (smoke 097 A2).
     expect(html).not.toMatch(/<div class="wl num">Etapa 2 · 5 mg/)

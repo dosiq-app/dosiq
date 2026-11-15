@@ -46,14 +46,21 @@ teste de tabela (`utils/__tests__/pickTodaySurfaces.test.ts`). Decisão: ADR-129
 ## 2. Layout
 
 ```
-Cabeçalho · Adesão                         fixos
+Cabeçalho · Adesão                         fixos (Adesão some no perfil wedge)
 [ BLOCO DE DOSES ]   ← sobe acima do alerta SÓ quando há dose agora (hero)
 [ ALERTA ]           máx 1 · régua §3
 [ BLOCO DE DOSES ]   posição normal
+[ SEMANA DO TRAT. ]  spec 121 · só perfil wedge/misto · fora do árbitro
 [ PROMO ]            máx 1 · só sem alerta técnico pendente
-Agenda de Hoje
-Em breve · Última medida
+Agenda de Hoje       wedge: só quando há dose hoje (§6)
+Em breve · Última medida   (Última medida some no wedge)
 ```
+
+**Perfil (spec 121 A, `summarizeWedgeProfile`):** `wedge` = todos os tratamentos ativos GLP-1/
+antiobesidade (`WEDGE_CLASS_PREFIXES`); `misto` = algum; `nenhum` = layout acima sem o módulo.
+O módulo "Semana do tratamento" é superfície de dose/medida: **não** entra na régua, não cria sinal e
+não muda a elegibilidade de nenhum aviso ou promo. No wedge, o vazio "Nenhuma dose hoje" é trocado
+pelo módulo; com dose hoje a Agenda fica, porque é o caminho da correção do dia (§6).
 
 Fora do modelo: o aviso de dados em cache/offline (`StaleBanner`, fixo no topo) e a atualização
 obrigatória (`app_version_gate`, tela própria).

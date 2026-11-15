@@ -1,7 +1,7 @@
 // TreatmentWeightCard.tsx — "Peso durante o tratamento" no detalhe do tratamento (spec 069 Bb · T053).
 //
-// 6 estados explícitos (FR-009/FR-014): B-4 carregando · B-5 erro (vermelho, nunca vazio) · B-0
-// gráfico · B-2/B-1/B-3 vazios (azul-info + régua, dizem SÓ o que falta). Regra de estado no core
+// Estados (ADR-125, revoga o limiar 3×14d da 069): carregando · erro (vermelho, nunca vazio) ·
+// `chart` (≥ 2 dias, linha) · `single` (só o número) · `empty`. Regra no core
 // (`pickMeasureSeriesState`); aqui só copy e layout (R-12).
 // Descritivo (ADR-062, INV-5): o mesmo desenho e o mesmo texto para perda e ganho de peso.
 // "Registrar peso" grava por `measuresRepo.create` com entry_point (FR-022) — nunca o repo cru.
@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
 const { Ruler, AlertCircle, ChevronDown, ChevronUp, ChevronRight } = LucideIcons as any
-import { shiftDay, MEASURE_SERIES_MIN_POINTS, MEASURE_SERIES_MIN_SPAN_DAYS, type MeasureSeriesStep } from '@dosiq/core'
+import { shiftDay, weightChange, type MeasureSeriesStep } from '@dosiq/core'
 import SectionCard from '@shared/components/ui/SectionCard'
 import MeasureLogSheet from '@measures/components/MeasureLogSheet'
 import { measuresRepo } from '@measures/services/measuresRepo'
@@ -30,10 +30,6 @@ import { formatKg, formatShortDay, pluralWeighings } from '@treatments/utils/for
 import { WEIGHT_CHART_H, stepsStorageKey } from '@treatments/utils/weightChartLayout'
 
 const TITLE = 'PESO DURANTE O TRATAMENTO'
-
-// O gráfico conta 1 pesagem por DIA local (smoke 05/10: o 2º peso do mesmo dia "não contava" sem aviso).
-const moreDays = (k: number) => (k === 1 ? 'mais 1 dia diferente' : `mais ${k} dias diferentes`)
-const missingTitle = (k: number) => (k === 1 ? 'Falta 1 pesagem' : `Faltam ${k} pesagens`)
 
 function stepPeriod(s: MeasureSeriesStep): string {
   if (!s.end) return `desde ${formatShortDay(s.start)}`
@@ -81,15 +77,11 @@ function WeightSkeleton() {
   )
 }
 
-// Vazios (FR-009): dizem SÓ o que falta. B-2 tem a ação secundária (P4); B-1/B-3 primária.
+// Sem gráfico (ADR-125): 1 pesagem = o número; 0 = convite. O gráfico conta 1 pesagem por DIA local.
 function emptyCopy({ series, state }: TreatmentMeasureResult) {
-  const n = series.points.length
-  const k = Math.max(0, MEASURE_SERIES_MIN_POINTS - n)
-  const unlockDay = series.firstDay ? formatShortDay(shiftDay(series.firstDay, MEASURE_SERIES_MIN_SPAN_DAYS)) : ''
-  if (state === 'B2') return { title: `O gráfico aparece em ${unlockDay}`, body: 'Registre o peso nesse dia ou depois.', primary: false }
-  if (state === 'B1') return { title: missingTitle(k), body: `Registre o peso em ${moreDays(k)} para ver o gráfico.`, primary: true }
-  if (n === 0) return { title: 'Nenhum peso registrado', body: 'Registre o peso em 3 dias diferentes, ao longo de 2 semanas, para ver o gráfico.', primary: true }
-  return { title: missingTitle(k), body: `Registre o peso em ${moreDays(k)}. O gráfico aparece a partir de ${unlockDay}.`, primary: true }
+  const p = series.points[0]
+  if (state === 'single' && p) return { title: `${formatKg(p.kg)} kg · ${formatShortDay(p.day)}`, body: 'Só 1 pesagem até agora. Com mais uma, o gráfico aparece.' }
+  return { title: 'Nenhum peso registrado', body: 'Registre o peso para acompanhar durante o tratamento.' }
 }
 
 function WeightEmptyState({ data, onRegister }: { data: TreatmentMeasureResult; onRegister: () => void }) {
@@ -105,10 +97,10 @@ function WeightEmptyState({ data, onRegister }: { data: TreatmentMeasureResult; 
       </View>
       <Pressable
         onPress={onRegister}
-        style={[styles.btn, empty.primary ? styles.btnPrimary : styles.btnSecondary]}
+        style={[styles.btn, styles.btnPrimary]}
         accessibilityRole="button"
       >
-        <Text style={empty.primary ? styles.btnPrimaryText : styles.btnSecondaryText}>Registrar peso</Text>
+        <Text style={styles.btnPrimaryText}>Registrar peso</Text>
       </Pressable>
     </>
   )
@@ -205,8 +197,10 @@ export default function TreatmentWeightCard({ protocol }: { protocol: TreatmentM
   const { series, state, hasLadder } = data
   const n = series.points.length
   const current = series.steps.find((s) => s.current) ?? series.steps[series.steps.length - 1]
+  // Variação informativa (ADR-125 §2): mesma conta do PDF e da Hoje; sem cor nem seta.
+  const change = weightChange(series.points.map((p) => ({ value: p.kg })))
 
-  if (state !== 'B0') {
+  if (state !== 'chart') {
     return (
       <SectionCard title={TITLE}>
         <WeightEmptyState data={data} onRegister={openLog} />
@@ -217,8 +211,9 @@ export default function TreatmentWeightCard({ protocol }: { protocol: TreatmentM
 
   return (
     <SectionCard title={TITLE}>
-      <Text style={styles.subtitle} testID="weight-card-B0">
+      <Text style={styles.subtitle} testID="weight-card-chart">
         {pluralWeighings(n)} · {formatShortDay(series.firstDay)} a {formatShortDay(series.lastDay)} · kg
+        {change ? ` · ${change.label} kg` : ''}
       </Text>
       <WeightStepChart series={series} today={data.today} showBands={hasLadder} />
       {hasLadder ? (

@@ -239,5 +239,5 @@ export function buildProtocolMeasureSeries({
     from,
     to,
   })
-  return { series, state: pickMeasureSeriesState(series, to) }
+  return { series, state: pickMeasureSeriesState(series) }
 }

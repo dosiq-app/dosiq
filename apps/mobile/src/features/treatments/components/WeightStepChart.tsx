@@ -1,6 +1,7 @@
 // WeightStepChart.tsx — pontos de peso sobre faixas por etapa (spec 069 Bb · FR-013 · DESIGN §3.2).
 //
-// Mesmo desenho do ScatterTrend (012): pontos `info` 0,85 r4,5, UMA cor, sem linha, sem média.
+// Pontos `info` 0,85 r4,5 ligados em LINHA reta (ADR-125, revoga a dispersão da 069 C3), UMA cor,
+// sem suavização nem média.
 // Única adição: uma faixa NEUTRA por etapa (bg/branco alternados) com o rótulo da dose no topo —
 // o degrau é contexto, não dado. Adesão nunca vira cor. SaMD (ADR-062): sem alvo, seta ou zona.
 // Sem titulação (`showBands=false`): sem faixa — o card mostra "Dose atual".
@@ -12,6 +13,7 @@ import { daysBetween, type TreatmentMeasureSeries } from '@dosiq/core'
 import { buildScale, fmtTick } from '@measures/utils/chartScale'
 import { colors, spacing } from '@shared/styles/tokens'
 import { formatMeasureSeriesA11y, formatShortDay } from '@treatments/utils/formatMeasureSeriesA11y'
+import WeightLineOverlay from '@measures/components/WeightLineOverlay'
 import { BAND_HIDE_PX, BAND_SHORT_PX, WEIGHT_CHART_H, shortDoseLabel } from '@treatments/utils/weightChartLayout'
 
 const Y_AXIS_W = 34
@@ -117,6 +119,11 @@ export default function WeightStepChart({ series, today, showBands }: WeightStep
           {scale.ticks.map((t, i) => (
             <View key={`g${i}`} style={[styles.gridline, { top: yFor(t) }]} />
           ))}
+          <WeightLineOverlay
+            points={series.points.map((p) => ({ x: pointX(p.day), y: yFor(p.kg) }))}
+            width={width}
+            height={CHART_H}
+          />
           {width > 0 &&
             series.points.map((p) => (
               <View

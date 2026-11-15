@@ -29,31 +29,20 @@ function build(measures: MeasureInput[], over: Partial<Parameters<typeof buildTr
   })
 }
 
-describe('pickMeasureSeriesState — casos da 069 PO-7', () => {
+describe('pickMeasureSeriesState — ADR-125 (0 vazio · 1 número · ≥2 linha)', () => {
   afterEach(() => {
     vi.clearAllMocks()
     vi.clearAllTimers()
   })
 
-  it('0 pesagens → B3', () => {
-    expect(pickMeasureSeriesState(build([]), '2026-03-01')).toBe('B3')
+  it('0 pesagens → empty', () => {
+    expect(pickMeasureSeriesState(build([]))).toBe('empty')
   })
-  it('1 pesagem há 3 dias → B3', () => {
-    expect(pickMeasureSeriesState(build([peso('2026-02-26', 80)]), '2026-03-01')).toBe('B3')
+  it('1 pesagem → single (só o número)', () => {
+    expect(pickMeasureSeriesState(build([peso('2026-02-26', 80)]))).toBe('single')
   })
-  it('2 pesagens, 1ª há 20 dias → B1', () => {
-    expect(pickMeasureSeriesState(build([peso('2026-02-09', 80), peso('2026-02-20', 79)]), '2026-03-01')).toBe('B1')
-  })
-  it('2 pesagens em 5 dias → B3', () => {
-    expect(pickMeasureSeriesState(build([peso('2026-02-24', 80), peso('2026-02-28', 79)]), '2026-03-01')).toBe('B3')
-  })
-  it('3 pesagens em 5 dias → B2', () => {
-    const s = build([peso('2026-02-24', 80), peso('2026-02-26', 79), peso('2026-02-28', 79)])
-    expect(pickMeasureSeriesState(s, '2026-03-01')).toBe('B2')
-  })
-  it('3 pesagens em 14 dias → B0', () => {
-    const s = build([peso('2026-02-01', 80), peso('2026-02-08', 79), peso('2026-02-15', 78)])
-    expect(pickMeasureSeriesState(s, '2026-03-01')).toBe('B0')
+  it('2 pesagens em 2 dias seguidos → chart (sem limiar de 3×14d — ADR-125)', () => {
+    expect(pickMeasureSeriesState(build([peso('2026-02-27', 80), peso('2026-02-28', 79)]))).toBe('chart')
   })
   it('2 pesagens no mesmo dia contam como 1 (vale a mais recente)', () => {
     const s = build([peso('2026-02-01', 80, '07:00'), peso('2026-02-01', 81, '20:00'), peso('2026-02-15', 78)])
@@ -61,7 +50,10 @@ describe('pickMeasureSeriesState — casos da 069 PO-7', () => {
       { day: '2026-02-01', kg: 81 },
       { day: '2026-02-15', kg: 78 },
     ])
-    expect(pickMeasureSeriesState(s, '2026-03-01')).toBe('B1')
+    expect(pickMeasureSeriesState(s)).toBe('chart')
+  })
+  it('2 pesagens no MESMO dia = 1 ponto → single', () => {
+    expect(pickMeasureSeriesState(build([peso('2026-02-01', 80, '07:00'), peso('2026-02-01', 81, '20:00')]))).toBe('single')
   })
 })
 
@@ -112,7 +104,7 @@ describe('buildTreatmentMeasureSeries', () => {
     ])
     expect(s.firstDay).toBe('2026-09-03')
     expect(s.lastDay).toBe('2026-09-24')
-    expect(pickMeasureSeriesState(s, '2026-09-30')).toBe('B0')
+    expect(pickMeasureSeriesState(s)).toBe('chart')
   })
 
   it('etapa sem pesagem tem meanKg null (nunca 0); etapa encerrada antes da janela não entra', () => {

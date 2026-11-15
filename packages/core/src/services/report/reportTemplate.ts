@@ -17,6 +17,7 @@ import { formatNumberPtBR } from '../../utils/doseUnit'
 import { daysBetween, formatDayMonth, formatShortDate, shiftDay } from './reportFormat'
 import { escapeAttr, escapeHtml as e } from './reportHtmlEscape'
 import { renderBodyMapSvg } from './reportBodyMapSvg'
+import { weightChange } from '../weightChange'
 import { REPORT_LOGO_DATA_URI } from './reportLogo'
 import type { ReportLadder, ReportMedicationRow, ReportModel } from './reportModel'
 import type { ReportWindow } from './reportTypes'
@@ -356,7 +357,7 @@ function weightLines(ladder: ReportLadder): string {
     .join('') + rest
 }
 
-/** Peso × etapa na gramática da 069-B: faixa neutra por etapa, pontos sem linha, sem média desenhada. */
+/** Peso × etapa: faixa neutra por etapa, pontos ligados em linha (ADR-125), sem suavização nem média desenhada. */
 function weightChart(ladder: ReportLadder, period: ReportWindow): string {
   const series = ladder.weightSeries
   if (!series) return ''
@@ -387,6 +388,8 @@ function weightChart(ladder: ReportLadder, period: ReportWindow): string {
       )
     })
     .join('')
+  // ADR-125: linha reta entre os pontos presentes — sem suavização, tendência ou média.
+  const line = `<polyline points="${series.points.map((p) => `${x(p.day).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ')}" fill="none" stroke="#0f766e" stroke-width="1.5"/>`
   const dots = series.points
     .map((p) => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="2.5" fill="#0f766e"/>`)
     .join('')
@@ -395,7 +398,7 @@ function weightChart(ladder: ReportLadder, period: ReportWindow): string {
     `<text x="0" y="${CHART_H - PAD_B}" font-size="9" fill="#6b7280">${e(formatNumberPtBR(lo))} kg</text>` +
     dateAxis(window.from, window.to, x)
   if (!ladder.weightChart) return `<div class="small"><b>Peso durante o tratamento</b></div>${weightLines(ladder)}`
-  const svg = `<svg width="100%" viewBox="0 0 ${CHART_W} ${CHART_H}" role="img" aria-label="Peso durante o tratamento">${bands}${dots}${axis}</svg>`
+  const svg = `<svg width="100%" viewBox="0 0 ${CHART_W} ${CHART_H}" role="img" aria-label="Peso durante o tratamento">${bands}${line}${dots}${axis}</svg>`
 
   return `<div class="small"><b>Peso durante o tratamento</b></div>${svg}${weightLines(ladder)}`
 }
@@ -517,8 +520,8 @@ function weightTable(block: MeasureBlock): string {
   const last = block.points[block.points.length - 1]
   // Sobre TODAS as pesagens, não `byContext[0]`: o banco não tem CHECK de contexto (RC5).
   const stat = measureStat(block.points.map((p) => p.value))
-  const delta = Math.round((last.value - first.value) * 10) / 10
-  const signed = delta > 0 ? `+${num(delta)}` : delta < 0 ? `−${num(-delta)}` : num(0)
+  // Conta única do core (121 FR-012): a mesma da Hoje e do detalhe do tratamento.
+  const signed = e(weightChange(block.points)?.label ?? '')
   const head = '<th>Peso (kg)</th><th>n</th><th>Primeira</th><th>Última</th><th>Variação</th><th>Mínimo</th><th>Mediana</th><th>Máximo</th>'
   const cells =
     `<td>No período</td><td class="num">${block.points.length}</td>` +

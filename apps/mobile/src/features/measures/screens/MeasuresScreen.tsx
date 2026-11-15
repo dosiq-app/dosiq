@@ -81,7 +81,7 @@ export default function MeasuresScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <ScatterTrend items={items} unit={BIOMARKER_TYPE_UNITS[type]} typeLabel={biomarkerCardLabel(type)} isPa={type === 'pressao_arterial'} />
+        <ScatterTrend items={items} unit={BIOMARKER_TYPE_UNITS[type]} typeLabel={biomarkerCardLabel(type)} isPa={type === 'pressao_arterial'} isWeight={type === 'peso'} />
 
         <Text style={styles.sectionTitle}>Histórico</Text>
         {loading ? (

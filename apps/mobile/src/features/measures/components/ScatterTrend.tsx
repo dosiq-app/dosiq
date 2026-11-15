@@ -2,7 +2,9 @@
 // Scatter: pontos por dia, UMA cor, janela 7d FIXA + WeekNav (seta-futuro desabilitada na semana atual).
 // Eixo Y = escala "nice" (gridlines + labels) derivada dos dados; eixo X = dias do mês.
 // Média da semana = NÚMERO descritivo (jamais linha — seria lida como meta).
-// SaMD (ADR-062): SEM zona/meta/faixa-alvo/linha; gridlines são só referência de leitura de valor.
+// SaMD (ADR-062): SEM zona/meta/faixa-alvo; gridlines são só referência de leitura de valor.
+// Peso (`isWeight`, ADR-125): pontos ligados em linha reta, 1 por dia local (a pesagem mais recente).
+// Glicemia/PA seguem em dispersão.
 
 import { useMemo, useState } from 'react'
 import { View, Text, Pressable, StyleSheet } from 'react-native'
@@ -12,6 +14,7 @@ const { ChevronLeft, ChevronRight } = LucideIcons as any
 import { addDays, parseISO, getRawNow, mondayOf } from '@dosiq/core'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 import { buildScale, fmtTick } from '@measures/utils/chartScale'
+import WeightLineOverlay from '@measures/components/WeightLineOverlay'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const CHART_H = 132
@@ -21,9 +24,10 @@ const MONTHS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', '
 // PA = 2 séries (sistólica + diastólica). Cor diferencia SÉRIE, nunca qualidade (SaMD, ADR-062).
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null)
 
-export default function ScatterTrend({ items, unit, typeLabel = 'Medida', isPa = false }) {
+export default function ScatterTrend({ items, unit, typeLabel = 'Medida', isPa = false, isWeight = false }) {
   // offset em semanas a partir da semana atual (0 = atual; negativo = passado).
   const [weekOffset, setWeekOffset] = useState(0)
+  const [plotW, setPlotW] = useState(0)
 
   const weekStart = useMemo(() => addDays(mondayOf(getRawNow()), weekOffset * 7), [weekOffset])
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart])
@@ -38,8 +42,10 @@ export default function ScatterTrend({ items, unit, typeLabel = 'Medida', isPa =
         return t >= day.getTime() && t < dayEnd
       })
       // PA: série diastólica ignora pontos sem value_secondary (dados legados/defensivo).
+      const latest = dayItems.reduce((a, b) => (a && parseISO(a.measured_at).getTime() >= parseISO(b.measured_at).getTime() ? a : b), null)
       arr.push({
         day,
+        latest: latest ? latest.value : null,
         values: dayItems.map((it) => it.value),
         valuesSec: isPa ? dayItems.map((it) => it.value_secondary).filter((v) => v != null) : [],
       })
@@ -90,10 +96,17 @@ export default function ScatterTrend({ items, unit, typeLabel = 'Medida', isPa =
             <Text key={i} style={[styles.yLabel, { top: yFor(t) - 7 }]}>{fmtTick(t)}</Text>
           ))}
         </View>
-        <View style={[styles.plot, { height: CHART_H }]}>
+        <View style={[styles.plot, { height: CHART_H }]} onLayout={(e) => setPlotW(e.nativeEvent.layout.width)} testID="scatter-plot">
           {scale.ticks.map((t, i) => (
             <View key={i} style={[styles.gridline, { top: yFor(t) }]} />
           ))}
+          {isWeight ? (
+            <WeightLineOverlay
+              points={days.flatMap((d, i) => (d.latest == null ? [] : [{ x: ((i + 0.5) * plotW) / 7, y: yFor(d.latest) }]))}
+              width={plotW}
+              height={CHART_H}
+            />
+          ) : null}
           <View style={styles.cols}>
             {days.map((d, i) => (
               <View key={i} style={styles.col}>
