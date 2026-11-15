@@ -47,7 +47,7 @@ echo "════════════════════════�
 SINCE="$(date -u -v-30d +%Y-%m-%d 2>/dev/null || date -u -d '30 days ago' +%Y-%m-%d)"
 
 FLEET_JSON=$(curl -sS \
-  "$URL/rest/v1/notification_devices?select=app_version,platform,user_id,updated_at&updated_at=gte.$SINCE" \
+  "$URL/rest/v1/notification_devices?select=app_version,platform,user_id,last_seen_at&last_seen_at=gte.$SINCE" \
   -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
 
 # device_activity (spec 057 / ADR-089): fonte ADITIVA, cruza quem nunca ativou push. Falha de
@@ -71,8 +71,8 @@ export FLEET_JSON_ACTIVITY
 
 # Uma linha por (user_id, platform), mantendo o device mais recente: um usuário com 3 aparelhos
 # antigos não pode pesar como 3 votos contra o DROP. Funde as duas fontes ANTES do dedupe — união,
-# nunca substituição (FR-005): notification_devices usa `updated_at`, device_activity usa
-# `last_seen_at`; normalizadas para o mesmo campo antes de comparar.
+# nunca substituição (FR-005). Atividade = `last_seen_at` nas DUAS fontes: o `updated_at` de
+# notification_devices muda por escrita de servidor e fazia device parado parecer ativo (2026-11-15).
 #
 # 🔴 A LÓGICA NÃO MORA MAIS AQUI (spec 051 / RC3-2 F3): união, janela e dedupe vivem em
 # `@dosiq/core/utils` (`dedupeFleetInstalls` / `summarizeFleetVersions`), e o handler admin do kill
