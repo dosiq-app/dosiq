@@ -20,7 +20,7 @@ jest.mock('@dosiq/core/utils/dateUtils', () => {
 
 import { act, renderHook, waitFor } from '@testing-library/react-native'
 import AsyncStorageImport from '@react-native-async-storage/async-storage'
-import { useMedicineDatabase } from '../useMedicineDatabase'
+import { useMedicineDatabase, __resetMedicineDatabaseStore } from '../useMedicineDatabase'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AsyncStorage = AsyncStorageImport as any
@@ -64,6 +64,8 @@ function buildCacheMultiGet(manifestOverrides = {}, data = mockData) {
 
 beforeEach(() => {
   jest.clearAllMocks()
+  // 119 C (E-5): o store é de módulo — isolamento de infraestrutura entre testes, sem mudar asserção.
+  __resetMedicineDatabaseStore()
   // Estado padrão: sem cache
   AsyncStorage.multiGet.mockResolvedValue([
     ['@dosiq/anvisa-manifest', null],
@@ -343,5 +345,80 @@ describe('getByName()', () => {
     const result = await getReadyHook()
     expect(result.current.getByName('')).toBeNull()
     expect(result.current.getByName(null)).toBeNull()
+  })
+})
+
+// -------------------------------------------------------------------
+// 9. Carga única compartilhada (spec 119 C · PO-119-14)
+// -------------------------------------------------------------------
+describe('carga única compartilhada', () => {
+  const manifestCalls = () =>
+    fetchMock.mock.calls.filter(([url]) => String(url).endsWith('manifest.json')).length
+
+  it('N consumidores simultâneos ⇒ 1 leitura de disco, ≤1 consulta de versão, mesma lista', async () => {
+    AsyncStorage.multiGet.mockResolvedValue(buildCacheMultiGet())
+    fetchMock.mockImplementation(() => mockFetchOk(mockManifest))
+
+    const { result } = renderHook(() => ({
+      a: useMedicineDatabase(),
+      b: useMedicineDatabase(),
+      c: useMedicineDatabase(),
+    }))
+
+    await waitFor(() => expect(result.current.a.isLoading).toBe(false))
+
+    expect(AsyncStorage.multiGet).toHaveBeenCalledTimes(1)
+    expect(manifestCalls()).toBeLessThanOrEqual(1)
+    const { a, b, c } = result.current
+    expect(a.items).not.toBeNull()
+    expect(b.items).toBe(a.items)
+    expect(c.items).toBe(a.items)
+    expect([a.isReady, b.isReady, c.isReady]).toEqual([true, true, true])
+    expect([b.isLoading, c.isLoading]).toEqual([false, false])
+  })
+
+  it('consumidor montado depois reaproveita a lista, sem nova leitura nem consulta', async () => {
+    AsyncStorage.multiGet.mockResolvedValue(buildCacheMultiGet())
+    fetchMock.mockImplementation(() => mockFetchOk(mockManifest))
+
+    const first = renderHook(() => useMedicineDatabase())
+    await waitFor(() => expect(first.result.current.isLoading).toBe(false))
+    first.unmount()
+
+    const second = renderHook(() => useMedicineDatabase())
+    expect(second.result.current.isReady).toBe(true)
+    expect(AsyncStorage.multiGet).toHaveBeenCalledTimes(1)
+    expect(manifestCalls()).toBe(1)
+  })
+
+  it('falha sem dados ⇒ todos veem erro; o próximo assinante novo recarrega', async () => {
+    fetchMock.mockImplementation(() => mockFetchError())
+
+    const first = renderHook(() => ({ a: useMedicineDatabase(), b: useMedicineDatabase() }))
+    await waitFor(() => expect(first.result.current.a.isLoading).toBe(false))
+    expect(first.result.current.a.error).toBeTruthy()
+    expect(first.result.current.b.error).toBe(first.result.current.a.error)
+    first.unmount()
+
+    fetchMock.mockImplementation((url) =>
+      url.endsWith('manifest.json') ? mockFetchOk(mockManifest) : mockFetchOk(mockData),
+    )
+    const second = renderHook(() => useMedicineDatabase())
+    await waitFor(() => expect(second.result.current.isReady).toBe(true))
+    expect(second.result.current.error).toBeNull()
+  })
+
+  it('versão nova chega a todos os consumidores', async () => {
+    AsyncStorage.multiGet.mockResolvedValue(buildCacheMultiGet({ version: '1.0.0' }))
+    const newData = [...mockData, { name: 'Ibuprofeno', activeIngredient: 'Ibuprofeno', therapeuticClass: 'AINE', laboratory: 'Lab D' }]
+    fetchMock.mockImplementation((url) =>
+      url.endsWith('manifest.json') ? mockFetchOk({ ...mockManifest, version: '2.0.0' }) : mockFetchOk(newData),
+    )
+
+    const { result } = renderHook(() => ({ a: useMedicineDatabase(), b: useMedicineDatabase() }))
+    await waitFor(() => expect(result.current.a.items).toBe(newData))
+    expect(result.current.b.items).toBe(newData)
+    expect(result.current.b.search('ibuprofe', 5).length).toBe(1)
+    expect(AsyncStorage.multiSet).toHaveBeenCalledTimes(1)
   })
 })
