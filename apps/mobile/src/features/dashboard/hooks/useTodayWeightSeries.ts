@@ -97,11 +97,14 @@ export function useTodayWeightSeries({
       // Jornada GLP-1 inteira (ativos + encerrados); falha na leitura ⇒ início dos ativos (nunca trava).
       const journey = userId ? await getGlp1JourneyStart(userId).catch(() => null) : null
       const start = [journey, treatmentStart].filter((d): d is string => !!d).sort()[0] ?? null
-      const fromTs = start ? parseISO(`${start}T00:00:00`).toISOString() : undefined
+      // RC6 #962: `parseISO` sem offset usa o fuso do DEVICE; o dia é do fuso do usuário. Lê com 1 dia
+      // de folga e recorta pelo dia local do usuário (o mesmo de `dailyWeightPoints`).
+      const fromTs = start ? parseISO(`${shiftDay(start, -1)}T00:00:00`).toISOString() : undefined
       const rows = await listAllWeights(fromTs)
       if (req !== reqRef.current) return
       setJourneyStart(start)
-      setFull(dailyWeightPoints(rows, timezone))
+      const points = dailyWeightPoints(rows, timezone)
+      setFull(start ? points.filter((p) => p.day >= start) : points)
       fullLoadedRef.current = true
       setError(null)
     } catch (err) {

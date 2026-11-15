@@ -76,7 +76,18 @@ describe('useTodayWeightSeries — jornada GLP-1 (smoke 121 A)', () => {
     const h = renderHook(() => useTodayWeightSeries({ enabled: false, userId: 'u1', timezone: TZ, treatmentStart: '2026-10-30' }))
     await act(async () => { await h.result.current.loadTreatment() })
     expect(h.result.current.journeyStart).toBe('2026-09-01')
-    expect(mockList.mock.calls[0][0].fromTs).toBe(new Date(2026, 8, 1).toISOString())
+    expect(mockList.mock.calls[0][0].fromTs).toBe(new Date(2026, 7, 31).toISOString())
+  })
+
+  it('RC6 #962: lê com 1 dia de folga (fuso do device × do usuário) e recorta pelo dia local do usuário', async () => {
+    mockList.mockResolvedValue([
+      { value: 81, measured_at: '2026-09-01T08:00:00-03:00' },
+      { value: 82, measured_at: '2026-08-31T08:00:00-03:00' },
+    ])
+    mockJourney.mockResolvedValueOnce('2026-09-01')
+    const h = renderHook(() => useTodayWeightSeries({ enabled: false, userId: 'u1', timezone: TZ, treatmentStart: '2026-10-30' }))
+    await act(async () => { await h.result.current.loadTreatment() })
+    expect(h.result.current.full).toEqual([{ day: '2026-09-01', kg: 81 }])
   })
 
   it('leitura da jornada falha ⇒ início dos ativos, sem erro na série', async () => {
