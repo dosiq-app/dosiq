@@ -7,6 +7,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### A lista oficial da ANVISA é carregada uma vez só (spec 119, Fatia C)
+
+- **Mobile** (`Changed`/perf, **patch** `APP_VERSION` 0.34.25 → **0.34.26**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** junto do trem, sem mudança visível): a lista oficial (~6 mil remédios) passa a ser lida do aparelho e conferida na internet **uma vez por abertura do app**, e todas as telas que a usam (busca pelo nome, sugestões dos campos, cartão "É este?" e a escolha da embalagem) dividem a mesma cópia. Antes, cada uma guardava a sua: até 3 cópias no onboarding e uma consulta de versão por tela — peso que poderia deixar lento ou fechar o app em Android simples. A lista continua carregando só quando uma dessas telas abre; se a primeira carga falhar sem lista no aparelho, a próxima tela que abrir tenta de novo, como antes.
+
 ### O cadastro à mão sugere da lista oficial e cadastros antigos podem ser vinculados (spec 119, Fatia B)
 
 - **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.24 → **0.34.25**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — muda o fluxo de cadastro):

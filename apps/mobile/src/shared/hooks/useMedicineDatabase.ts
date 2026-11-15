@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import {
   getNow,
   parseISO,
@@ -35,8 +35,10 @@ function getErrorMessage(err: unknown): string | undefined {
 }
 
 // Hook que baixa, faz cache local e expõe busca na base ANVISA de medicamentos.
+// 119 C: a carga e a lista vivem num store de módulo compartilhado; o hook só lê (1 leitura de
+// disco, ≤1 consulta de versão e 1 cópia por execução, qualquer que seja o número de consumidores).
 // Fluxo:
-//   1. Mount: lê manifest cacheado em AsyncStorage (via storage adapter)
+//   1. Primeiro mount: lê manifest cacheado em AsyncStorage (via storage adapter)
 //   2. Busca remoto manifest.json em background
 //   3. Se versão remota difere ou cache vazio: baixa medicineDatabase.json
 //      e atualiza o cache
@@ -77,8 +79,131 @@ async function persistRemote(remoteManifest: CachedManifest, remoteData: unknown
   return manifestToCache
 }
 
+interface NormalizedEntry {
+  med: Medicine
+  nName: string
+  nIngredient: string
+}
+
+// 119 C (FR-012/013): snapshot imutável do store — trocado só quando o estado muda, para o
+// `useSyncExternalStore` comparar por referência (snapshot novo a cada leitura = render em loop).
+interface MedicineDatabaseSnapshot {
+  database: Medicine[] | null
+  normalized: NormalizedEntry[] | null
+  manifest: CachedManifest | null
+  isLoading: boolean
+  error: string | null
+}
+
+interface StoreEntry {
+  snapshot: MedicineDatabaseSnapshot
+  promise: Promise<void> | null
+  listeners: Set<() => void>
+}
+
+const INITIAL_SNAPSHOT: MedicineDatabaseSnapshot = {
+  database: null,
+  normalized: null,
+  manifest: null,
+  isLoading: true,
+  error: null,
+}
+
+// Store de módulo, um por baseUrl (E-4): uma carga em andamento por vez (E-1) e a lista
+// normalizada 1× (E-2), compartilhadas por todo consumidor do hook (form, onboarding, detalhe).
+const stores = new Map<string, StoreEntry>()
+
+function getEntry(baseUrl: string): StoreEntry {
+  let entry = stores.get(baseUrl)
+  if (!entry) {
+    entry = { snapshot: INITIAL_SNAPSHOT, promise: null, listeners: new Set() }
+    stores.set(baseUrl, entry)
+  }
+  return entry
+}
+
+function update(entry: StoreEntry, patch: Partial<MedicineDatabaseSnapshot>) {
+  const next = { ...entry.snapshot, ...patch }
+  // Pré-normaliza nome e princípio ativo uma única vez por lista (evita NFD + regex em ~6800
+  // registros a cada keystroke e, desde a 119 C, uma cópia normalizada por consumidor).
+  if (patch.database !== undefined && patch.database !== entry.snapshot.database) {
+    next.normalized = patch.database
+      ? patch.database.map((med) => ({
+          med,
+          nName: normalizeText(med.name),
+          nIngredient: normalizeText(med.activeIngredient),
+        }))
+      : null
+  }
+  entry.snapshot = next
+  entry.listeners.forEach((listener) => listener())
+}
+
+// Mesmo fluxo de antes (cache local → manifest → download se preciso), agora 1× por store.
+// Sem `canceled`: desmontar no meio não descarta o resultado — o próximo consumidor o recebe (E-6).
+async function bootstrap(entry: StoreEntry, baseUrl: string, ttlMs: number) {
+  let hasData = entry.snapshot.database !== null
+  try {
+    // 1. Cache local primeiro (UX instantânea)
+    const cached = (await storageAdapter.read(FILE_KEY)) as
+      | { manifest: CachedManifest; data: Medicine[] }
+      | null
+    if (cached) {
+      update(entry, { manifest: cached.manifest, database: cached.data, isLoading: false })
+      hasData = true
+    }
+
+    // 2. Background: busca remoto e decide se re-download é necessário
+    try {
+      const remoteManifest = (await fetchJson(`${baseUrl}/manifest.json`)) as CachedManifest
+      const refresh = shouldRefreshCache({
+        remoteManifest,
+        cachedManifest: cached?.manifest,
+        ttlMs,
+        hasData,
+      })
+
+      if (refresh) {
+        const remoteData = (await fetchJson(
+          resolveDataUrl(baseUrl, remoteManifest, FILE_KEY),
+        )) as Medicine[]
+        const manifestToCache = await persistRemote(remoteManifest, remoteData)
+        update(entry, { manifest: manifestToCache, database: remoteData, error: null })
+      }
+    } catch (fetchErr) {
+      // Degradação graciosa: se já tem cache, ignora erro de rede
+      if (!hasData) {
+        const message = getErrorMessage(fetchErr)
+        update(entry, { error: message || 'Falha ao baixar base ANVISA' })
+      }
+    }
+  } finally {
+    entry.promise = null
+    if (entry.snapshot.isLoading) update(entry, { isLoading: false })
+  }
+}
+
+// Dispara a carga quando ainda não houve nenhuma, ou quando a última falhou SEM dados (E-3:
+// o próximo assinante novo tenta de novo, como cada mount fazia). Após sucesso não reconsulta
+// a versão nesta execução do app (E-7). O gatilho é a assinatura (mount), nunca o import (INV-7).
+function ensureLoaded(entry: StoreEntry, baseUrl: string, ttlMs: number) {
+  if (entry.promise) return
+  const { snapshot } = entry
+  const neverLoaded = snapshot === INITIAL_SNAPSHOT
+  const failedWithoutData = snapshot.database === null && snapshot.error !== null
+  if (!neverLoaded && !failedWithoutData) return
+  if (failedWithoutData) update(entry, { isLoading: true, error: null })
+  entry.promise = bootstrap(entry, baseUrl, ttlMs)
+}
+
+/** Só para testes (E-5): zera o store de módulo entre cenários. */
+export function __resetMedicineDatabaseStore() {
+  stores.clear()
+}
+
 interface UseMedicineDatabaseOptions {
   baseUrl?: string
+  /** Vale só na carga que cria o store deste baseUrl (E-4). */
   ttlMs?: number
 }
 
@@ -87,87 +212,29 @@ export function useMedicineDatabase({
   ttlMs = TTL_MS,
 }: UseMedicineDatabaseOptions = {}) {
   // States
-  const [database, setDatabase] = useState<Medicine[] | null>(null)
-  const [manifest, setManifest] = useState<CachedManifest | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const entry = getEntry(baseUrl)
+  // Memo (não useCallback) para respeitar a ordem R-010: o snapshot alimenta os memos abaixo.
+  const { subscribe, getSnapshot } = useMemo(
+    () => ({
+      subscribe: (listener: () => void) => {
+        entry.listeners.add(listener)
+        ensureLoaded(entry, baseUrl, ttlMs)
+        return () => {
+          entry.listeners.delete(listener)
+        }
+      },
+      getSnapshot: () => entry.snapshot,
+    }),
+    [entry, baseUrl, ttlMs],
+  )
+  const { database, normalized: normalizedDatabase, manifest, isLoading, error } =
+    useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
   // Memos (R-010: declarados antes de Effects e Handlers)
-  // Pré-normaliza nome e princípio ativo uma única vez quando a base carrega.
-  // Evita executar normalize('NFD') + regex em ~6800 registros a cada keystroke.
-  const normalizedDatabase = useMemo(() => {
-    if (!database) return null
-    return database.map((med) => ({
-      med,
-      nName: normalizeText(med.name),
-      nIngredient: normalizeText(med.activeIngredient),
-    }))
-  }, [database])
-
   const lastUpdated = useMemo(
     () => (manifest?.cachedAt ? parseISO(manifest.cachedAt) : null),
     [manifest],
   )
-
-  // Effects
-  // Carrega cache local (rápido) e dispara background sync (atualização)
-  useEffect(() => {
-    let canceled = false
-
-    async function bootstrap() {
-      // 1. Cache local primeiro (UX instantânea)
-      const cached = (await storageAdapter.read(FILE_KEY)) as
-        | { manifest: CachedManifest; data: Medicine[] }
-        | null
-      let hasData = false
-      if (cached && !canceled) {
-        setManifest(cached.manifest)
-        setDatabase(cached.data)
-        setIsLoading(false)
-        hasData = true
-      }
-
-      // 2. Background: busca remoto e decide se re-download é necessário
-      try {
-        const remoteManifest = (await fetchJson(`${baseUrl}/manifest.json`)) as CachedManifest
-        if (canceled) return
-
-        const refresh = shouldRefreshCache({
-          remoteManifest,
-          cachedManifest: cached?.manifest,
-          ttlMs,
-          hasData,
-        })
-
-        if (refresh) {
-          const remoteData = (await fetchJson(
-            resolveDataUrl(baseUrl, remoteManifest, FILE_KEY),
-          )) as Medicine[]
-          if (canceled) return
-          const manifestToCache = await persistRemote(remoteManifest, remoteData)
-          if (!canceled) {
-            setManifest(manifestToCache)
-            setDatabase(remoteData)
-            setError(null)
-          }
-        }
-      } catch (fetchErr) {
-        if (canceled) return
-        // Degradação graciosa: se já tem cache, ignora erro de rede
-        if (!hasData) {
-          const message = getErrorMessage(fetchErr)
-          setError(message || 'Falha ao baixar base ANVISA')
-        }
-      } finally {
-        if (!canceled) setIsLoading(false)
-      }
-    }
-
-    bootstrap()
-    return () => {
-      canceled = true
-    }
-  }, [baseUrl, ttlMs])
 
   // Handlers
   // Busca autocomplete: word-boundary prefix em name OU activeIngredient.
