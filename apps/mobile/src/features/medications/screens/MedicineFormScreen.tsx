@@ -35,6 +35,8 @@ import { useMedicineMutation } from '@medications/hooks/useMedicineMutation'
 import { AnvisaBanner } from '@medications/components/AnvisaBanner'
 import { MedicineAnvisaSheet } from '@medications/components/MedicineAnvisaSheet'
 import { MedicineCandidatesSheet } from '@medications/scan/MedicineCandidatesSheet'
+import { CatalogFieldSuggestions } from '@medications/components/CatalogSuggestionList'
+import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggestionSheet'
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
 import { ConcentrationVolumeField } from '@medications/components/ConcentrationVolumeField'
 import {
@@ -93,6 +95,11 @@ function formProps(form, name) {
   }
 }
 
+// 119 B (D-5): cadastro novo, ou edição de medicamento SEM código, recebe sugestões do catálogo.
+function suggestionsAllowed(medicine) {
+  return !medicine?.therapeutic_class_code
+}
+
 // 066 D1: origem do cadastro para o `medicine_added` (TRACKING_PLAN §5.3).
 function createSource(scanInfo, anvisaFilledLabel) {
   if (scanInfo) return 'scan'
@@ -145,6 +152,10 @@ export default function MedicineFormScreen() {
   const [scanInfo, setScanInfo] = useState<any>(null)
   const [appliedScanDraft, setAppliedScanDraft] = useState<any>(null)
   const [candidatesDecided, setCandidatesDecided] = useState(false)
+  // 119 B: caixa escolhida pela busca ou pela sugestão do campo — também passa pela pergunta "É este
+  // que você já tem?" (decisão C, PO 2026-11-15: só a MESMA concentração é candidata).
+  const [searchDraft, setSearchDraft] = useState<any>(null)
+  const [searchCandidatesDecided, setSearchCandidatesDecided] = useState(false)
   // C-D1-3: posição da seção "Identificação" para a volta "manual" do scanner.
   const scrollRef = useRef<ScrollView>(null)
   const identificationY = useRef(0)
@@ -189,6 +200,13 @@ export default function MedicineFormScreen() {
   // (não pode apagar nome/dose/unidade ao editar).
   const form = useFormState(medicineCreateSchema, { initialValues })
   const { create, update, isLoading } = useMedicineMutation()
+  // 119 B (D-5): em edição, só medicamento SEM código recebe sugestão; salvar atualiza o mesmo id.
+  const catalog = useCatalogSuggestionSheet<'name' | 'active_ingredient'>({
+    values: form.values,
+    allowed: suggestionsAllowed(medicine),
+  })
+  // Digitar no Nome/Princípio Ativo liga as sugestões daquele campo.
+  const handleIdentificationChange = useMemo(() => catalog.bindChange(form.handleChange), [catalog, form.handleChange])
 
   // 066 D1: rascunho devolvido pelo scanner (popTo com `scanDraft`). Aplicado durante o render, uma
   // vez por leitura (nova leitura = novo objeto). Todo campo segue editável (INV-6); nada é gravado aqui.
@@ -227,7 +245,11 @@ export default function MedicineFormScreen() {
   }, [manualEntry])
 
   // Handlers
-  const openSheet = useCallback(() => setSheetOpen(true), [])
+  const { clearSheet, deactivate: closeSuggestions } = catalog
+  const openSheet = useCallback(() => {
+    clearSheet()
+    setSheetOpen(true)
+  }, [clearSheet])
   const handleIdentificationLayout = useCallback((e) => {
     identificationY.current = e.nativeEvent.layout.y
   }, [])
@@ -246,18 +268,25 @@ export default function MedicineFormScreen() {
   const handleUseExisting = useCallback(
     (existing) => {
       setCandidatesDecided(true)
-      logEvent(EVENTS.SCAN_CONFIRMED, { surface: SURFACES.MOBILE, used_existing: true, dose_edited: false })
+      setSearchCandidatesDecided(true)
+      if (scanInfo) logEvent(EVENTS.SCAN_CONFIRMED, { surface: SURFACES.MOBILE, used_existing: true, dose_edited: false })
       Alert.alert('Você já tem este remédio', `Vamos usar "${existing?.name ?? 'o remédio escolhido'}". Nada novo foi criado.`, [
         { text: 'OK', onPress: () => navigation.goBack() },
       ])
     },
-    [navigation]
+    [navigation, scanInfo]
   )
   const handleCreateNew = useCallback(() => setCandidatesDecided(true), [])
   const handleNoCandidates = useCallback(() => setCandidatesDecided(true), [])
   // ✕ no sheet: sai do cadastro sem gravar nada (INV-1).
   const handleCandidatesClose = useCallback(() => navigation.goBack(), [navigation])
-  const closeSheet = useCallback(() => setSheetOpen(false), [])
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false)
+    clearSheet()
+  }, [clearSheet])
+  // 119 B: a busca/sugestão não sai do cadastro — "Não" e ✕ seguem no form, sem perguntar de novo.
+  const handleSearchCandidatesDone = useCallback(() => setSearchCandidatesDecided(true), [])
+
 
   // 066 Slice C: o sheet devolve { anvisaItem, cmedDraft? }. Com caixa escolhida no passo 2, o
   // rascunho da CMED prevalece (dose/unidade/forma/registro; laboratório só de não-genérico — D11).
@@ -308,8 +337,13 @@ export default function MedicineFormScreen() {
         setStrengthLabel(null)
       }
       setSheetOpen(false)
+      clearSheet()
+      closeSuggestions()
+      // Decisão C (119 B): caixa escolhida no cadastro novo ⇒ "É este que você já tem?" (mesma concentração).
+      setSearchDraft(!isEditing && draft ? draft : null)
+      setSearchCandidatesDecided(false)
     },
-    [form, presentationTouched]
+    [form, presentationTouched, isEditing, clearSheet, closeSuggestions]
   )
 
   // Normaliza vírgula→ponto em tempo real (PT-BR digita 1,5; JS/Postgres esperam 1.5).
@@ -383,7 +417,7 @@ export default function MedicineFormScreen() {
       return
     }
     // FM-7: a pergunta "É este que você já tem?" ainda não teve resposta (lista chegando).
-    if (scanInfo && !candidatesDecided) {
+    if ((scanInfo && !candidatesDecided) || (searchDraft && !searchCandidatesDecided)) {
       Alert.alert('Um momento', 'Estamos conferindo se você já tem este remédio.')
       return
     }
@@ -413,7 +447,7 @@ export default function MedicineFormScreen() {
       }
       await create(payload, { goBack: true, source: createSource(scanInfo, anvisaFilledLabel) })
     }
-  }, [form, isEditing, medicine, create, update, anvisaFilledLabel, doseCheckRequired, scanInfo, candidatesDecided])
+  }, [form, isEditing, medicine, create, update, anvisaFilledLabel, doseCheckRequired, scanInfo, candidatesDecided, searchDraft, searchCandidatesDecided])
 
   const handleStrengthChoice = useCallback(
     (choice: CmedStrengthChoice) => {
@@ -476,12 +510,16 @@ export default function MedicineFormScreen() {
               label="Nome"
               required
               {...formProps(form, 'name')}
+              onChange={handleIdentificationChange}
             />
+            <CatalogFieldSuggestions catalog={catalog} field="name" />
             <FormInput
               name="active_ingredient"
               label="Princípio Ativo"
               {...formProps(form, 'active_ingredient')}
+              onChange={handleIdentificationChange}
             />
+            <CatalogFieldSuggestions catalog={catalog} field="active_ingredient" />
           </FormSection>
         </View>
 
@@ -583,10 +621,14 @@ export default function MedicineFormScreen() {
       </KeyboardAvoidingView>
 
       <MedicineAnvisaSheet
-        open={sheetOpen}
+        open={catalog.isOpen(sheetOpen)}
         onClose={closeSheet}
         onSelect={handleAnvisaSelect}
         onScan={openScannerFromSheet}
+        initialItem={catalog.sheetItem}
+        initialQuery={catalog.sheetQuery}
+        initialResults={catalog.sheetResults}
+        entryPoint={catalog.entryPoint('medicine_form')}
       />
       {scanInfo && !candidatesDecided ? (
         <MedicineCandidatesSheet
@@ -595,6 +637,15 @@ export default function MedicineFormScreen() {
           onCreateNew={handleCreateNew}
           onNoCandidates={handleNoCandidates}
           onClose={handleCandidatesClose}
+        />
+      ) : null}
+      {searchDraft && !searchCandidatesDecided && !scanInfo ? (
+        <MedicineCandidatesSheet
+          draft={searchDraft}
+          onUseExisting={handleUseExisting}
+          onCreateNew={handleSearchCandidatesDone}
+          onNoCandidates={handleSearchCandidatesDone}
+          onClose={handleSearchCandidatesDone}
         />
       ) : null}
     </SafeAreaView>

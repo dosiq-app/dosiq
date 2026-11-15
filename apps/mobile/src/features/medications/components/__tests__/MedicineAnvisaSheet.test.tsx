@@ -239,12 +239,41 @@ describe('mínimo de letras da busca (066 E, C-8)', () => {
     })
     afterEach(() => focusSpy.mockRestore())
 
-    it('não usa autoFocus e foca no onShow do Modal (AC-6.1)', () => {
+    it('não usa autoFocus e foca logo após o onShow do Modal (AC-6.1; Moto g06, 119 B)', () => {
+      jest.useFakeTimers()
       const { getByLabelText, UNSAFE_getByType } = renderSheet([])
       expect(getByLabelText('Buscar medicamento').props.autoFocus).toBeFalsy()
       expect(focusSpy).not.toHaveBeenCalled()
       act(() => UNSAFE_getByType(Modal).props.onShow())
+      act(() => {
+        jest.advanceTimersByTime(150)
+      })
       expect(focusSpy).toHaveBeenCalledTimes(1)
+      jest.useRealTimers()
+    })
+
+    it('initialResults: busca semeada por erro de digitação mostra os itens achados; digitar volta à busca (smoke iOS 119 B)', () => {
+      const ITEM = { name: 'Metoprolol', activeIngredient: 'Succinato de Metoprolol', laboratory: null }
+      const { getByText, getByLabelText, queryByText } = render(
+        <MedicineAnvisaSheet open onClose={jest.fn()} onSelect={jest.fn()} initialQuery="Metropolol" initialResults={[ITEM]} />
+      )
+      expect(getByText('1 resultado')).toBeTruthy()
+      expect(getByText('Metoprolol')).toBeTruthy()
+      fireEvent.changeText(getByLabelText('Buscar medicamento'), 'Metropolo')
+      expect(queryByText('Metoprolol')).toBeNull()
+    })
+
+    it('aberto já preenchido (sugestão/vínculo) ⇒ teclado recolhido, sem foco (smoke 119 B)', () => {
+      jest.useFakeTimers()
+      const { UNSAFE_getByType } = render(
+        <MedicineAnvisaSheet open onClose={jest.fn()} onSelect={jest.fn()} initialQuery="selozok" />
+      )
+      act(() => UNSAFE_getByType(Modal).props.onShow())
+      act(() => {
+        jest.advanceTimersByTime(150)
+      })
+      expect(focusSpy).not.toHaveBeenCalled()
+      jest.useRealTimers()
     })
 
     it('volta do passo 2 pede foco de novo (AC-6.2)', () => {
@@ -255,5 +284,43 @@ describe('mínimo de letras da busca (066 E, C-8)', () => {
       fireEvent.press(getByLabelText('Voltar'))
       expect(focusSpy).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+// 119 B (FR-008 / RC3 E-1): a sugestão do campo e o convite de vínculo abrem o MESMO passo 2.
+describe('abertura direta (119 B — sugestão do campo / vínculo)', () => {
+  it('initialItem abre na escolha da caixa; a escolha devolve o mesmo rascunho do toque na lista', () => {
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockSearch.mockReturnValue([])
+    const onSelect = jest.fn()
+    const { getByText } = render(<MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} entryPoint="catalog_suggestion" />)
+    expect(getByText('Qual embalagem você tem?')).toBeTruthy()
+    fireEvent.press(getByText('500 mg'))
+    const arg = onSelect.mock.calls[0][0]
+    expect(arg.anvisaItem).toBe(DIVALPROATO)
+    expect(arg.cmedDraft.dosage_per_pill).toBe(500)
+    expect(arg.cmedDraft.therapeutic_class_code).toBeTruthy()
+    expect(eventProps('medicine_search_opened')[0]).toMatchObject({ entry_point: 'catalog_suggestion' })
+  })
+
+  it('"‹" no passo 2 aberto direto volta à busca com o nome do item', () => {
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockSearch.mockReturnValue([])
+    const { getByLabelText, getByDisplayValue } = render(<MedicineAnvisaSheet open onSelect={jest.fn()} initialItem={DIVALPROATO} />)
+    fireEvent.press(getByLabelText('Voltar'))
+    expect(getByDisplayValue(DIVALPROATO.name)).toBeTruthy()
+  })
+
+  it('initialQuery abre a busca já digitada ("Ver todos")', () => {
+    mockSearch.mockReturnValue([DIVALPROATO])
+    const { getByDisplayValue, getByLabelText } = render(<MedicineAnvisaSheet open onSelect={jest.fn()} initialQuery="divalp" />)
+    expect(getByDisplayValue('divalp')).toBeTruthy()
+    expect(getByLabelText(DIVALPROATO.name)).toBeTruthy()
+  })
+
+  it('fechado não aplica nada', () => {
+    const onSelect = jest.fn()
+    render(<MedicineAnvisaSheet open={false} onSelect={onSelect} initialItem={DIVALPROATO} />)
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })

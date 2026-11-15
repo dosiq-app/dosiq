@@ -192,8 +192,18 @@ export {
   buildClassTokenMap,
   matchClassCodes,
   isProbableWedge,
+  SUGGEST_MIN_CHARS,
+  buildNameSuggestionIndex,
+  suggestByName,
 } from './cmed/nameMatch'
-export type { ClassTokenMap, ClassMatch, MatchLayer } from './cmed/nameMatch'
+export type {
+  ClassTokenMap,
+  ClassMatch,
+  MatchLayer,
+  NameSuggestionSource,
+  NameSuggestionIndex,
+  NameSuggestions,
+} from './cmed/nameMatch'
 export type {
   CandidateMedicineLike,
   CandidateDraftLike,

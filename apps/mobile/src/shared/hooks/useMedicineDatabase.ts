@@ -210,6 +210,8 @@ export function useMedicineDatabase({
   return {
     search,
     getByName,
+    // 119 B: base crua para as sugestões dos campos (o índice de sugestão é montado por quem usa).
+    items: database,
     isReady: database !== null,
     isLoading,
     lastUpdated,

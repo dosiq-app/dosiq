@@ -41,8 +41,25 @@ describe('findMedicineCandidates', () => {
     expect(findMedicineCandidates(clopidogrelEms, [editado])).toEqual([{ medicine: editado, match: 'proximo' }])
   })
 
-  it('PO-6: marca com mesmo registro ⇒ identico, mesmo com dose diferente', () => {
+  it('PO-6: marca com mesmo registro e mesma dose ⇒ identico', () => {
     const draft = { ...clopidogrelEms, name: 'Plavix', anvisa_registration: '123456789' }
+    const plavix = { id: 'm3', name: 'Plavix', anvisa_registration: '123456789', dosage_per_pill: 75, dosage_unit: 'mg' }
+    expect(findMedicineCandidates(draft, [plavix])).toEqual([{ medicine: plavix, match: 'identico' }])
+  })
+
+  // 119 B (C-B3, PO 2026-11-15): o REGISTRO[:9] é do produto, não da concentração — Mounjaro usa
+  // 112600202 em 5..30 mg (1.845 de 5.613 registros de marca no índice 1.2.1 têm mais de uma dose).
+  // A escada cadastra cada concentração: outra dose nunca é "o que você já tem".
+  it('119: mesmo registro com dose diferente ⇒ nenhum candidato (etapas da escada)', () => {
+    const draft = { name: 'Mounjaro', active_ingredient: 'Tirzepatida', dosage_per_pill: 5, dosage_unit: 'mg/ml', presentation: 'injetavel', anvisa_registration: '112600202' }
+    const etapa25 = { id: 'e1', name: 'Mounjaro', active_ingredient: 'Tirzepatida', dosage_per_pill: 2.5, dosage_unit: 'mg/ml', presentation: 'injetavel', anvisa_registration: '112600202' }
+    const etapa5 = { ...etapa25, id: 'e2', dosage_per_pill: '5' }
+    expect(findMedicineCandidates(draft, [etapa25])).toEqual([])
+    expect(findMedicineCandidates(draft, [etapa25, etapa5])).toEqual([{ medicine: etapa5, match: 'identico' }])
+  })
+
+  it('119: mesmo registro com dose desconhecida de um lado ⇒ identico (registro decide)', () => {
+    const draft = { ...clopidogrelEms, name: 'Plavix', anvisa_registration: '123456789', dosage_per_pill: null }
     const plavix = { id: 'm3', name: 'Plavix', anvisa_registration: '123456789', dosage_per_pill: 300, dosage_unit: 'mg' }
     expect(findMedicineCandidates(draft, [plavix])).toEqual([{ medicine: plavix, match: 'identico' }])
   })
@@ -97,6 +114,13 @@ describe('findMedicineCandidates', () => {
 describe('classifySameMedicine', () => {
   it('genérico de outro laboratório, mesma dose/forma ⇒ identico', () => {
     expect(classifySameMedicine(clopidogrelEms, cadastroClopidogrel)).toBe('identico')
+  })
+
+  it('119: caixa de outra concentração com o mesmo registro ⇒ outro (estoque não entra na etapa errada)', () => {
+    const caixa5 = { name: 'Mounjaro', active_ingredient: 'Tirzepatida', dosage_per_pill: 5, dosage_unit: 'mg/ml', presentation: 'injetavel', anvisa_registration: '112600202' }
+    const travado25 = { ...caixa5, dosage_per_pill: 2.5 }
+    expect(classifySameMedicine(caixa5, travado25)).toBe('outro')
+    expect(classifySameMedicine(caixa5, { ...travado25, dosage_per_pill: 5 })).toBe('identico')
   })
   it('mesmo registro ANVISA ⇒ identico, mesmo com forma divergente', () => {
     const draft = { ...clopidogrelEms, anvisa_registration: '1004305170016', presentation: 'capsula' }

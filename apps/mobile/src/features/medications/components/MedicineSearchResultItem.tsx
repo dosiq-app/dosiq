@@ -18,9 +18,11 @@ function itemCaption(item: any): string | null {
 interface MedicineSearchResultItemProps {
   item: any
   onPress: () => void
+  /** 119 B (D-7): rótulo completo (nome, princípio ativo, laboratório) nas sugestões dos campos. */
+  accessibilityLabel?: string
 }
 
-export function MedicineSearchResultItem({ item, onPress }: MedicineSearchResultItemProps) {
+export function MedicineSearchResultItem({ item, onPress, accessibilityLabel }: MedicineSearchResultItemProps) {
   const isSupplement = item.type === 'suplemento'
   const iconColor = isSupplement ? colors.supplement[500] : colors.primary[500]
   const iconBg = isSupplement ? colors.supplement[50] : colors.primary[50]
@@ -31,7 +33,7 @@ export function MedicineSearchResultItem({ item, onPress }: MedicineSearchResult
       style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={item.name}
+      accessibilityLabel={accessibilityLabel ?? item.name}
     >
       <View style={[styles.itemIcon, { backgroundColor: iconBg }]}>
         <MedicineIcon medicine={item} size={18} color={iconColor} strokeWidth={2} />
@@ -59,6 +61,7 @@ export default MedicineSearchResultItem
 
 const styles = StyleSheet.create({
   item: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'flex-start',
     padding: spacing[3],

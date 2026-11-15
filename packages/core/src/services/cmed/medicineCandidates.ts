@@ -70,6 +70,13 @@ function overlaps(a: Set<string>, b: Set<string>): boolean {
   return false
 }
 
+// 119 B (C-B3): o REGISTRO[:9] é do produto e se repete entre concentrações (Mounjaro 5..30 mg);
+// registro igual só é o mesmo remédio quando a dose não diverge (dose desconhecida: registro decide).
+function sameRegistrationAndDose(draft: CandidateDraftLike, medicine: CandidateMedicineLike): boolean {
+  if (!draft.anvisa_registration || draft.anvisa_registration !== medicine.anvisa_registration) return false
+  return !conflictingDose(draft, medicine)
+}
+
 /** Candidatos `identico` primeiro, depois `proximo`; ordem da lista preservada dentro de cada grupo. */
 export function findMedicineCandidates<T extends CandidateMedicineLike>(
   draft: CandidateDraftLike,
@@ -83,11 +90,7 @@ export function findMedicineCandidates<T extends CandidateMedicineLike>(
   const proximos: MedicineCandidate<T>[] = []
 
   for (const medicine of medicines) {
-    if (
-      draft.anvisa_registration &&
-      medicine.anvisa_registration &&
-      draft.anvisa_registration === medicine.anvisa_registration
-    ) {
+    if (sameRegistrationAndDose(draft, medicine)) {
       identicos.push({ medicine, match: 'identico' })
       continue
     }

@@ -33,7 +33,7 @@ export const EVENTS = {
 
   // Busca na base ANVISA + passo 2 da CMED (spec 066 Slice C · TRACKING_PLAN §5.3). Setup, sem
   // treatment_id. Nunca nome/concentração/substância/laboratório nem o texto digitado (R-042).
-  MEDICINE_SEARCH_OPENED: 'medicine_search_opened',                     // entry_point: 'medicine_form' | 'onboarding' (066 E)
+  MEDICINE_SEARCH_OPENED: 'medicine_search_opened',                     // entry_point: 'medicine_form' | 'onboarding' (066 E) | 'catalog_suggestion' | 'catalog_link' (119 B)
   MEDICINE_SEARCH_RESULT_SELECTED: 'medicine_search_result_selected',   // result_rank, query_length, item_kind, presentation_count
   MEDICINE_PRESENTATION_SELECTED: 'medicine_presentation_selected',     // outcome: single|picked|not_listed|back, dose_ambiguous
   MEDICINE_SEARCH_DISMISSED: 'medicine_search_dismissed',               // had_query, step: search|presentation, exit?: back|manual (066 E, só onboarding)

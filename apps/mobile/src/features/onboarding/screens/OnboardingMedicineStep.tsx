@@ -28,6 +28,9 @@ import FormSelect from '@shared/components/form/FormSelect'
 import FormActions from '@shared/components/form/FormActions'
 import { useToast } from '@shared/components/feedback/Toast'
 import { AnvisaBanner } from '@medications/components/AnvisaBanner'
+// 119 B (RC2 D-1): "Digitar à mão" sugere da lista oficial; 1º remédio ⇒ sem pergunta "já tem".
+import { CatalogFieldSuggestions } from '@medications/components/CatalogSuggestionList'
+import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggestionSheet'
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
 import { ConcentrationVolumeField } from '@medications/components/ConcentrationVolumeField'
 import { valuesFromDraft, draftExtras, baseFromScan, scanDoseEdited } from '@medications/utils/medicineDraftValues'
@@ -119,6 +122,7 @@ export default function OnboardingMedicineStep() {
   const confirmedScanRef = useRef<any>(null)
 
   const form = useFormState(medicineCreateSchema, { initialValues: medicine || DEFAULT_INITIAL })
+  const catalog = useCatalogSuggestionSheet<'name'>({ values: form.values })
 
   // Aplica a caixa no form + guarda do composto (INV-2), escolhas de 1 toque e "Na embalagem".
   const applyDraft = (values, draft, source: 'search' | 'scan') => {
@@ -279,7 +283,9 @@ export default function OnboardingMedicineStep() {
             required
             placeholder="Digite o nome do remédio"
             {...formProps(form, 'name')}
+            onChange={catalog.bindChange(form.handleChange)}
           />
+          <CatalogFieldSuggestions catalog={catalog} field="name" onSheetSelect={applySelection} />
 
           <View style={styles.row}>
             <View style={styles.rowDose}>
