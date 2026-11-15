@@ -239,6 +239,21 @@
   background: #9f1239;
 }
 
+/* Spec 119: estimativa pelo nome — hachurado sobre a cor do wedge, para nunca ler como confirmado. */
+.growth-bar__fill--estimate {
+  background: repeating-linear-gradient(135deg, var(--growth-brand) 0 6px, transparent 6px 10px);
+}
+.growth-split {
+  margin: 0.25rem 0 0.75rem 1rem;
+  padding-left: 0.75rem;
+  border-left: 2px dashed var(--growth-ink-2);
+}
+.growth-split__note {
+  font-size: 0.75rem;
+  color: var(--growth-ink-2);
+  margin: 0 0 0.5rem;
+}
+
 .growth-bar__secondary {
   font-size: 0.75rem;
   color: var(--growth-ink-2);

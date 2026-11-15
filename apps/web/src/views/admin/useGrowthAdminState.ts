@@ -18,6 +18,8 @@ export type GrowthTreatment = {
   therapeutic_class: string | null
   therapeutic_class_code: string | null
   wedge: 'glp1_antiobesidade' | 'antidiabeticos_outros' | 'outras' | 'sem_codigo'
+  /** Spec 119: sem código, mas o nome casa só com classes do wedge no catálogo CMED (estimativa). */
+  probable_wedge?: boolean
   frequency: string | null
   features: {
     titration: boolean
@@ -71,7 +73,16 @@ export type GrowthAnalytics = {
     push_treated_pct: number
   }
   class_distribution: Array<{ class_code: string; label: string | null; wedge: GrowthTreatment['wedge']; users: number; protocols: number; users_pct: number }>
-  wedge: Record<GrowthTreatment['wedge'], GrowthRate>
+  /**
+   * Spec 119: parcelas de `sem_codigo` (aditivas; ausentes em RPC anterior à 119).
+   * `glp1_antiobesidade_probable` é ESTIMATIVA pelo nome — nunca somada ao confirmado (INV-2).
+   */
+  wedge: Record<GrowthTreatment['wedge'], GrowthRate> & {
+    glp1_antiobesidade_probable?: GrowthRate
+    sem_codigo_outros?: GrowthRate
+  }
+  /** Spec 119: versão do catálogo CMED usada no casamento; `null` antes da 1ª carga. */
+  catalog_version?: string | null
   frequency_distribution: Array<{ frequency: string | null; users: number; protocols: number }>
   feature_rates: Array<GrowthRate & { feature: string; protocols_pct: number }>
   denominators: { users_all: number; protocols_all: number }

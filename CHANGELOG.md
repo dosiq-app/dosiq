@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Painel separa os "prováveis GLP-1 pelo nome" (spec 119, Fatia A)
+
+- **Web** (`Added`, **minor** 4.40.0 → **4.41.0**; admin; canal: deploy Vercel **depois** das 2 migrações em prod): o painel Crescimento & Wedge divide "Sem código de classe" em **Provável GLP-1 (pelo nome · estimativa)** e **Sem código · outros**, e o card Wedge GLP-1 ganha "+ N prováveis pelo nome (estimativa)". A estimativa nunca é somada ao wedge confirmado. Vale nos dois modos (base total e pós-v0.34). O rodapé mostra a versão do catálogo CMED usada.
+- **Backend** (`Added`, sem version source): migrações `20261115_119_cmed_class_keys` (tabela `cmed_class_keys`, derivada do índice CMED publicado: palavra → códigos de classe; fechada, só `service_role`; extensão `fuzzystrmatch` em `extensions`) e `20261115_119_growth_probable_wedge` (a RPC do painel acha o código provável pelo nome ou princípio ativo — palavra exata ou erro de digitação pequeno — e só conta como provável quando **todas** as classes candidatas são do wedge). O payload ganha só contagens e o booleano `probable_wedge`; nenhum nome sai. Nada é gravado em `medicines`.
+- **Core** (`Added`): `nameMatch` (`matchKey`, `matchTokens`, `matchClassCodes`, `isProbableWedge`, `buildClassTokenMap`) — regra única de casamento nome → código, com casos-ouro compartilhados com o SQL (CON-045).
+- **Ops** (`Added`): `npm run cmed:publish` sobe o índice e o manifest ao bucket **e** carrega o catálogo no banco num gesto só, com troca atômica e versão. Padrão é o QA; prod exige `--prod` e digitar o project_ref; chave de outro projeto, arquivo fora do manifest ou formato desconhecido abortam antes de escrever.
+
 ### Medição da frota passa a contar só aparelho que abriu o app (kill switch 0.34)
 
 - **Core + Backend** (`Fixed`, **patch** comportamental, sem version source): o inventário de versões em campo (`scripts/fleet-versions.sh`) e a contagem de aparelhos afetados que o admin confirma antes de ligar o bloqueio por versão passam a usar `last_seen_at` também em `notification_devices`. Antes usavam `updated_at`, que muda por escrita do servidor; 106 de 241 aparelhos tinham `updated_at` mais de um dia à frente da última atividade real, e aparelhos parados desde 03/10 contavam como vistos em 02/11. Medido em 15/11: a cauda abaixo da 0.34 cai de 6 instalações para 1. Script, core e admin seguem com o mesmo número (spec 051).

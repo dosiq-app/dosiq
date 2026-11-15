@@ -1,0 +1,47 @@
+{
+  "_comment": "Spec 119 · CON-045. Casos-ouro compartilhados: nameMatch.test.ts roda o core; o .test.sql da 119 roda cmed_match_key e o casamento da RPC com os MESMOS casos. Mudar a regra = este arquivo + core + SQL no mesmo PR.",
+  "keys": [
+    { "in": "Ácido Acetilsalicílico", "key": "acido acetilsalicilico", "tokens": ["acido", "acetilsalicilico"] },
+    { "in": "CAÇÃO ñ ü Ô", "key": "cacao n u o", "tokens": ["cacao"] },
+    { "in": "tg ( tirzepatida genérico 15mg )", "key": "tg tirzepatida generico 15mg", "tokens": ["tirzepatida", "generico"] },
+    { "in": "  MOUNJARO®  5mg/0,5mL ", "key": "mounjaro 5mg 0 5ml", "tokens": ["mounjaro"] },
+    { "in": "Semaglutida-Ozempic/Wegovy", "key": "semaglutida ozempic wegovy", "tokens": ["semaglutida", "ozempic", "wegovy"] },
+    { "in": "İstanbul ﬁ Ǆ", "key": "istanbul", "tokens": ["istanbul"] },
+    { "in": "Ação; DROP TABLE x; --'\"", "key": "acao drop table x", "tokens": ["acao", "drop", "table"] },
+    { "in": "tv", "key": "tv", "tokens": [] },
+    { "in": "vitamina vitamina D3", "key": "vitamina vitamina d3", "tokens": ["vitamina"] },
+    { "in": "", "key": "", "tokens": [] },
+    { "in": null, "key": "", "tokens": [] }
+  ],
+  "catalog": {
+    "tirzepatida": ["A10S"],
+    "mounjaro": ["A10S"],
+    "ozivy": ["A10S"],
+    "semaglutida": ["A10S", "A8A"],
+    "ozempic": ["A10S"],
+    "escitalopram": ["N6A4"],
+    "canabidiol": ["N7A"],
+    "vitamina": ["A11B4", "A11C2"],
+    "metformina": ["A10J1"],
+    "liraglutida": ["A10S"],
+    "cloridrato": ["A10J1", "N6A4"]
+  },
+  "matches": [
+    { "texts": ["tizerpatida", null], "layer": "approx", "codes": ["A10S"], "probable": true },
+    { "texts": ["ozivy", null], "layer": "exact", "codes": ["A10S"], "probable": true },
+    { "texts": ["tg ( tirzepatida genérico 15mg )", null], "layer": "exact", "codes": ["A10S"], "probable": true },
+    { "texts": ["Mounjaro", "tirzepatida"], "layer": "exact", "codes": ["A10S"], "probable": true },
+    { "texts": ["semaglutida", null], "layer": "exact", "codes": ["A10S", "A8A"], "probable": true },
+    { "texts": ["ozempik", null], "layer": "approx", "codes": ["A10S"], "probable": true },
+    { "texts": ["creatina", null], "layer": "none", "codes": [], "probable": false },
+    { "texts": ["tv", "C"], "layer": "none", "codes": [], "probable": false },
+    { "texts": ["Emagrecimento", "Emagrecimento"], "layer": "none", "codes": [], "probable": false },
+    { "texts": ["escitalopram", null], "layer": "exact", "codes": ["N6A4"], "probable": false },
+    { "texts": ["vitamina D", null], "layer": "exact", "codes": ["A11B4", "A11C2"], "probable": false },
+    { "texts": ["Glifage", "cloridrato de metformina"], "layer": "exact", "codes": ["A10J1", "N6A4"], "probable": false },
+    { "texts": ["liraglutida", "metformina"], "layer": "exact", "codes": ["A10J1", "A10S"], "probable": false },
+    { "texts": ["ozem", null], "layer": "none", "codes": [], "probable": false },
+    { "texts": ["mounjara", "ozivy"], "layer": "exact", "codes": ["A10S"], "probable": true },
+    { "texts": [null, null], "layer": "none", "codes": [], "probable": false }
+  ]
+}

@@ -108,6 +108,7 @@ function Kpi({ icon, label, value, detail, basePct }: { icon: ReactNode; label: 
 function KpiHeader({ data, reference }: { data: GrowthAnalytics; reference: GrowthAnalytics | null }) {
   const t = data.totals
   const glp1 = data.wedge.glp1_antiobesidade
+  const probable = data.wedge.glp1_antiobesidade_probable
   const rt = reference?.totals
   return (
     <section className="growth-kpis" aria-label="Indicadores">
@@ -137,9 +138,45 @@ function KpiHeader({ data, reference }: { data: GrowthAnalytics; reference: Grow
         label="Wedge GLP-1"
         value={fmtPct(glp1.users_pct)}
         basePct={reference?.wedge.glp1_antiobesidade.users_pct}
-        detail={`${glp1.users} de ${t.users_with_protocols} usuários com tratamento`}
+        detail={`${glp1.users} de ${t.users_with_protocols} usuários com tratamento${probable && probable.users > 0 ? ` · + ${plural(probable.users, 'provável', 'prováveis')} pelo nome (estimativa)` : ''}`}
       />
     </section>
+  )
+}
+
+/**
+ * Spec 119 (FR-005): o sem código dividido em "provável GLP-1 pelo nome" e "outros". Rótulo de
+ * estimativa em texto visível (lido por leitor de tela), nunca só em tooltip; nunca somado ao
+ * confirmado. RPC anterior à 119 (sem os campos) ⇒ nada aparece.
+ */
+function ProbableSplit({ data, reference, of }: { data: GrowthAnalytics; reference: GrowthAnalytics | null; of: number }) {
+  const probable = data.wedge.glp1_antiobesidade_probable
+  const others = data.wedge.sem_codigo_outros
+  if (!probable || !others) return null
+  return (
+    <div className="growth-split" role="group" aria-label="Sem código de classe, por estimativa pelo nome">
+      <p className="growth-split__note" role="note">
+        Estimativa pelo nome no catálogo CMED — não entra no wedge confirmado.
+      </p>
+      <Bar
+        label="Provável GLP-1 (pelo nome · estimativa)"
+        pct={probable.users_pct}
+        n={probable.users}
+        of={of}
+        tone="estimate"
+        secondary={plural(probable.protocols, 'tratamento', 'tratamentos')}
+        basePct={reference?.wedge.glp1_antiobesidade_probable?.users_pct}
+      />
+      <Bar
+        label="Sem código · outros"
+        pct={others.users_pct}
+        n={others.users}
+        of={of}
+        tone="muted"
+        secondary={plural(others.protocols, 'tratamento', 'tratamentos')}
+        basePct={reference?.wedge.sem_codigo_outros?.users_pct}
+      />
+    </div>
   )
 }
 
@@ -170,6 +207,7 @@ function WedgePanel({ data, reference }: { data: GrowthAnalytics; reference: Gro
           />
         )
       })}
+      {of > 0 && <ProbableSplit data={data} reference={reference} of={of} />}
       <h3 className="growth-panel__subtitle">Classes mais frequentes</h3>
       {classes.length === 0 ? (
         <p className="growth-panel__hint">Nenhum tratamento ativo ainda.</p>
@@ -341,6 +379,7 @@ export default function GrowthAdmin({ onBack }: { onBack?: () => void }) {
             <p className="growth-admin__meta">
               {data.excluded_count > 0 ? `${plural(data.excluded_count, 'conta interna excluída', 'contas internas excluídas')} · ` : ''}
               Atualizado em {parseISO(data.generated_at).toLocaleString('pt-BR')}
+              {data.catalog_version ? ` · catálogo CMED ${data.catalog_version}` : ''}
             </p>
           )}
         </div>

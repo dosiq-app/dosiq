@@ -106,6 +106,30 @@ describe('admin.ts resource=growth — resposta (PO-115-3, PO-SEC-3)', () => {
     expect(text).toContain('protocol_name')
   })
 
+  it('119: probable_wedge e parcelas passam; princípio ativo e nome interno nunca (PO-SEC-119-1)', async () => {
+    rpc.mockResolvedValueOnce({
+      data: {
+        ...PAYLOAD,
+        catalog_version: '1.2.0',
+        wedge: { glp1_antiobesidade_probable: { users: 2, protocols: 2, users_pct: 50 } },
+        users: [{
+          ...PAYLOAD.users[0],
+          treatments: [{ protocol_name: 'T', probable_wedge: true, active_ingredient: 'tirzepatida', med_name: 'tizerpatida', med_ingredient: 'tg' }],
+        }],
+      },
+      error: null,
+    })
+    const r = res()
+    await handler(req('Bearer admin'), r)
+    const text = JSON.stringify(r.body)
+    expect(text).toContain('"probable_wedge":true')
+    expect(text).toContain('glp1_antiobesidade_probable')
+    expect(text).toContain('1.2.0')
+    for (const leak of ['tirzepatida', 'tizerpatida', 'active_ingredient', 'med_name', 'med_ingredient']) {
+      expect(text).not.toContain(leak)
+    }
+  })
+
   it('limit/offset vêm limitados: 1..500 e offset ≥ 0; lixo vira default', async () => {
     let r = res()
     await handler(req('Bearer admin', { limit: '9999', offset: '-3' }), r)
