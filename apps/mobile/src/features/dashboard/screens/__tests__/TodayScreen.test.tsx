@@ -15,6 +15,7 @@ jest.mock('@measures/hooks/useTodayMeasures', () => ({
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: jest.fn() }),
   useFocusEffect: () => {},
+  useScrollToTop: () => {},
   createNavigationContainerRef: () => ({ isReady: () => false, navigate: jest.fn() }),
 }));
 
@@ -52,7 +53,9 @@ jest.mock('@stock/hooks/useStock', () => ({
   useStock: () => ({ data: { active: mockStockActive }, refresh: mockStockRefresh }),
 }))
 jest.mock('@shared/hooks/useStockTracking', () => ({ useStockTracking: () => ({ enabled: true }) }))
-jest.mock('../../components/StockAlertInline', () => (props) => <MockView testID="stock-alerts" {...props} />);
+// 120 C: o alerta de estoque é escolhido pelo árbitro e renderizado pelo TodayAlertCard (moldura única).
+jest.mock('../../components/TodayAlertCard', () => (props) => <MockView testID="today-alert" {...props} />);
+jest.mock('@shared/components/feedback/Toast', () => ({ useToast: () => ({ show: jest.fn() }) }));
 jest.mock('../../../../shared/components/feedback/StaleBanner', () => (props) => <MockView testID="stale-banner" {...props} />);
 
 describe('TodayScreen', () => {
@@ -294,11 +297,23 @@ describe('TodayScreen', () => {
       data: { ...baseMockData, capturedAt }, loading: false, error: null, refresh: mockRefresh,
     } as any)
 
-    it('alertas saem dos itens da aba Estoque (id + dias em inteiro)', () => {
+    it('alerta sai dos itens da aba Estoque (id + dias em inteiro) e é UM só (120 C)', () => {
       mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }, { id: 'm2', name: 'Farto', daysRemaining: 40 }]
       today('2026-09-28T22:00:00.000Z')
-      const { getByTestId } = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
-      expect(getByTestId('stock-alerts').props.alerts).toEqual([{ medicineId: 'm1', medicineName: 'Selozok', daysRemaining: 6 }])
+      const { getAllByTestId } = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      const alerts = getAllByTestId('today-alert')
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0].props.payload.item).toEqual(expect.objectContaining({ medicineId: 'm1', medicineName: 'Selozok', daysRemaining: 6 }))
+      expect(alerts[0].props.payload.level).toBe('stock_low')
+    })
+
+    it('dois remédios em alerta ⇒ ainda 1 alerta, o de menos dias (E-3)', () => {
+      mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }, { id: 'm2', name: 'Farto', daysRemaining: 4 }]
+      today('2026-09-28T22:00:00.000Z')
+      const { getAllByTestId } = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      const alerts = getAllByTestId('today-alert')
+      expect(alerts).toHaveLength(1)
+      expect(alerts[0].props.payload.item.medicineId).toBe('m2')
     })
 
     it('nova carga do Hoje (ex.: dose registrada) relê o estoque; a 1ª montagem não', () => {
@@ -348,4 +363,27 @@ describe('TodayScreen', () => {
       expect(queryByTestId('dose-modal')?.props.entryPoint ?? null).toBeNull()
     })
   })
+
+  // 120 C · US9 cenário 1 / FR-013 — bloco de doses.
+  describe('bloco de doses (120 C)', () => {
+    const unlogged = { id: 'd1', instanceId: 'i1', scheduledTime: '08:00', scheduledFor: '2026-11-14T11:00:00Z', timelineStatus: 'SEM_REGISTRO', medicineName: 'Glifage', protocol: { id: 'p1' } }
+    const withTimeline = (timeline: any[]) => jest.mocked(useTodayData).mockReturnValue({
+      data: { ...baseMockData, protocols: [{ id: 'p1', name: 'P', medicine_id: 'm1' }], timeline }, loading: false, error: null, refresh: mockRefresh,
+    } as any)
+
+    it('sem hero + dose sem registro ⇒ card "sem registro" no bloco', () => {
+      withTimeline([unlogged])
+      const { getByTestId, queryByTestId } = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      expect(queryByTestId('hero-card')).toBeNull()
+      expect(getByTestId('unlogged-doses-card')).toBeTruthy()
+    })
+
+    it('com hero ⇒ sem card "sem registro" (o hero é a ação do momento)', () => {
+      withTimeline([unlogged, { id: 'd2', instanceId: 'i2', scheduledTime: '21:00', scheduledFor: '2026-11-15T00:00:00Z', timelineStatus: 'PROXIMA', protocol: { id: 'p1' } }])
+      const { getByTestId, queryByTestId } = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      expect(getByTestId('hero-card')).toBeTruthy()
+      expect(queryByTestId('unlogged-doses-card')).toBeNull()
+    })
+  })
 });
+

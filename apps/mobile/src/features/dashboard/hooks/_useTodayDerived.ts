@@ -24,9 +24,10 @@ function toTimelineStatus(item, nowRaw) {
   if (zone === 'late') return 'ATRASADA'
   if (zone === 'now') return 'PROXIMA'
   if (zone === 'upcoming' || zone === 'later') return 'PLANEJADA'
-  // pending pós-tolerância (zona null): ainda não varrida p/ missed, mas fora do
-  // actionável — exibe como PERDIDA (espelha o sweep markMissedDueInstances).
-  return 'PERDIDA'
+  // 120 C (US9 · FR-014): pending pós-tolerância (zona null) ainda não varrida p/ missed pelo cron
+  // é SEM_REGISTRO — o dia ainda é corrigível (registrar tardio pela ocorrência, pular com o
+  // instante = horário previsto). Só `missed` (dia fechado) é PERDIDA.
+  return 'SEM_REGISTRO'
 }
 
 /**
@@ -77,6 +78,9 @@ export function deriveStockAlerts(stockItems) {
       daysRemaining: it.forecast?.daysRemaining ?? Math.floor(it.daysRemaining),
       dosesRemaining: it.dosesRemaining,
       isDailyStock: it.isDailyStock,
+      // 120 C: degrau da régua sai da canônica (CON-046); ausente (cache antigo) ⇒ regra local espelho.
+      isZero: it.forecast?.isZero,
+      isUrgent: it.forecast?.isUrgent,
     }))
 }
 
@@ -99,8 +103,10 @@ function calendarDaysBetween(from: string, to: string): number | null {
  * core faltando 0..7 dias. A data vem pronta do item (`attachSupplyRunway` → `computeSupplyDate`);
  * aqui só se filtra a janela. Mais próximo primeiro.
  */
-export function deriveSupplyNotices(stockItems, today: string) {
+export function deriveSupplyNotices(stockItems, today: string, protocols: any[] = []) {
   if (!Array.isArray(stockItems)) return []
+  // S-17: cadência do tratamento de origem (o título dizia "mensal" para tudo).
+  const protocolById = new Map((protocols ?? []).filter(Boolean).map((p) => [p.id, p]))
   const nameById = new Map(stockItems.filter(Boolean).map((it) => [it.id, it.name]))
   return stockItems
     .filter((it) => it?.runwayAlertExpected === false && it.supply?.status === 'due')
@@ -112,6 +118,8 @@ export function deriveSupplyNotices(stockItems, today: string) {
       buyMedicineId: it.supply.medicineId,
       buyMedicineName: it.supplyBuyName ?? nameById.get(it.supply.medicineId) ?? null,
       daysUntil: calendarDaysBetween(today, it.supply.date),
+      frequency: protocolById.get(it.supply.protocolId)?.frequency ?? null,
+      intervalDays: protocolById.get(it.supply.protocolId)?.interval_days ?? null,
     }))
     .filter((n) => n.daysUntil !== null && n.daysUntil >= 0 && n.daysUntil <= SUPPLY_NOTICE_MAX_DAYS)
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -191,6 +199,9 @@ export function useTodayDerived(data, now?: Date) {
         timelineStatus: toTimelineStatus(item, nowRaw),
         protocol,
         medicine: protocol?.medicine || null,
+        // R-299 (120 C): identidade congelada na ocorrência — o card e o "sem registro" exibem esta.
+        medicineId: item.medicineId ?? null,
+        medicineName: item.medicineName ?? null,
       }
     }
     const byScheduledTime = (a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')

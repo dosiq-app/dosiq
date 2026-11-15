@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { deriveStockForecast, STOCK_LOW_DAYS } from '../stockForecast'
+import { deriveStockForecast, STOCK_LOW_DAYS, STOCK_URGENT_DAYS } from '../stockForecast'
 import { STOCK_FORECAST_AS_OF, STOCK_FORECAST_CASES, type StockForecastCase } from './fixtures/stockForecastCases'
 
 // Spec 072 — tabela-oráculo da previsão canônica (PO-072-1). As superfícies são comparadas com ESTA
@@ -46,6 +46,35 @@ const TABLE: Array<[string, string, number | null, number, boolean, boolean, boo
   ['m-nullactive', 'continuous', 4, 4, true, true, false, true],
   ['m-multi', 'continuous', 2, 6, true, true, false, true],
 ]
+
+// 120 C (C-1): "estoque acabando" da régua da Hoje — diário ≤ STOCK_URGENT_DAYS dias; não diário
+// ≤ 1 dose. Saldo zero NÃO é urgente (é `isZero`); só regime com alerta (contínuo/PRN).
+const URGENT: Record<string, boolean> = {
+  'm-cont': false, 'm-d7': false, 'm-d79': false, 'm-d8': false, 'm-d65': false, 'm-zero': false,
+  'm-week': false, 'm-week-low': true, 'm-int': false, 'm-liq': true, 'm-prn': false,
+  'm-sparse': false, 'm-mixed': false, 'm-ended': false, 'm-nullactive': false, 'm-multi': true,
+}
+
+describe('deriveStockForecast — isUrgent (120 C, C-1)', () => {
+  it('limiar é 3 dias (S-20)', () => {
+    expect(STOCK_URGENT_DAYS).toBe(3)
+  })
+  for (const [id, urgent] of Object.entries(URGENT)) {
+    it(`${id} ⇒ isUrgent=${urgent}`, () => {
+      expect(forecastOf(caseOf(id)).isUrgent).toBe(urgent)
+    })
+  }
+  it('urgente implica alerta esperado (nunca urgente sem alerta)', () => {
+    for (const c of STOCK_FORECAST_CASES) {
+      const f = forecastOf(c)
+      if (f.isUrgent) expect(f.alertExpected).toBe(true)
+    }
+  })
+  it('sem consumo nunca é urgente', () => {
+    const f = forecastOf(caseOf('m-ended'), { quantity: 1 })
+    expect(f.isUrgent).toBe(false)
+  })
+})
 
 describe('deriveStockForecast — tabela-oráculo (072 PO-072-1)', () => {
   it('a tabela cobre todos os casos da fixture compartilhada', () => {

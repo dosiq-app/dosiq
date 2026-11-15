@@ -650,7 +650,7 @@ describe('dispatchNotification — supply_reminder (105)', () => {
   })
 
   it.each([
-    ['monthly_purchase', 1, '🗓️ Dose mensal amanhã', 'O estoque cadastrado não cobre a dose de amanhã'],
+    ['monthly_purchase', 1, '🗓️ Dose de amanhã sem estoque', 'O estoque cadastrado não cobre a dose de amanhã'],
     ['step_switch', 2, '📈 Troca de etapa chegando', 'Em 2 dias o tratamento passa para a próxima etapa, com outro medicamento'],
     ['step_switch', 1, '📈 Troca de etapa chegando', 'Amanhã o tratamento passa para a próxima etapa'],
     ['monthly_dose', 1, '🗓️ Dose mensal chegando', 'A dose mensal é amanhã'],

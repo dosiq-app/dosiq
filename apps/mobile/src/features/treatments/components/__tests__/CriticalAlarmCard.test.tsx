@@ -4,7 +4,8 @@ import { render, waitFor, fireEvent } from '@testing-library/react-native'
 import { Linking } from 'react-native'
 
 const mockStatus = jest.fn()
-jest.mock('@platform/alarms/alarmService', () => ({ getCriticalAlarmDeviceStatus: () => mockStatus() }))
+const mockOpenAlarm = jest.fn()
+jest.mock('@platform/alarms/alarmService', () => ({ getCriticalAlarmDeviceStatus: () => mockStatus(), openAlarmChannelSettings: () => mockOpenAlarm() }))
 const mockEnablePush = jest.fn()
 jest.mock('@platform/notifications/pushPermission', () => ({ requestPushOrOpenSettings: (...a: any[]) => mockEnablePush(...a) }))
 jest.mock('@platform/supabase/nativeSupabaseClient', () => ({ supabase: {} }))
@@ -37,7 +38,7 @@ describe('CriticalAlarmCard — faixa por gravidade', () => {
     const { findByText, getByText } = render(<CriticalAlarmCard criticalAlarm onToggle={jest.fn()} />)
     fireEvent.press(await findByText('Notificações desligadas'))
     expect(getByText(/não vai tocar/)).toBeTruthy()
-    expect(spy).toHaveBeenCalled()
+    expect(mockOpenAlarm).toHaveBeenCalledTimes(1) // U-1: canal do alarme direto
   })
 
   it('🔴 crítico negado no iOS ⇒ "toca como alarme comum", NUNCA "não vai tocar" (PO-3)', async () => {
@@ -55,6 +56,7 @@ describe('CriticalAlarmCard — faixa por gravidade', () => {
     fireEvent.press(await findByText('Alarme crítico ainda não permitido'))
     expect(onRequest).toHaveBeenCalled()
     expect(spy).not.toHaveBeenCalled()
+    expect(mockOpenAlarm).not.toHaveBeenCalled()
   })
 
   it('leitura falhou ⇒ sem faixa (não afirma nada)', async () => {
@@ -130,6 +132,7 @@ describe('CriticalAlarmCard — scope global (C-24)', () => {
     const { findByText, queryByRole } = render(<CriticalAlarmCard scope="global" criticalAlarm />)
     fireEvent.press(await findByText('Notificações desligadas'))
     expect(spy).not.toHaveBeenCalled()
+    expect(mockOpenAlarm).not.toHaveBeenCalled()
     expect(queryByRole('button')).toBeNull()
   })
 
@@ -139,7 +142,7 @@ describe('CriticalAlarmCard — scope global (C-24)', () => {
     const spy = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined as any)
     const { findByText } = render(<CriticalAlarmCard scope="global" criticalAlarm />)
     fireEvent.press(await findByText('Notificações desligadas'))
-    expect(spy).toHaveBeenCalled()
+    expect(mockOpenAlarm).toHaveBeenCalledTimes(1) // U-1: canal do alarme direto
   })
 
   it('crítico negado ⇒ "ficam mudos no modo silencioso", nunca "toca como alarme comum"', async () => {
@@ -159,7 +162,7 @@ describe('CriticalAlarmCard — canal silenciado (C-25)', () => {
     const { findByText, getByText } = render(<CriticalAlarmCard criticalAlarm onToggle={jest.fn()} />)
     fireEvent.press(await findByText('Alarme silenciado em Ajustes'))
     expect(getByText(/chega sem som/)).toBeTruthy()
-    expect(spy).toHaveBeenCalled()
+    expect(mockOpenAlarm).toHaveBeenCalledTimes(1) // U-1: canal do alarme direto
   })
 })
 
@@ -172,7 +175,7 @@ describe('CriticalAlarmCard — canal sem aviso na tela (C-32)', () => {
     const { findByText, getByText } = render(<CriticalAlarmCard criticalAlarm onToggle={jest.fn()} />)
     fireEvent.press(await findByText('Alarme sem aviso na tela'))
     expect(getByText(/não aparece na tela/)).toBeTruthy()
-    expect(spy).toHaveBeenCalled()
+    expect(mockOpenAlarm).toHaveBeenCalledTimes(1) // U-1: canal do alarme direto
   })
 })
 
@@ -188,5 +191,6 @@ describe('CriticalAlarmCard — push com pedido possível (C-33)', () => {
     await waitFor(() => expect(mockEnablePush).toHaveBeenCalled())
     expect(getByText(/Toque para ativar/)).toBeTruthy()
     expect(spy).not.toHaveBeenCalled()
+    expect(mockOpenAlarm).not.toHaveBeenCalled()
   })
 })

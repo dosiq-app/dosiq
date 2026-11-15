@@ -268,6 +268,7 @@ export {
 export {
   deriveStockForecast,
   STOCK_LOW_DAYS,
+  STOCK_URGENT_DAYS,
   type StockForecast,
   type StockForecastInput,
   type StockForecastProtocol,

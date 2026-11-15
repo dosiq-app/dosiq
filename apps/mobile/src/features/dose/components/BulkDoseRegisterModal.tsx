@@ -25,7 +25,7 @@ import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/d
 import { usePlanProtocols } from '@dose/hooks/usePlanProtocols'
 import { registerDoseMany } from '../services/doseService'
 import { SURFACES } from '@platform/analytics/analyticsEvents'
-import { getNow, cloneDate, formatIntakeDose, formatConcentration, isInjectable } from '@dosiq/core'
+import { getNow, parseISO, cloneDate, formatIntakeDose, formatConcentration, isInjectable } from '@dosiq/core'
 import InjectionSitePicker from '@shared/components/form/InjectionSitePicker'
 import { useToast } from '@shared/components/feedback/Toast'
 import { useKeyboardVisible } from '@shared/hooks/useKeyboardVisible'
@@ -295,7 +295,14 @@ function BulkDoseActions({ loading, selectedCount, onCancel, onConfirm }) {
   )
 }
 
-function useBulkDoseModalState({ visible, isComplex, expandedDoseItems }) {
+function _initialTakenAtDate(iso) {
+  if (!iso) return getNow()
+  // Instante absoluto (`scheduled_for`, ISO com fuso) — parseISO, não data-só (R-020 não se aplica).
+  const d = parseISO(iso)
+  return Number.isNaN(d.getTime()) ? getNow() : d
+}
+
+function useBulkDoseModalState({ visible, isComplex, expandedDoseItems, initialTakenAt = null }) {
   const [prevVisible, setPrevVisible] = useState(null)
   const [prevItems, setPrevItems] = useState([])
   const [selected, setSelected] = useState({})
@@ -333,7 +340,9 @@ function useBulkDoseModalState({ visible, isComplex, expandedDoseItems }) {
       // pode re-renderizar (async load, tick do pai) DEPOIS do usuário ajustar o horário no
       // picker; resetar aqui clobberava a hora manual de volta p/ `agora` (bug: tomada de
       // ontem à noite gravada com horário de hoje). Ver _buildConfirmLogs/isBackdated.
-      if (visibilityChanged) setTakenAtDate(getNow())
+      // 120 C (C1.5 C-3): registro TARDIO pela Hoje abre com o horário PREVISTO da dose (o fato é
+      // "tomei às 08:00"), editável no picker. Ausente/inválido ⇒ agora, como sempre.
+      if (visibilityChanged) setTakenAtDate(_initialTakenAtDate(initialTakenAt))
     }
   }
 
@@ -387,6 +396,8 @@ export default function BulkDoseRegisterModal({
   instancedItems = null,
   // 065 AD-8: 'reminder' quando a modal foi aberta por um lembrete (deeplink). Sem default.
   entryPoint = null,
+  // 120 C (US9): ISO do horário previsto quando a modal abre para registro tardio.
+  initialTakenAt = null,
 }) {
   const { show } = useToast()
   // 069 A2: passo 2 (pedido de peso) — { step, receipt, successCount }; 1× por lote
@@ -424,7 +435,7 @@ export default function BulkDoseRegisterModal({
     takenAtDate, setTakenAtDate,
     showDatePicker, setShowDatePicker,
     tempDate, setTempDate,
-  } = useBulkDoseModalState({ visible, isComplex, expandedDoseItems })
+  } = useBulkDoseModalState({ visible, isComplex, expandedDoseItems, initialTakenAt })
 
   function toggleProtocol(id) {
     setSelected(prev => ({ ...prev, [id]: !prev[id] }))
@@ -473,7 +484,7 @@ export default function BulkDoseRegisterModal({
 
     const logsData = _buildConfirmLogs(selectedIds, expandedDoseItems, finalTakenAt, isBackdated, instancesByKey, injectionSites, siteMetaById)
 
-    const result = await registerDoseMany(logsData, { surface: SURFACES.MOBILE, entryPoint })
+    const result = await registerDoseMany(logsData, { surface: SURFACES.MOBILE, entryPoint, late: !!initialTakenAt })
     const outcome = buildBulkOutcome(result)
 
     // 069 A2 (analysis G-2): pedido só com sucesso TOTAL — no parcial o erro precisa ficar visível.

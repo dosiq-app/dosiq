@@ -70,10 +70,18 @@ export interface StockForecast {
   isLow: boolean
   /** O alerta de estoque baixo vale para este medicamento: crítico em regime com rotina ou PRN. */
   alertExpected: boolean
+  /**
+   * 120 C (régua da Hoje, #3): acabando — com alerta esperado e saldo > 0, diário com
+   * `daysRemaining <= STOCK_URGENT_DAYS`, não diário com `dosesRemaining <= 1` (103 G1).
+   */
+  isUrgent: boolean
 }
 
 /** Limiar único de "estoque baixo" em dias inteiros (FR-003 / D-6). */
 export const STOCK_LOW_DAYS = STOCK_THRESHOLDS.CRITICAL_DAYS
+
+/** Limiar de "estoque acabando" (120 C): dias inteiros, só para diário. Não diário usa doses. */
+export const STOCK_URGENT_DAYS = 3
 
 function regimeOf(
   medicineId: string,
@@ -113,6 +121,8 @@ export function deriveStockForecast(input: StockForecastInput): StockForecast {
   const isCritical = daysRemaining !== null && daysRemaining <= STOCK_LOW_DAYS
   const isLow = isCritical && !isZero
   const alertExpected = isCritical && (regime === 'continuous' || regime === 'prn')
+  const isUrgent = alertExpected && !isZero
+    && (isDaily ? daysRemaining !== null && daysRemaining <= STOCK_URGENT_DAYS : dosesRemaining <= 1)
 
   return {
     regime,
@@ -126,5 +136,6 @@ export function deriveStockForecast(input: StockForecastInput): StockForecast {
     isCritical,
     isLow,
     alertExpected,
+    isUrgent,
   }
 }

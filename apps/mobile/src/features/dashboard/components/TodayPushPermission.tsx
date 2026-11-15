@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { ANDROID_PUSH_CHANNEL, getNow  } from '@dosiq/core'
 import PushPermissionCard from '@dashboard/components/PushPermissionCard'
 import { nextDoseReminder } from '@dashboard/utils/nextDoseReminder'
 import { hasRemindableTreatment } from '@dashboard/utils/hasRemindableTreatment'
@@ -9,7 +10,6 @@ import type { PushReachability } from '@platform/notifications/usePushReachabili
 import { isPushPermissionVisible } from '@dashboard/hooks/useTodayPushPermission'
 import { EVENTS, PERMISSION_ENTRY_POINTS, SURFACES } from '@platform/analytics/analyticsEvents'
 import { logEvent } from '@platform/analytics/productAnalytics'
-import { getNow } from '@dosiq/core'
 
 /**
  * TodayPushPermission — aviso de lembretes desligados na faixa de alertas da Hoje (spec 120 US1).
@@ -38,8 +38,12 @@ export default function TodayPushPermission({ reach, protocols }: Props) {
   // Memos
   // RC6 #953 (AP-366): sem memo — o "agora" vale a cada render; memo só em [protocols] congelava
   // "hoje às 16:00" depois de a hora passar com o app aberto. Custo: poucos protocolos.
-  const reminder = nextDoseReminder(protocols, getNow())
-  const multiple = useMemo(() => protocols.filter((p) => hasRemindableTreatment([p])).length > 1, [protocols])
+  // S-14: canal CRÍTICO bloqueado ⇒ o exemplo e a contagem vêm só dos tratamentos críticos (é o
+  // que deixa de avisar).
+  const criticalOnly = reach.blockedChannel === ANDROID_PUSH_CHANNEL.CRITICAL
+  const affected = useMemo(() => (criticalOnly ? protocols.filter((p) => p?.critical_alarm === true) : protocols), [protocols, criticalOnly])
+  const reminder = nextDoseReminder(affected, getNow())
+  const multiple = useMemo(() => affected.filter((p) => hasRemindableTreatment([p])).length > 1, [affected])
 
   // Effects
   useEffect(() => {
@@ -67,7 +71,7 @@ export default function TodayPushPermission({ reach, protocols }: Props) {
       const outcome = await openPushPrimer({
         entryPoint: PERMISSION_ENTRY_POINTS.TODAY_BANNER,
         preview: reminder ? { title: reminder.title, body: reminder.body, medicineName: reminder.medicineName, verb: reminder.verb } : null,
-        settings: settingsOnly && reason ? { hint: pushSettingsHint(reason) } : null,
+        settings: settingsOnly && reason ? { hint: pushSettingsHint(reason, reach.blockedChannel), channelId: reach.blockedChannel } : null,
       })
       if (settingsOnly && outcome !== 'dismissed') setWentToSettings(true)
       await reach.refresh()
@@ -95,6 +99,7 @@ export default function TodayPushPermission({ reach, protocols }: Props) {
       multiple={multiple}
       snoozeCount={reach.snoozeCount}
       stillBlocked={wentToSettings}
+      critical={criticalOnly}
       loading={loading}
       onEnable={onEnable}
       onSnooze={onSnooze}

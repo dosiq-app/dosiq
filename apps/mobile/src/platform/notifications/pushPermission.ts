@@ -18,6 +18,7 @@ import { Linking, Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { registerPushToken } from './registerPushToken'
 import { debugLog } from '@shared/utils/debugLog'
+import * as Application from 'expo-application'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES, type PermissionEntryPoint } from '@platform/analytics/analyticsEvents'
 import { ANDROID_PUSH_CHANNEL } from '@dosiq/core'
@@ -41,10 +42,10 @@ export async function getPushPermissionStatus() {
 // (Ajustes › Apps › dosiq › Notificações) — o SO descarta tudo que chega nele e o "Celular" mentia.
 // 'blocked' = importância NONE · 'silenced' = MIN/LOW (chega sem som) · 'unknown' = canal ausente
 // ou leitura falhou (não afirmar nada) · iOS não tem canais ⇒ sempre 'ok'.
-export async function getPushChannelState(): Promise<'ok' | 'blocked' | 'silenced' | 'unknown'> {
+export async function getPushChannelState(channelId: string = ANDROID_PUSH_CHANNEL.DEFAULT): Promise<'ok' | 'blocked' | 'silenced' | 'unknown'> {
   if (Platform.OS !== 'android') return 'ok'
   try {
-    const channel = await Notifications.getNotificationChannelAsync(ANDROID_PUSH_CHANNEL.DEFAULT)
+    const channel = await Notifications.getNotificationChannelAsync(channelId)
     if (!channel) return 'unknown'
     const { NONE, MIN, LOW } = Notifications.AndroidImportance
     if (channel.importance === NONE) return 'blocked'
@@ -166,4 +167,28 @@ export async function enablePushAtIntent({ supabase, entryPoint }: { supabase: u
   const { granted, blocked } = await ensurePushPermission({ entryPoint })
   if (granted) await _registerQuietly(supabase)
   return { granted, blocked }
+}
+
+/**
+ * Abre o controle que religa o push (120 C, smoke U-1). Android com permissão concedida ⇒ o bloqueio
+ * só pode ser o CANAL: abre direto a tela dele (1 toque até o interruptor, em vez de app › Notificações
+ * › canal). Qualquer falha ou outro caso ⇒ página do app nos Ajustes, como antes.
+ * `channelId`: canal bloqueado (push comum por padrão; crítico ou alarme quando for o caso).
+ */
+export async function openPushSettings(channelId: string = ANDROID_PUSH_CHANNEL.DEFAULT): Promise<void> {
+  try {
+    if (Platform.OS === 'android' && Application.applicationId) {
+      const perm = _effective(await Notifications.getPermissionsAsync())
+      if (perm.granted) {
+        await Linking.sendIntent('android.settings.CHANNEL_NOTIFICATION_SETTINGS', [
+          { key: 'android.provider.extra.APP_PACKAGE', value: Application.applicationId },
+          { key: 'android.provider.extra.CHANNEL_ID', value: channelId },
+        ])
+        return
+      }
+    }
+  } catch {
+    // cai no fallback
+  }
+  await Linking.openSettings().catch(() => {})
 }

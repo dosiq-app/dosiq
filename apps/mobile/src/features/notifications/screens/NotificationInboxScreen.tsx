@@ -26,6 +26,8 @@ import { useStockTracking } from '@shared/hooks/useStockTracking'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import NotificationItem from '@notifications/components/NotificationItem'
 import { colors } from '@shared/styles/tokens'
+import SignalDot from '@shared/components/ui/SignalDot'
+import { useHomeSignal } from '@dashboard/state/todaySurfaceSignal'
 
 // Schema para validar medicine_logs (R-010)
 const doseLogSchema = z.array(z.object({
@@ -217,6 +219,9 @@ function buildWasTakenMap(notifications, doseLogs) {
 // ─── Sub-componentes ───────────────────────────────────────────────────────────
 
 function NotificationInboxHeader({ navigation, unreadCount, loading }) {
+  // 120 C (smoke 14/11, S-08): aviso de lembretes fora da Hoje ⇒ o ponto segue até o controle que
+  // liga as notificações (Preferências), não só até a porta (Perfil › Notificações).
+  const pushSignal = useHomeSignal('profile_notifications')
   const primaryColor = colors.brand.primary
   return (
     <View style={styles.header}>
@@ -241,10 +246,15 @@ function NotificationInboxHeader({ navigation, unreadCount, loading }) {
         onPress={() => navigation.navigate(ROUTES.NOTIFICATION_PREFERENCES)}
         style={styles.iconButton}
         accessibilityRole="button"
-        accessibilityLabel="Preferências de notificação"
+        accessibilityLabel={pushSignal ? 'Preferências de notificação, novo aviso' : 'Preferências de notificação'}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Settings size={22} color={colors.text.primary} strokeWidth={2} />
+        {pushSignal && (
+          <View style={styles.signalDot}>
+            <SignalDot testID="signal-dot-preferences" />
+          </View>
+        )}
       </TouchableOpacity>
     </View>
   )
@@ -501,6 +511,7 @@ const styles = StyleSheet.create({
 
   // Header
   header:           { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border.light },
+  signalDot:        { position: 'absolute', top: 2, right: 2 },
   iconButton:       { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bg.card, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   titleBlock:       { flex: 1 },
   title:            { fontSize: 28, fontWeight: '800', letterSpacing: -0.5, color: colors.text.primary },

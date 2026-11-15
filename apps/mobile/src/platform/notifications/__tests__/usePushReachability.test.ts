@@ -1,4 +1,6 @@
 // 120 US1 / FR-001 / FR-003 / C-01 — alcance do push e adiamento do card (PO-120-1, PO-120-2, PO-120-11).
+import { readPushChannels } from '../usePushReachability'
+import { ANDROID_PUSH_CHANNEL } from '@dosiq/core'
 import { renderHook, act, waitFor } from '@testing-library/react-native'
 import { AppState } from 'react-native'
 
@@ -12,7 +14,7 @@ const mockStatus = jest.fn()
 const mockChannel = jest.fn()
 jest.mock('../pushPermission', () => ({
   getPushPermissionStatus: () => mockStatus(),
-  getPushChannelState: () => mockChannel(),
+  getPushChannelState: (id?: string) => mockChannel(id),
 }))
 const store: Record<string, string> = {}
 jest.mock('@platform/storage/nativeStorageAdapter', () => ({
@@ -158,5 +160,31 @@ describe('usePushReachability', () => {
     mockStatus.mockResolvedValue({ status: 'undetermined', granted: false })
     const { result } = renderHook(() => usePushReachability({ userId: 'u1' }))
     await waitFor(() => expect(result.current.snoozed).toBe(true))
+  })
+})
+
+describe('readPushChannels — canal crítico (120 C, U-1)', () => {
+  afterEach(() => { mockChannel.mockReset() })
+  const by = (map: Record<string, string>) => (id: string) => Promise.resolve(map[id] ?? 'ok')
+
+  it('comum bloqueado ⇒ aponta o comum', async () => {
+    mockChannel.mockImplementation(by({ [ANDROID_PUSH_CHANNEL.DEFAULT]: 'blocked' }))
+    expect(await readPushChannels(true)).toEqual({ channel: 'blocked', blockedChannel: ANDROID_PUSH_CHANNEL.DEFAULT })
+  })
+
+  it('crítico bloqueado + tratamento crítico ⇒ bloqueado, aponta o crítico', async () => {
+    mockChannel.mockImplementation(by({ [ANDROID_PUSH_CHANNEL.CRITICAL]: 'blocked' }))
+    expect(await readPushChannels(true)).toEqual({ channel: 'blocked', blockedChannel: ANDROID_PUSH_CHANNEL.CRITICAL })
+  })
+
+  it('crítico bloqueado SEM tratamento crítico ⇒ não acusa (nem lê o canal crítico)', async () => {
+    mockChannel.mockImplementation(by({ [ANDROID_PUSH_CHANNEL.CRITICAL]: 'blocked' }))
+    expect(await readPushChannels(false)).toEqual({ channel: 'ok', blockedChannel: null })
+    expect(mockChannel).not.toHaveBeenCalledWith(ANDROID_PUSH_CHANNEL.CRITICAL)
+  })
+
+  it('crítico silenciado ⇒ não acusa (chega sem som)', async () => {
+    mockChannel.mockImplementation(by({ [ANDROID_PUSH_CHANNEL.CRITICAL]: 'silenced' }))
+    expect(await readPushChannels(true)).toEqual({ channel: 'ok', blockedChannel: null })
   })
 })

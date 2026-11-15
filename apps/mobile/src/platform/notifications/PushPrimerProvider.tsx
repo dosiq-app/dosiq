@@ -9,9 +9,9 @@
 // sempre, < 400 ms ⇒ Ajustes — 054 C-33/C-01). INV-1: o diálogo do SO só depois de "Ligar lembretes".
 
 import React, { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
-import { AccessibilityInfo, Linking } from 'react-native'
+import { AccessibilityInfo } from 'react-native'
 import PushPrimerSheet from './PushPrimerSheet'
-import { requestPushOrOpenSettings, getPushAskMode, type PushAskMode } from './pushPermission'
+import { requestPushOrOpenSettings, getPushAskMode, openPushSettings, type PushAskMode } from './pushPermission'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
@@ -71,7 +71,7 @@ export function PushPrimerProvider({ children }: { children: ReactNode }) {
   const onAccept = useCallback(async () => {
     if (!open || loading) return
     if (open.settings) {
-      Linking.openSettings()
+      void openPushSettings(open.settings.channelId ?? undefined)
       settle('not_granted')
       return
     }

@@ -52,6 +52,10 @@ export function evaluateOemAssistant(
 export interface OemAssistantState {
   /** Card da Hoje: há motivo E não foi dispensado. */
   visible: boolean
+  /** Há motivo e algo a proteger, IGNORANDO o dismiss (120 C: dispensado ainda sinaliza a casa). */
+  eligible: boolean
+  /** Dispensado pela pessoa ("Não mostrar de novo"). `false` enquanto o storage não foi lido. */
+  dismissed: boolean
   /** Motivo atual, ignorando dismiss (a tela usa para sucesso/pendência). `undefined` = sondando. */
   reason: AssistantReason | undefined
   family: OemFamily
@@ -89,7 +93,8 @@ export function useOemBatteryAssistant({ hasTreatment = true, pushUsable }: OemA
   // só a sonda mais recente aplica o resultado (RC6 #939 · AP-365).
   const probeGen = useRef(0)
 
-  const visible = dismissed === false && !!reason && hasTreatment
+  const eligible = !!reason && hasTreatment
+  const visible = dismissed === false && eligible
 
   // 2. Handlers usados pelos effects
   const recheck = useCallback(async (): Promise<AssistantReason> => {
@@ -163,5 +168,5 @@ export function useOemBatteryAssistant({ hasTreatment = true, pushUsable }: OemA
     void nativeStorageAdapter.setItem(OEM_ASSISTANT_DISMISS_KEY, '1').catch(() => {})
   }, [])
 
-  return { visible, reason, family, powerManagerActivity: activity, facts, recheck, dismiss }
+  return { visible, eligible, dismissed: dismissed === true, reason, family, powerManagerActivity: activity, facts, recheck, dismiss }
 }

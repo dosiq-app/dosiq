@@ -11,7 +11,9 @@ export function isPushPermissionVisible(reach: Pick<PushReachability, 'usable' |
 }
 
 export function useTodayPushPermission({ data, protocols, scheduledProtocols }: { data: any; protocols: any[]; scheduledProtocols?: any[] | null }) {
-  const reach = usePushReachability({ userId: data?.user?.id ?? null })
   const remindable = useMemo(() => [...(protocols ?? []), ...(scheduledProtocols ?? [])], [protocols, scheduledProtocols])
+  // U-1: com alarme crítico, o canal crítico do push também precisa estar ligado.
+  const critical = useMemo(() => remindable.some((p) => p?.active !== false && p?.critical_alarm === true), [remindable])
+  const reach = usePushReachability({ userId: data?.user?.id ?? null, critical })
   return { reach, remindable, visible: isPushPermissionVisible(reach, remindable) }
 }

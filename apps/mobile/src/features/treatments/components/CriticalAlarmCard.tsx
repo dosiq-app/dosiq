@@ -8,7 +8,7 @@ import { useCriticalAlarmDeviceStatus } from '@platform/alarms/useCriticalAlarmD
 import { requestPushOrOpenSettings } from '@platform/notifications/pushPermission'
 import { PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
-import type { CriticalAlarmDeviceStatus } from '@platform/alarms/alarmService'
+import { openAlarmChannelSettings, type CriticalAlarmDeviceStatus } from '@platform/alarms/alarmService'
 
 /**
  * CriticalAlarmCard — o alarme crítico como card próprio (spec 054 FR-009).
@@ -110,7 +110,7 @@ const TONE = {
 
 function StatusBand({ band, onRequestPermission, onRequestPush }: { band: BandCopy; onRequestPermission?: () => void; onRequestPush?: () => void }) {
   let onPress: (() => void) | undefined
-  if (band.action === 'settings') onPress = () => Linking.openSettings()
+  if (band.action === 'settings') onPress = () => void openAlarmChannelSettings()
   else if (band.action === 'request') onPress = onRequestPermission
   else if (band.action === 'request_push') onPress = onRequestPush
   const { Icon, color } = TONE[band.tone]

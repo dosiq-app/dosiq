@@ -145,3 +145,10 @@ describe('localDataWipe (spec 091)', () => {
     spies.forEach((s) => s.mockRestore())
   })
 })
+
+// spec 120 C: dispensas de alerta da Hoje e adiamento do aviso de lembretes são por pessoa ⇒ saem.
+describe('chaves da Hoje (120) não estão na allowlist', () => {
+  it.each(['dosiq:today-alert-dismiss:u1', 'dosiq:push-reach-snooze:u1'])('%s é apagada no logout', (key) => {
+    expect(isDeviceKey(key)).toBe(false)
+  })
+})

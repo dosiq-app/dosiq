@@ -246,7 +246,9 @@ export function buildSupplyReminderPayload(data: z.input<typeof supplyReminderDa
       : 'Hora de garantir: comprar, buscar ou agendar a aplicação.';
     plain = `A dose mensal é ${amanha ? 'amanhã' : `daqui a ${daysUntil} dias`}. ${acao} Abra o dosiq para ver os detalhes.`;
   } else if (reason === 'monthly_purchase') {
-    title = '🗓️ Dose mensal amanhã';
+    // 120 C S-17: desde o S-16 a falta do remédio da etapa ATUAL (escada semanal) também cai aqui —
+    // título sem cadência; o corpo já era neutro.
+    title = '🗓️ Dose de amanhã sem estoque';
     plain = 'O estoque cadastrado não cobre a dose de amanhã: hora de comprar ou buscar. Abra o dosiq para ver os detalhes.';
   } else {
     // 105 smoke (C-13): o cerne é a TROCA de etapa, não a compra — a compra é a consequência.

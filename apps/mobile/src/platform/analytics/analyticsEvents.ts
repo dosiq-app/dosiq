@@ -88,6 +88,8 @@ export const EVENTS = {
   // Estoque
   STOCK_ADDED: 'stock_added',
   STOCK_LOW_VIEWED: 'stock_low_viewed',
+  // 120 C (FR-015): o que o árbitro da Hoje mostrou — {alert, promo, suppressed[], suppressed_count}; só tipos
+  TODAY_SURFACE_SHOWN: 'today_surface_shown',
   // Detalhe do tratamento (spec 117 A, TRACKING_PLAN §5.3). treatment_id = protocolo da tela. NUNCA nome/dose.
   NEXT_DOSES_VIEWED: 'next_doses_viewed',             // frequency, dose_count, treatment_id, surface — 1× por foco
   TREATMENT_STOCK_VIEWED: 'treatment_stock_viewed',   // state: level|empty, treatment_id, surface — 1× por foco

@@ -252,6 +252,13 @@ export function computeSupplyDate(params: {
   const duration = Number(step.duration_days)
   const stepEnd = startedDate && Number.isInteger(duration) && duration > 0 ? addDays(startedDate, duration) : null
 
+  // Smoke 120 C (S-16): etapa COM data de fim e saldo do remédio ATUAL acabando antes dela ⇒ a falta
+  // é do atual (ainda há doses dele a tomar); antes saía a data do atual com o nome do próximo, ou
+  // "coberto" se o próximo tivesse saldo. Sem data de fim, acabar o saldo É a troca (regra da 105).
+  if (own.date && stepEnd && own.date < stepEnd) {
+    return { status: 'due', date: own.date, medicineId, reason: 'sparse', protocolId: switchingProtocol.id }
+  }
+
   const candidates = [own.date, stepEnd].filter((d): d is string => d !== null)
   if (candidates.length === 0) return own.hasFuture ? { status: 'covered' } : { status: 'no_date' }
   const date = candidates.sort()[0]

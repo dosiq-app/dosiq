@@ -13,6 +13,8 @@ import LoadingState from '@shared/components/states/LoadingState'
 import LogoutSheet from '@profile/components/LogoutSheet'
 import NudgeBanner from '@shared/components/ui/NudgeBanner'
 import OemAssistantProfileRow from '@features/oemAssistant/components/OemAssistantProfileRow'
+import SignalDot from '@shared/components/ui/SignalDot'
+import { useHomeSignal } from '@dashboard/state/todaySurfaceSignal'
 import DevBadge from '@features/_dev/components/DevBadge'
 import { useNudges } from '@profile/hooks/useNudges'
 import { colors, spacing, borderRadius, shadows, typography } from '@shared/styles/tokens'
@@ -39,6 +41,7 @@ export default function ProfileScreen() {
   const { user, loading, error, refresh, hasProfile, displayName, initials, age, location } = useProfile()
 
   const { unreadCount, refreshBadge } = useUnreadBadgeCount(user?.id)
+  const notificationsSignal = useHomeSignal('profile_notifications')
   const [logoutSheetOpen, setLogoutSheetOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const { nudge: profileNudge, dismiss: dismissNudge, handleAction: handleNudgeAction, refresh: refreshNudge } = useNudges('profile')
@@ -241,11 +244,17 @@ export default function ProfileScreen() {
               style={styles.notificationTouch}
               onPress={() => (navigation.navigate as any)(ROUTES.NOTIFICATION_INBOX, { userId: user?.id })}
               activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={notificationsSignal ? 'Notificações, novo aviso' : 'Notificações'}
             >
               <View style={styles.notificationRow}>
                 <Bell size={20} color={colors.brand.primary} strokeWidth={1.5} />
                 <View style={styles.notificationTextGroup}>
-                  <Text style={styles.notificationLabel}>Notificações</Text>
+                  <View style={styles.labelWithDot}>
+                    <Text style={styles.notificationLabel}>Notificações</Text>
+                    {/* 120 C D-6: aviso de lembretes suprimido/adiado na Hoje mora aqui. */}
+                    {notificationsSignal && <SignalDot testID="signal-dot-notifications" />}
+                  </View>
                   <Text style={styles.notificationSubtitle}>Avisos, preferências e canais</Text>
                 </View>
                 {unreadCount > 0 && (
@@ -583,6 +592,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  labelWithDot: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   notificationLabel: {
     fontSize: 16,
     color: colors.text.primary,

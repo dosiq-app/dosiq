@@ -23,6 +23,8 @@ interface PushPermissionCardProps {
   snoozeCount: number
   /** D-5: voltou dos Ajustes sem conceder. */
   stillBlocked: boolean
+  /** S-15: o canal bloqueado é o de doses críticas. */
+  critical?: boolean
   loading: boolean
   onEnable: () => void
   onSnooze: () => void

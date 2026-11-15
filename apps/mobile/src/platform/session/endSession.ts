@@ -28,6 +28,8 @@ import { deleteDeviceActivity } from '@platform/telemetry/syncDeviceActivity'
 import { logEvent, resetUser } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
 import { wipeLocalUserData, SESSION_ENDED_REASON_KEY, LIVE_ACTIVITY_PUSH_TOKEN_KEY } from './localDataWipe'
+// 120 C: o sinal das casas (ponto nas abas) vive em memória — limpa junto do storage.
+import { setSignalHomes } from '@dashboard/state/todaySurfaceSignal'
 
 export type EndSessionReason = 'logout' | 'deleted' | 'invalid'
 
@@ -134,6 +136,7 @@ async function runEndSession(reason: EndSessionReason): Promise<EndSessionResult
   if (!(await signOutLocal(reason))) return { success: false, auditDiscarded: 0 }
 
   await wipeLocalUserData()
+  setSignalHomes([])
   if (auditDiscarded > 0 && __DEV__) {
     console.warn(`[endSession] ${reason}: ${auditDiscarded} evento(s) de auditoria descartado(s)`)
   }
@@ -161,5 +164,6 @@ export async function handleExternalSignOut(): Promise<void> {
   if (isEndingSession()) return
   await AsyncStorage.setItem(SESSION_ENDED_REASON_KEY, 'invalid').catch(() => {})
   await wipeLocalUserData()
+  setSignalHomes([])
   await resetUser()
 }
