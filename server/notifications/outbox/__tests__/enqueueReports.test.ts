@@ -169,3 +169,33 @@ describe('enqueueEligibleReports — daily_digest (T023b)', () => {
     expect(enqueued.map(e => e.userId)).toEqual(['ok'])
   })
 })
+
+describe('enqueueEligibleReports — usuário órfão (DOSIQ-SERVER-C)', () => {
+  const fkError = () => Object.assign(new Error('outbox.enqueue: violates foreign key constraint "notification_outbox_user_id_fkey"'), { code: '23503' })
+
+  it('órfão (FK 23503) é ignorado e contado; os demais usuários entram', async () => {
+    const enqueued: any[] = []
+    const repo = {
+      enqueue: vi.fn(async (entries: any[]) => {
+        if (entries.some((e) => e.userId === 'orfao')) throw fkError()
+        enqueued.push(...entries)
+      }),
+    } as any
+    const res = await enqueueEligibleReports({
+      repo,
+      supabase: makeSupabase([user({ user_id: 'u1' }), user({ user_id: 'orfao' }), user({ user_id: 'u3' })]),
+      kinds: new Set(['daily_adherence']),
+      now: MONDAY_0900_SP,
+    })
+    expect(enqueued.map((e) => e.userId)).toEqual(['u1', 'u3'])
+    expect(res.orphansSkipped).toBe(1)
+    expect(res.enqueuedByKind.daily_adherence).toBe(2)
+  })
+
+  it('erro que não é FK continua propagando', async () => {
+    const repo = { enqueue: vi.fn(async () => { throw Object.assign(new Error('boom'), { code: '08006' }) }) } as any
+    await expect(enqueueEligibleReports({
+      repo, supabase: makeSupabase([user()]), kinds: new Set(['daily_adherence']), now: MONDAY_0900_SP,
+    })).rejects.toThrow('boom')
+  })
+})

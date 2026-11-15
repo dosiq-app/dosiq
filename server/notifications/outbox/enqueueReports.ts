@@ -50,6 +50,36 @@ async function fetchAllUserSettings(supabase: any): Promise<EnqueueUserRow[]> {
 export interface EnqueueReportsResult {
   enqueuedByKind: Record<string, number>;
   usersScanned: number;
+  // user_settings sem auth.users (órfão): FK 23503 no enqueue. Ignorados e contados (DOSIQ-SERVER-C).
+  orphansSkipped: number;
+}
+
+const FK_VIOLATION = '23503';
+const isFkViolation = (err: any): boolean => err?.code === FK_VIOLATION;
+
+// Enfileira o lote; se algum usuário for órfão (FK 23503) o lote inteiro falha → refaz por entrada,
+// descartando só os órfãos. Retorna quantas entraram e quantas foram descartadas.
+async function enqueueSkippingOrphans(
+  repo: OutboxRepository, entries: EnqueueEntry[]
+): Promise<{ enqueued: number; orphans: number }> {
+  try {
+    await repo.enqueue(entries);
+    return { enqueued: entries.length, orphans: 0 };
+  } catch (err: any) {
+    if (!isFkViolation(err)) throw err;
+  }
+  let enqueued = 0;
+  let orphans = 0;
+  for (const e of entries) {
+    try {
+      await repo.enqueue([e]);
+      enqueued++;
+    } catch (err: any) {
+      if (!isFkViolation(err)) throw err;
+      orphans++;
+    }
+  }
+  return { enqueued, orphans };
 }
 
 /**
@@ -63,9 +93,10 @@ export async function enqueueEligibleReports(
 ): Promise<EnqueueReportsResult> {
   const enqueuedByKind: Record<string, number> = {};
   const migrated = [...kinds].filter((k): k is OutboxKind => (REPORT_KINDS as readonly string[]).includes(k));
-  if (migrated.length === 0) return { enqueuedByKind, usersScanned: 0 };
+  if (migrated.length === 0) return { enqueuedByKind, usersScanned: 0, orphansSkipped: 0 };
 
   const users = await fetchAllUserSettings(supabase);
+  let orphansSkipped = 0;
 
   for (const kind of migrated) {
     const entries: EnqueueEntry[] = [];
@@ -84,10 +115,15 @@ export async function enqueueEligibleReports(
       }
     }
     if (entries.length > 0) {
-      await repo.enqueue(entries);
-      enqueuedByKind[kind] = entries.length;
+      const { enqueued, orphans } = await enqueueSkippingOrphans(repo, entries);
+      orphansSkipped += orphans;
+      if (enqueued > 0) enqueuedByKind[kind] = enqueued;
     }
   }
 
-  return { enqueuedByKind, usersScanned: users.length };
+  if (orphansSkipped > 0) {
+    console.warn(`[enqueueEligibleReports] ${orphansSkipped} user_settings órfão(s) (sem auth.users) ignorado(s)`);
+  }
+
+  return { enqueuedByKind, usersScanned: users.length, orphansSkipped };
 }

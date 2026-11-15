@@ -7,6 +7,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Enfileiramento de relatórios ignora conta apagada em vez de falhar o ciclo (DOSIQ-SERVER-C)
+
+- **Backend** (`Fixed`, **patch** comportamental, sem version source): quando havia configurações de notificação de uma conta que já não existe, o enfileiramento de relatórios errava com violação de chave estrangeira e o ciclo todo caía, atrasando os relatórios dos demais usuários. Agora a conta sem cadastro é ignorada, o restante entra na fila normalmente e o aviso no log informa quantas contas foram ignoradas. Apareceu no ambiente de QA (3 de 16 configurações órfãs); a mesma classe de erro valia para produção.
+
 ### Dose essencial volta a avisar quem parou de abrir o app; contas de smoke saem da apuração diária (082, DOSIQ-SERVER-4)
 
 - **Backend** (`Fixed`, **patch** comportamental, sem version source): o servidor deixava de mandar o push da dose essencial quando o paciente passava 7 dias sem abrir o app. O alarme local cobre só 72 h e o servidor passava a tratar o celular como "incapaz de alarmar", então a dose ficava sem aviso nenhum. Isso afetava 2 pacientes em 0.34.0, com cerca de 3 doses por dia. Agora o celular conta como capaz se o app já registrou um alarme alguma vez, e o push volta a sair. O app antigo que nunca registrou alarme segue a regra de antes.
