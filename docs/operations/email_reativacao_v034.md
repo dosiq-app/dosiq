@@ -1,7 +1,7 @@
 ---
 title: "Template de E-mail de Reativação (lançamento 0.34, out/2026)"
-description: "2 variantes HTML/CSS inline (A: já usou o app · B: nunca registrou dose) para reengajar contas dormentes ou fora da 0.34, anunciando as novidades de jul–out/2026. Envio manual por contato@dosiq.app."
-version: "1.0.0"
+description: "3 variantes HTML/CSS inline (A: já usou o app · B: nunca registrou dose · C: aviso de exclusão da onda 2 da 107) para reengajar contas dormentes ou fora da 0.34, anunciando as novidades de jul–out/2026. Envio manual por contato@dosiq.app."
+version: "1.1.0"
 status: draft
 category: operation
 audience:
@@ -12,7 +12,7 @@ tags:
   - reativacao
   - v0.34
 created_at: "2026-10-26"
-updated_at: "2026-10-26"
+updated_at: "2026-11-15"
 ---
 
 # Template de E-mail de Reativação — lançamento 0.34
@@ -30,6 +30,9 @@ antes do kill switch da 0.34 (backlog H2 §2.1).
 **Variantes** (fragmentos completos, prontos para colar):
 - **A — "já usou"** (registrou ao menos 1 dose): tom de "olha o que mudou desde a última vez".
 - **B — "nunca registrou"** (0 doses): tom de ativação, "comece em 2 minutos".
+- **C — "aviso de exclusão"** (onda 2 da `107`, conta legada sem consentimento): mescla da B3 com o
+  texto que o admin sugere. Prazo e passo para manter a conta vêm primeiro; o "por que voltar" é curto.
+  Genérico (sem nome nem dado da conta) ⇒ serve para envio único em Cco.
 
 **Abertura (obrigatória, por código):** os dois fragmentos têm o bloco `<!-- ABERTURA -->` logo
 depois do "Olá", com o marcador `[ABERTURA]`. Trocar pelo texto do código indicado na tabela
@@ -470,6 +473,172 @@ Cards reordenados para abrir pelo que reduz o esforço do 1º cadastro: 📷 cai
   </tr>
 </table>
 <!-- Fragmento HTML Limpo para Gmail - Fim (Reativação 0.34 · B) -->
+```
+
+---
+
+## Variante C — "aviso de exclusão" (onda 2 da 107)
+
+**Para quem:** conta legada **sem** `health_data:granted` em `consent_log`, ainda sem marco `wave2`.
+É o aviso que dispara o relógio do prune (`legacy_no_consent`); **não** é reativação, por isso não
+tem opt-out "sair" no rodapé (aviso legal sobre a própria conta, não novidade).
+
+**Data:** trocar as **duas** ocorrências de `[DATA_EXCLUSAO]` pela data que a tela de prune do admin
+mostra para a conta **no dia do envio** (é o mesmo prazo para todas as contas marcadas no mesmo dia,
+o que permite um envio único em Cco). Marcar `wave2` no admin **no mesmo dia**; se a marcação
+escorregar, a data do e-mail fica errada: reenviar.
+
+**Remetente:** privacidade@dosiq.app (é o endereço que o texto manda responder).
+
+**Envio em Cco:** Para = endereço próprio; destinatários **só** no Cco (Cc visível vaza a lista
+inteira = incidente LGPD). O item em Enviados guarda o Cco: é a prova do aviso por titular, não apagar.
+
+**Subject:**
+```
+Sua conta no dosiq: autorize até [DATA_EXCLUSAO] para mantê-la
+```
+
+**Preheader** (já embutido): "Sem a autorização, a conta e os dados dela são excluídos. Leva menos de um minuto."
+
+```html
+<!-- Fragmento HTML Limpo para Gmail - Início (Onda 2 · C) -->
+<div style="display: none; font-size: 1px; line-height: 1px; max-height: 0; max-width: 0; opacity: 0; overflow: hidden; color: #f8fafc; mso-hide: all;">Sem a autorização, a conta e os dados dela são excluídos. Leva menos de um minuto.&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; padding: 40px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; width: 100% !important;">
+  <tr>
+    <td align="center">
+      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 600px; width: 100%; padding: 0 16px;">
+
+        <!-- Header (Logo) -->
+        <tr>
+          <td align="center" style="padding-bottom: 24px;">
+            <a href="https://dosiq.app" target="_blank" style="text-decoration: none; display: inline-block;">
+              <table border="0" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td valign="middle" style="padding-right: 10px;">
+                    <img src="https://dosiq.app/dosiq-logo-verde.png" alt="Dosiq Logo" width="44" height="44" style="display: block; width: 44px; height: 44px; border-radius: 50%; border: 0;" />
+                  </td>
+                  <td valign="middle">
+                    <span style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 26px; font-weight: 800; color: #006a5e; letter-spacing: -0.5px; line-height: 44px; display: inline-block;">dosiq</span>
+                  </td>
+                </tr>
+              </table>
+            </a>
+          </td>
+        </tr>
+
+        <!-- Card de Conteúdo Principal -->
+        <tr>
+          <td style="background-color: #ffffff; padding: 40px; border-radius: 16px; border: 1px solid #e2e8f0;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%">
+
+              <!-- Título + aviso -->
+              <tr>
+                <td style="color: #334155; font-size: 16px; line-height: 26px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding-bottom: 20px;">
+                  <p style="margin: 0 0 16px 0; font-size: 20px; line-height: 28px; font-weight: 800; color: #0f172a;">Autorize até [DATA_EXCLUSAO] para manter sua conta</p>
+                  <p style="margin: 0 0 16px 0;">Você criou sua conta no dosiq há alguns meses, quando ele ainda estava no começo, mas ainda não autorizou o uso de dados no app. Sem essa autorização, como prevê a nossa <a href="https://dosiq.app/politica-de-privacidade" target="_blank" style="color: #006a5e; font-weight: 600;">Política de Privacidade</a>, a conta e os dados dela são excluídos.</p>
+                </td>
+              </tr>
+
+              <!-- Caixa de prazo -->
+              <tr>
+                <td style="padding-bottom: 24px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td style="padding: 16px 18px; background-color: #fff7ed; border-radius: 10px; border-left: 4px solid #c2410c; color: #334155; font-size: 15px; line-height: 23px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                        <strong style="color: #0f172a; display: block; margin-bottom: 6px;">A exclusão está marcada para [DATA_EXCLUSAO].</strong>
+                        <strong style="color: #0f172a;">Para manter a conta:</strong> atualize o app pela loja, abra e toque em <strong>"Autorizar e continuar"</strong>.<br />
+                        <strong style="color: #0f172a;">Para encerrar:</strong> não precisa fazer nada. Se preferir, exclua a conta agora pelo próprio app.
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Por que vale manter (curto, sem cards) -->
+              <tr>
+                <td style="color: #334155; font-size: 15px; line-height: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding-bottom: 24px;">
+                  <p style="margin: 0 0 10px 0;">De lá para cá o dosiq virou um app de verdade para iPhone e Android:</p>
+                  <p style="margin: 0 0 6px 0;">🔔 Alarme no horário de cada dose, mesmo no silencioso</p>
+                  <p style="margin: 0 0 6px 0;">📷 Cadastro do remédio pela câmera, lendo a caixa</p>
+                  <p style="margin: 0;">📄 Relatório em PDF para levar à consulta</p>
+                </td>
+              </tr>
+
+              <!-- CTA: badges das lojas -->
+              <tr>
+                <td align="center" style="padding-top: 8px; padding-bottom: 12px; border-top: 1px solid #e2e8f0;">
+                  <table border="0" cellpadding="0" cellspacing="0" style="padding-top: 24px;">
+                    <tr>
+                      <td colspan="2" align="center" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                        <p style="margin: 0 0 16px 0; font-size: 15px; font-weight: 700; color: #0f172a; text-align: center;">Baixar ou atualizar o app:</p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td align="center" style="padding: 0 6px;">
+                        <a href="https://apps.apple.com/br/app/id6762740948?pt=128807500&ct=email_onda2_107&mt=8" target="_blank" style="text-decoration: none; display: inline-block;">
+                          <img src="https://dosiq.app/badges/app-store-pt.png" alt="Baixar na App Store" width="162" height="48" style="display: block; width: 162px; height: 48px; border: 0;" />
+                        </a>
+                      </td>
+                      <td align="center" style="padding: 0 6px;">
+                        <a href="https://play.google.com/store/apps/details?id=com.coelhotv.dosiq&referrer=utm_source%3Demail%26utm_campaign%3Donda2_107" target="_blank" style="text-decoration: none; display: inline-block;">
+                          <img src="https://dosiq.app/badges/google-play-pt.png" alt="Disponível no Google Play" width="148" height="48" style="display: block; width: 148px; height: 48px; border: 0;" />
+                        </a>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td colspan="2" align="center" style="padding-top: 14px; font-size: 14px; color: #475569; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                        Prefere usar no navegador? <a href="https://dosiq.app" target="_blank" style="color: #006a5e; font-weight: 600;">dosiq.app</a>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+              <!-- Encerramento -->
+              <tr>
+                <td style="color: #475569; font-size: 15px; line-height: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding-top: 12px;">
+                  <p style="margin: 0;">Regras do dosiq: <a href="https://dosiq.app/politica-de-privacidade" target="_blank" style="color: #006a5e; font-weight: 600;">Política de Privacidade</a> · <a href="https://dosiq.app/termos-de-uso" target="_blank" style="color: #006a5e; font-weight: 600;">Termos de Uso</a>.</p>
+                  <p style="margin: 12px 0 0 0;">Dúvidas? É só responder este e-mail (<a href="mailto:privacidade@dosiq.app" style="color: #006a5e; font-weight: 600;">privacidade@dosiq.app</a>).</p>
+                  <p style="margin: 20px 0 0 0; font-weight: 700; color: #006a5e; font-size: 16px;">Time Dosiq</p>
+                </td>
+              </tr>
+
+              <!-- Antiphishing -->
+              <tr>
+                <td style="padding-top: 24px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td style="padding: 12px 14px; background-color: #f1f5f9; border-radius: 10px; color: #475569; font-size: 13px; line-height: 19px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                        🔒 O dosiq nunca pede senha, código ou dados de pagamento por e-mail. Na dúvida, não clique: abra o app direto pela loja.
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+
+        <!-- Rodapé (sem opt-out: aviso legal sobre a conta, não novidade) -->
+        <tr>
+          <td align="center" style="padding-top: 28px; padding-bottom: 10px; color: #64748b; font-size: 12px; line-height: 18px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; text-align: center;">
+            <p style="margin: 0 0 6px 0;">Você recebeu este aviso porque tem uma conta no dosiq.</p>
+            <p style="margin: 0 0 6px 0;">O dosiq registra e lembra o que seu médico prescreveu. Não substitui orientação médica.</p>
+            <p style="margin: 0 0 12px 0;">dosiq é operado por DOSIQ DIGITAL HEALTH WEB DESIGN LTDA · CNPJ 68.335.606/0001-11 · Rua Pais Leme, 215, cj 1713, Pinheiros, São Paulo/SP, CEP 05424-150</p>
+            <p style="margin: 0;">
+              <a href="https://dosiq.app" target="_blank" style="color: #006a5e; text-decoration: none; font-weight: 600;">dosiq.app</a>
+              <span style="color: #cbd5e1; padding: 0 8px;">•</span>
+              <a href="mailto:privacidade@dosiq.app" style="color: #006a5e; text-decoration: none; font-weight: 600;">privacidade@dosiq.app</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+<!-- Fragmento HTML Limpo para Gmail - Fim (Onda 2 · C) -->
 ```
 
 ---

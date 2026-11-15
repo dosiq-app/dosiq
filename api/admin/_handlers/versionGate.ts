@@ -45,13 +45,13 @@ async function measureFleet(supabase, platform: string, minSupportedVersion: str
   const since = fleetWindowStart(getRawNow())
 
   // Colunas verificadas no banco em 2026-07-25 (R-295): notification_devices tem
-  // (user_id, platform, app_version NULLABLE, updated_at); device_activity tem
-  // (user_id, platform, app_version, last_seen_at). Os campos de tempo são DIFERENTES entre as
-  // fontes de propósito — o core normaliza antes de comparar.
+  // (user_id, platform, app_version NULLABLE, last_seen_at); device_activity tem
+  // (user_id, platform, app_version, last_seen_at). Atividade = `last_seen_at` nas duas: o
+  // `updated_at` dos devices muda por escrita de servidor e inflava a cauda (2026-11-15).
   const devices = await supabase
     .from('notification_devices')
-    .select('user_id, platform, app_version, updated_at')
-    .gte('updated_at', since)
+    .select('user_id, platform, app_version, last_seen_at')
+    .gte('last_seen_at', since)
 
   if (devices.error) {
     throw new FleetReadError(`notification_devices: ${devices.error.message}`)

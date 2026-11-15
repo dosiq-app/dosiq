@@ -86,11 +86,11 @@ function makeSupabase(options: {
 const FROTA = {
   devices: {
     data: [
-      { user_id: 'u1', platform: 'ios', app_version: '0.28.0', updated_at: '2026-07-01T10:00:00Z' },
-      { user_id: 'u2', platform: 'ios', app_version: '0.27.0', updated_at: '2026-07-01T10:00:00Z' },
-      { user_id: 'u3', platform: 'ios', app_version: '0.24.1', updated_at: '2026-07-01T10:00:00Z' },
-      { user_id: 'u4', platform: 'ios', app_version: '0.30.0', updated_at: '2026-07-01T10:00:00Z' },
-      { user_id: 'u5', platform: 'android', app_version: '0.10.0', updated_at: '2026-07-01T10:00:00Z' },
+      { user_id: 'u1', platform: 'ios', app_version: '0.28.0', last_seen_at: '2026-07-01T10:00:00Z' },
+      { user_id: 'u2', platform: 'ios', app_version: '0.27.0', last_seen_at: '2026-07-01T10:00:00Z' },
+      { user_id: 'u3', platform: 'ios', app_version: '0.24.1', last_seen_at: '2026-07-01T10:00:00Z' },
+      { user_id: 'u4', platform: 'ios', app_version: '0.30.0', last_seen_at: '2026-07-01T10:00:00Z' },
+      { user_id: 'u5', platform: 'android', app_version: '0.10.0', last_seen_at: '2026-07-01T10:00:00Z' },
     ],
     error: null,
   },

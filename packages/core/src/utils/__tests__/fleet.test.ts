@@ -46,6 +46,16 @@ describe('dedupeFleetInstalls', () => {
     expect(installs).toHaveLength(2)
   })
 
+  it('device usa last_seen_at, não updated_at (escrita de servidor não conta como atividade)', () => {
+    // Caso real (2026-11-15): device parado desde 03/10 com updated_at de 02/11 por escrita do
+    // servidor. A atividade é last_seen_at; updated_at só vale como fallback quando ele falta.
+    const installs = dedupeFleetInstalls(
+      [{ user_id: 'u1', platform: 'android', app_version: '0.30.1', last_seen_at: '2026-10-03T10:00:00Z', updated_at: '2026-11-02T10:00:00Z' }],
+      [],
+    )
+    expect(installs[0].seenAt).toBe('2026-10-03T10:00:00Z')
+  })
+
   it('dedupe cruzado entre fontes mantém a linha MAIS RECENTE', () => {
     // O mesmo usuário aparece nas duas fontes; a activity é mais nova e tem outra versão.
     const installs = dedupeFleetInstalls(

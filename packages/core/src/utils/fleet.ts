@@ -24,11 +24,11 @@ export interface FleetInstall {
   userId: string
   platform: string
   appVersion: string
-  /** Instante da última atividade, em ISO. `updated_at` nos devices, `last_seen_at` na activity. */
+  /** Instante da última atividade, em ISO: `last_seen_at` nas duas fontes. */
   seenAt: string
 }
 
-/** Linha crua de `notification_devices` (`updated_at`) ou `device_activity` (`last_seen_at`). */
+/** Linha crua de `notification_devices` ou `device_activity` (atividade = `last_seen_at`). */
 export interface FleetSourceRow {
   user_id?: string | null
   platform?: string | null
@@ -75,9 +75,11 @@ function seenAtMs(row: FleetInstall): number | null {
  * Normaliza uma linha crua de qualquer das duas fontes, ou devolve `null` quando ela não descreve
  * uma instalação utilizável.
  *
- * `timestampField` diz qual coluna carrega a atividade: `notification_devices` usa `updated_at`,
- * `device_activity` usa `last_seen_at`. A normalização acontece ANTES de qualquer comparação — é o
- * ponto em que as duas fontes passam a ser comparáveis.
+ * `timestampField` diz qual coluna carrega a atividade. As duas fontes usam `last_seen_at`:
+ * `notification_devices.updated_at` também muda por escrita de SERVIDOR (desativar token, flag de
+ * alarme) e fazia device parado desde 03/10 aparecer "visto" em 02/11 (medição de 15/11: 106 de 241
+ * linhas com `updated_at` > `last_seen_at` + 1 dia). `updated_at` fica só como fallback de linha sem
+ * `last_seen_at`. A normalização acontece ANTES de qualquer comparação.
  */
 function normalizeRow(
   row: FleetSourceRow,
@@ -108,7 +110,7 @@ function normalizeRow(
  */
 export function dedupeFleetInstalls(deviceRows: unknown, activityRows: unknown): FleetInstall[] {
   const merged: FleetInstall[] = [
-    ...asRows(deviceRows).map((row) => normalizeRow(row, 'updated_at')),
+    ...asRows(deviceRows).map((row) => normalizeRow(row, 'last_seen_at')),
     ...asRows(activityRows).map((row) => normalizeRow(row, 'last_seen_at')),
   ].filter((install): install is FleetInstall => install !== null)
 

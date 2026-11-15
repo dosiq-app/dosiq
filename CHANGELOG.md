@@ -7,6 +7,11 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Medição da frota passa a contar só aparelho que abriu o app (kill switch 0.34)
+
+- **Core + Backend** (`Fixed`, **patch** comportamental, sem version source): o inventário de versões em campo (`scripts/fleet-versions.sh`) e a contagem de aparelhos afetados que o admin confirma antes de ligar o bloqueio por versão passam a usar `last_seen_at` também em `notification_devices`. Antes usavam `updated_at`, que muda por escrita do servidor; 106 de 241 aparelhos tinham `updated_at` mais de um dia à frente da última atividade real, e aparelhos parados desde 03/10 contavam como vistos em 02/11. Medido em 15/11: a cauda abaixo da 0.34 cai de 6 instalações para 1. Script, core e admin seguem com o mesmo número (spec 051).
+- **Docs** (`Added`): variante **C** (aviso de exclusão da onda 2 da `107`) em `docs/operations/email_reativacao_v034.md`.
+
 ### A Hoje mostra só o aviso que importa e deixa corrigir o dia (spec 120, Fatia C)
 
 - **Mobile** (`Changed`/`Added`, **patch** `APP_VERSION` 0.34.23 → **0.34.24**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — muda o propósito da tela inicial e cria ações novas):
