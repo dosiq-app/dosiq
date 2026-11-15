@@ -6,6 +6,7 @@ import {
   summarizeTick,
   resolveLaLeadMinutes,
   FAIL_OPEN_PLAN,
+  TickGateTimeoutError,
   type TickWork,
   type TickGateClient,
 } from '../tickGate.js';
@@ -145,7 +146,7 @@ describe('fetchTickWork', () => {
 
   it('abort por timeout (FM-11) propaga', async () => {
     const { client } = clientReturning(Promise.reject(new DOMException('aborted', 'TimeoutError')));
-    await expect(fetchTickWork({ supabase: client, now, laLeadMinutes: 60, timeoutMs: 1 })).rejects.toThrow();
+    await expect(fetchTickWork({ supabase: client, now, laLeadMinutes: 60, timeoutMs: 1 })).rejects.toBeInstanceOf(TickGateTimeoutError);
   });
 
   it.each([

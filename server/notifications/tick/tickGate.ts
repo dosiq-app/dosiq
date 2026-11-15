@@ -20,6 +20,19 @@ import {
 } from '../windows.js';
 
 export const TICK_GATE_TIMEOUT_MS = 3000;
+
+/**
+ * Timeout/abort da chamada do gate. Falha ESPERADA e inócua (falha aberta roda tudo, INV-1): a RPC
+ * leva ~15 ms no banco (máx 1,3 s em 27 mil chamadas) — o estouro dos 3 s é o transporte
+ * Vercel→Supabase. Tipo próprio p/ quem chama rebaixar a `warning` sem esconder erro de RPC ou
+ * resposta malformada (DOSIQ-SERVER-9).
+ */
+export class TickGateTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TickGateTimeoutError';
+  }
+}
 // Mesmo default de `dispatchLiveActivityStarts` (DEFAULT_LEAD_MINUTES) — a janela do gate é a do job.
 const DEFAULT_LA_LEAD_MINUTES = 60;
 
@@ -115,6 +128,10 @@ export async function fetchTickWork(params: {
       .abortSignal(AbortSignal.timeout(timeoutMs));
   } catch (err) {
     // Abort chega como DOMException (não é Error no Node) — normaliza p/ o Sentry agrupar pelo nome.
+    const name = (err as { name?: string })?.name;
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new TickGateTimeoutError(`notify_tick_work falhou: ${(err as { message?: string })?.message ?? name}`);
+    }
     throw new Error(`notify_tick_work falhou: ${(err as { message?: string })?.message ?? String(err)}`);
   }
   const { data, error } = result;

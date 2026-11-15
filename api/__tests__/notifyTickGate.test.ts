@@ -42,6 +42,7 @@ const jobs = vi.hoisted(() => ({
   runOutboxCycle: vi.fn(async (_params: unknown) => ({ enqueuedByKind: {}, drain: {} })),
   enqueueStockAlerts: vi.fn(async () => ({ usersInWindow: 0, attempted: 0, attemptedExpiry: 0 })),
   captureServerException: vi.fn(),
+  captureServerEvent: vi.fn(),
 }));
 
 vi.mock('../../server/bot/tasks.js', () => ({
@@ -75,6 +76,7 @@ vi.mock('../_shared/cronDispatcher.js', () => ({
 vi.mock('../../server/observability/sentry.js', () => ({
   initSentry: vi.fn(),
   captureServerException: jobs.captureServerException,
+  captureServerEvent: jobs.captureServerEvent,
   flushSentry: vi.fn(async () => undefined),
   withServerIsolation: (fn: () => Promise<unknown>) => fn(),
   withServerMonitor: (_m: unknown, fn: () => Promise<unknown>) => fn(),
@@ -176,7 +178,6 @@ describe('tick com TICK_GATE=on', () => {
 
   it.each([
     ['erro da RPC', () => Promise.resolve({ data: null, error: { message: 'Could not find the function' } })],
-    ['abort por timeout', () => Promise.reject(new DOMException('signal timed out', 'TimeoutError'))],
     ['resposta malformada', () => Promise.resolve({ data: { reminders_due: 'sim' }, error: null })],
   ])('PO-5: %s ⇒ falha aberta (todos os jobs por minuto) + Sentry', async (_l, result) => {
     spy.rpcResult = result;
@@ -188,6 +189,19 @@ describe('tick com TICK_GATE=on', () => {
     expect((jobs.runOutboxCycle.mock.calls[0][0] as { skipReportEnqueue: boolean }).skipReportEnqueue).toBe(false);
     expect(jobs.runDailyDigest).toHaveBeenCalledTimes(1); // legado (daily_digest fora da outbox)
     expect(jobs.captureServerException).toHaveBeenCalledWith(expect.any(Error), expect.objectContaining({ job: 'tick_gate' }));
+  });
+
+  it('DOSIQ-SERVER-9: timeout do gate ⇒ falha aberta + warning (não error)', async () => {
+    spy.rpcResult = () => Promise.reject(new DOMException('signal timed out', 'TimeoutError'));
+    const res = await runTick({ TICK_GATE: 'on', OUTBOX_KINDS: 'daily_adherence' });
+    expect(res.statusCode).toBe(200);
+    expect((jobs.checkReminders.mock.calls[0][1] as { gate: { failOpen: boolean } }).gate.failOpen).toBe(true);
+    expect(jobs.runOutboxCycle).toHaveBeenCalledTimes(1);
+    expect(jobs.captureServerException).not.toHaveBeenCalled();
+    expect(jobs.captureServerEvent).toHaveBeenCalledWith(
+      expect.stringContaining('timeout do gate'),
+      expect.objectContaining({ level: 'warning', job: 'tick_gate' }),
+    );
   });
 
   it('PO-SEC-2: log do plano não carrega perfis/fusos', async () => {
