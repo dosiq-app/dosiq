@@ -3,12 +3,13 @@
 //
 // Só monta para medicamento SEM código de classe (C-B7: a base ANVISA só é lida nesse caso). Casa o
 // nome (ou o princípio ativo) pela regra do core (`suggestByName`, CON-045). "Sim, é esse" abre a
-// escolha da caixa (um item ⇒ direto nele; vários ⇒ busca com o nome) e grava só código de classe e
-// registro no MESMO medicamento (INV-6, R-231 — `update` do repositório; doses intactas, R-299).
-// "Não é este", ou vínculo feito, dispensa para aquele id (AsyncStorage, PO-119-9).
+// escolha da caixa (um item ⇒ direto nele; vários ⇒ lista do que casou) e o MESMO medicamento assume a
+// identidade oficial (`catalogLinkPayload`: nome, princípio, laboratório, classe, categoria, registro;
+// dose/unidade/forma só vazias; outra força não vincula — INV-6, R-231, R-299).
+// "Não é", ou vínculo feito, dispensa para aquele id (AsyncStorage, PO-119-9).
 // Nada é gravado sem o toque na caixa (INV-1). Caixa sem código ⇒ nada gravado, o convite fica.
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 (ver TreatmentsScreen.tsx)
 import * as LucideIcons from 'lucide-react-native'
@@ -33,6 +34,7 @@ export function CatalogLinkCard({ medicine, onLinked }: CatalogLinkCardProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
   // Caixa de outra concentração: reabre direto no passo das caixas do mesmo remédio (smoke 119 B).
   const [retryItem, setRetryItem] = useState<any>(null)
+  const reopenTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { items } = useMedicineDatabase()
   const { update } = useMedicineMutation()
   const { show } = useToast()
@@ -59,6 +61,11 @@ export function CatalogLinkCard({ medicine, onLinked }: CatalogLinkCardProps) {
       canceled = true
     }
   }, [medicine.id])
+
+  // Reabertura pendente não sobrevive ao cartão (RC5).
+  useEffect(() => () => {
+    if (reopenTimer.current) clearTimeout(reopenTimer.current)
+  }, [])
 
   // Handlers
   function handleDismiss() {
@@ -89,7 +96,7 @@ export function CatalogLinkCard({ medicine, onLinked }: CatalogLinkCardProps) {
       // Vários remédios: volta à lista (nunca direto num item). Um só: reabre nas caixas dele, uma vez.
       if (single) setRetryItem(anvisaItem)
       // Espera o Modal terminar de fechar (iOS ignora abrir outro durante a animação).
-      setTimeout(() => setSheetOpen(true), 400)
+      reopenTimer.current = setTimeout(() => setSheetOpen(true), 400)
       return
     }
     const result = await update(medicine.id, payload)

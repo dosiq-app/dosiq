@@ -6,6 +6,17 @@ export function suggestionLabel(item: any): string {
   return [item?.name, item?.activeIngredient, item?.laboratory].filter(Boolean).join(', ')
 }
 
+// Um índice por base carregada (RC5): o detalhe, o sheet e os campos reusam, sem reconstruir 6 mil itens.
+const indexCache = new WeakMap<object, ReturnType<typeof buildNameSuggestionIndex>>()
+export function suggestionIndexFor(items: any[]) {
+  let index = indexCache.get(items)
+  if (!index) {
+    index = buildNameSuggestionIndex(items)
+    indexCache.set(items, index)
+  }
+  return index
+}
+
 /**
  * Itens da lista oficial que casam com um cadastro (nome; senão princípio ativo), sem repetir nome.
  * Usado pelo convite de vínculo (US4).
@@ -17,7 +28,7 @@ export function catalogMatchesFor(
   limit = 5
 ): any[] {
   if (!items || items.length === 0) return []
-  const index = buildNameSuggestionIndex(items)
+  const index = suggestionIndexFor(items)
   for (const text of [name, ingredient]) {
     const { exact, approx } = suggestByName(index, text, limit)
     const seen = new Set<string>()
@@ -51,6 +62,21 @@ function collapseSameSubstance(items: any[]): any[] {
  * a da caixa escolhida. Dose e forma só entram quando o cadastro não tem: mudar a força de um remédio
  * com histórico reescreveria o passado (R-299). Força conhecida e diferente ⇒ `null` (não vincula).
  */
+const STRENGTH_KEYS = ['dosage_per_pill', 'dosage_unit', 'presentation', 'concentration_volume_ml'] as const
+
+/**
+ * Edição (RC5 119 B): a caixa escolhida pela sugestão não troca força/forma já cadastradas — os valores
+ * do medicamento salvo vencem os do rascunho (R-299, o mesmo critério do `catalogLinkPayload`).
+ */
+export function keepSavedStrength<T extends Record<string, any>>(saved: any, values: T): T {
+  if (!saved) return values
+  const out: Record<string, any> = { ...values }
+  for (const key of STRENGTH_KEYS) {
+    if (saved[key] !== null && saved[key] !== undefined && saved[key] !== '') out[key] = saved[key]
+  }
+  return out as T
+}
+
 export function catalogLinkPayload(medicine: any, draft: any): Record<string, unknown> | null {
   const dose = medicine?.dosage_per_pill === '' || medicine?.dosage_per_pill == null ? null : Number(medicine.dosage_per_pill)
   if (dose !== null && draft.dosage_per_pill != null && dose !== draft.dosage_per_pill) return null

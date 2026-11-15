@@ -36,6 +36,7 @@ import { AnvisaBanner } from '@medications/components/AnvisaBanner'
 import { MedicineAnvisaSheet } from '@medications/components/MedicineAnvisaSheet'
 import { MedicineCandidatesSheet } from '@medications/scan/MedicineCandidatesSheet'
 import { CatalogFieldSuggestions } from '@medications/components/CatalogSuggestionList'
+import { catalogLinkPayload, keepSavedStrength } from '@medications/utils/catalogMatch'
 import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggestionSheet'
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
 import { ConcentrationVolumeField } from '@medications/components/ConcentrationVolumeField'
@@ -293,6 +294,14 @@ export default function MedicineFormScreen() {
   // Sem caixa: preenche como antes, `forms` sugere a forma e o registro é limpo (C-C4).
   const handleAnvisaSelect = useCallback(
     ({ anvisaItem: item, cmedDraft: draft }) => {
+      // RC5 119 B (R-299): em edição, caixa de outra força não entra — mesmo bloqueio do vínculo.
+      if (isEditing && draft && !catalogLinkPayload(medicine, draft)) {
+        setSheetOpen(false)
+        clearSheet()
+        closeSuggestions()
+        Alert.alert('Outra concentração', 'Essa caixa tem outra concentração. Escolha a caixa da mesma dose do remédio.')
+        return
+      }
       // Genéricos não trazem laboratório (será preenchido no estoque por compra).
       // Demais categorias: usar laboratory do registro ANVISA.
       const isGeneric = (item.regulatoryCategory ?? '')
@@ -321,7 +330,7 @@ export default function MedicineFormScreen() {
       // Trocar pela busca descarta a caixa lida antes (o form deixa de ser "lido pelo código").
       setScanInfo(null)
       if (draft) {
-        form.setValues(valuesFromDraft(base, draft, form.values))
+        form.setValues(keepSavedStrength(isEditing ? medicine : null, valuesFromDraft(base, draft, form.values)))
         const extras = draftExtras(draft)
         setDoseCheckRequired(extras.doseCheckRequired)
         setStrengthChoices(extras.strengthChoices)
@@ -343,7 +352,7 @@ export default function MedicineFormScreen() {
       setSearchDraft(!isEditing && draft ? draft : null)
       setSearchCandidatesDecided(false)
     },
-    [form, presentationTouched, isEditing, clearSheet, closeSuggestions]
+    [form, presentationTouched, isEditing, medicine, clearSheet, closeSuggestions]
   )
 
   // Normaliza vírgula→ponto em tempo real (PT-BR digita 1,5; JS/Postgres esperam 1.5).

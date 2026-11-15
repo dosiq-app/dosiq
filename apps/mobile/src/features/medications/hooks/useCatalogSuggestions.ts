@@ -8,7 +8,8 @@
 // INV-5: base carregando ou indisponível ⇒ lista vazia, sem spinner nem erro. Nada aqui bloqueia o campo.
 
 import { useEffect, useMemo, useState } from 'react'
-import { buildNameSuggestionIndex, suggestByName, SUGGEST_MIN_CHARS } from '@dosiq/core'
+import { suggestByName, SUGGEST_MIN_CHARS } from '@dosiq/core'
+import { suggestionIndexFor } from '@medications/utils/catalogMatch'
 import { useMedicineDatabase } from '@shared/hooks/useMedicineDatabase'
 
 export const SUGGESTION_DEBOUNCE_MS = 150
@@ -33,7 +34,7 @@ export function useCatalogSuggestions(query: string | null | undefined, { enable
   const trimmed = enabled ? String(query ?? '').trim() : ''
   const wantsIndex = trimmed.length >= SUGGEST_MIN_CHARS
   // Índice montado só quando alguém digita o bastante (não no mount da tela).
-  const index = useMemo(() => (wantsIndex && items ? buildNameSuggestionIndex(items) : null), [wantsIndex, items])
+  const index = useMemo(() => (wantsIndex && items ? suggestionIndexFor(items) : null), [wantsIndex, items])
   const result = useMemo(
     () => (index && debounced.length >= SUGGEST_MIN_CHARS ? suggestByName(index, debounced, SUGGESTION_LIMIT) : null),
     [index, debounced]
