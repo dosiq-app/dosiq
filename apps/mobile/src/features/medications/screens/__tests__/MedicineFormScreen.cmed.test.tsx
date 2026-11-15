@@ -8,18 +8,29 @@ import { Alert } from 'react-native'
 import MedicineFormScreen from '../MedicineFormScreen'
 
 const mockCreate = jest.fn()
-const mockSheet: { onSelect: ((sel: any) => void) | null } = { onSelect: null }
+const mockUpdate = jest.fn()
+const mockSheet: { onSelect: ((sel: any) => void) | null; props: any } = { onSelect: null, props: null }
+const mockMedicines: { current: { data: any[] | null; loading: boolean } } = { current: { data: [], loading: false } }
+const mockRoute: { params: any } = { params: {} }
+const mockDb: { items: any[] | null } = { items: null }
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ goBack: jest.fn() }),
-  useRoute: () => ({ params: {} }),
+  useRoute: () => mockRoute,
 }))
 jest.mock('@medications/hooks/useMedicineMutation', () => ({
-  useMedicineMutation: () => ({ create: mockCreate, update: jest.fn(), isLoading: false }),
+  useMedicineMutation: () => ({ create: mockCreate, update: mockUpdate, isLoading: false }),
+}))
+jest.mock('@medications/hooks/useMedicines', () => ({
+  useMedicines: () => mockMedicines.current,
+}))
+jest.mock('@shared/hooks/useMedicineDatabase', () => ({
+  useMedicineDatabase: () => ({ items: mockDb.items, isLoading: false }),
 }))
 jest.mock('@medications/components/MedicineAnvisaSheet', () => ({
   MedicineAnvisaSheet: (props: any) => {
     mockSheet.onSelect = props.onSelect
+    mockSheet.props = props
     return null
   },
 }))
@@ -36,6 +47,9 @@ jest.mock('@medications/components/AnvisaBanner', () => ({ AnvisaBanner: () => n
 afterEach(() => {
   jest.clearAllMocks()
   jest.clearAllTimers()
+  mockMedicines.current = { data: [], loading: false }
+  mockRoute.params = {}
+  mockDb.items = null
 })
 
 const ITEM = { name: 'Concor Anlo', activeIngredient: 'Besilato de Anlodipino; Fumarato de Bisoprolol', laboratory: 'Merck', regulatoryCategory: 'Novo', forms: ['comprimido'] }
@@ -169,5 +183,123 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     fireEvent.changeText(getByLabelText('Concentração'), '5')
     await act(async () => fireEvent.press(getByText('Criar medicamento')))
     expect(mockCreate.mock.calls[0][0].presentation).toBe('pomada')
+  })
+})
+
+// 119 B — sugestões nos campos (FR-007/008, PO-119-6/7/12) e a pergunta "já tem" na busca (decisão C).
+describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
+  const MOUNJARO = { name: 'Mounjaro', activeIngredient: 'Tirzepatida', laboratory: 'Lilly', regulatoryCategory: 'Novo', forms: ['injetavel'] }
+  const OZEMPIC = { name: 'Ozempic', activeIngredient: 'Semaglutida', laboratory: 'Novo', regulatoryCategory: 'Novo', forms: ['injetavel'] }
+  const mounjaroDraft = (dose: number) =>
+    draft({
+      name: 'Mounjaro', active_ingredient: 'Tirzepatida', dosage_per_pill: dose, dosage_unit: 'mg/ml',
+      presentation: 'injetavel', laboratory: 'Lilly', anvisa_registration: '112600202',
+      therapeutic_class_code: 'A10S', strengthLabel: `${dose} mg/ml`,
+    })
+  const etapa = (id: string, dose: number) => ({ id, name: 'Mounjaro', active_ingredient: 'Tirzepatida', dosage_per_pill: dose, dosage_unit: 'mg/ml', presentation: 'injetavel', anvisa_registration: '112600202' })
+
+  beforeEach(() => {
+    jest.useFakeTimers()
+    mockDb.items = [MOUNJARO, OZEMPIC]
+  })
+  afterEach(() => jest.useRealTimers())
+
+  function typeAndSettle(utils: any, label: string, text: string) {
+    fireEvent.changeText(utils.getByLabelText(label), text)
+    act(() => {
+      jest.advanceTimersByTime(200)
+    })
+  }
+
+  it('Nome: erro de digitação sugere sob "Você quis dizer"; tocar abre a escolha da caixa daquele item', () => {
+    const utils = render(<MedicineFormScreen />)
+    typeAndSettle(utils, 'Nome', 'tizerpatida')
+    expect(utils.getByText('Você quis dizer…')).toBeTruthy()
+    fireEvent.press(utils.getByRole('button', { name: 'Mounjaro, Tirzepatida, Lilly' }))
+    expect(mockSheet.props).toMatchObject({ open: true, initialItem: MOUNJARO, entryPoint: 'catalog_suggestion' })
+    expect(utils.queryByTestId('catalog-suggestions')).toBeNull()
+  })
+
+  it('Princípio Ativo também sugere; "Ver todos" abre a busca com o texto', () => {
+    const utils = render(<MedicineFormScreen />)
+    typeAndSettle(utils, 'Princípio Ativo', 'semaglu')
+    expect(utils.getByRole('button', { name: 'Ozempic, Semaglutida, Novo' })).toBeTruthy()
+    fireEvent.press(utils.getByRole('button', { name: 'Ver todos na lista ANVISA' }))
+    expect(mockSheet.props).toMatchObject({ open: true, initialItem: null, initialQuery: 'semaglu' })
+  })
+
+  it('aceitar a caixa ⇒ código de classe e registro gravados (PO-119-6)', async () => {
+    const utils = render(<MedicineFormScreen />)
+    select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
+    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({ therapeutic_class_code: 'A10S', anvisa_registration: '112600202' })
+  })
+
+  it('ignorar as sugestões ⇒ cadastro manual, sem código nem registro (FR-009)', async () => {
+    const utils = render(<MedicineFormScreen />)
+    typeAndSettle(utils, 'Nome', 'tizerpatida')
+    fireEvent.changeText(utils.getByLabelText('Concentração'), '5')
+    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    const payload = mockCreate.mock.calls[0][0]
+    expect(payload.name).toBe('tizerpatida')
+    expect(payload.therapeutic_class_code ?? null).toBeNull()
+    expect(payload.anvisa_registration ?? null).toBeNull()
+    expect(mockCreate.mock.calls[0][1]).toMatchObject({ source: 'manual' })
+  })
+
+  it('base indisponível ⇒ campo aceita texto e o salvar segue habilitado, sem lista nem erro (PO-119-7)', async () => {
+    mockDb.items = null
+    const utils = render(<MedicineFormScreen />)
+    typeAndSettle(utils, 'Nome', 'mounjaro')
+    expect(utils.queryByTestId('catalog-suggestions')).toBeNull()
+    fireEvent.changeText(utils.getByLabelText('Concentração'), '5')
+    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('decisão C: mesma concentração já cadastrada ⇒ pergunta "É este que você já tem?"', () => {
+    mockMedicines.current = { data: [etapa('e5', 5)], loading: false }
+    const utils = render(<MedicineFormScreen />)
+    select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
+    expect(utils.getByText('É este que você já tem?')).toBeTruthy()
+  })
+
+  it('decisão C: só outra concentração (etapa da escada) ⇒ sem pergunta, cria direto', async () => {
+    mockMedicines.current = { data: [etapa('e25', 2.5)], loading: false }
+    const utils = render(<MedicineFormScreen />)
+    select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
+    expect(utils.queryByText('É este que você já tem?')).toBeNull()
+    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('decisão C: lista ainda carregando ⇒ salvar espera a pergunta (FM-7)', async () => {
+    mockMedicines.current = { data: null, loading: true }
+    const alert = jest.spyOn(Alert, 'alert')
+    const utils = render(<MedicineFormScreen />)
+    select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
+    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    expect(mockCreate).not.toHaveBeenCalled()
+    expect(alert).toHaveBeenCalledWith('Um momento', expect.any(String))
+  })
+
+  it('edição de medicamento COM código ⇒ nenhuma sugestão (D-5)', () => {
+    mockRoute.params = { medicine: { id: 'm1', name: 'Mounjaro', dosage_per_pill: 5, dosage_unit: 'mg/ml', therapeutic_class_code: 'A10S' } }
+    const utils = render(<MedicineFormScreen />)
+    typeAndSettle(utils, 'Nome', 'tizerpatida')
+    expect(utils.queryByTestId('catalog-suggestions')).toBeNull()
+  })
+
+  it('edição SEM código ⇒ sugere; a caixa escolhida salva no MESMO id, sem pergunta de candidatos (D-5/C-B6)', async () => {
+    mockRoute.params = { medicine: { id: 'm1', name: 'tizerpatida', dosage_per_pill: 5, dosage_unit: 'mg/ml', type: 'medicamento', presentation: 'injetavel' } }
+    mockMedicines.current = { data: [etapa('m1', 5)], loading: false }
+    const utils = render(<MedicineFormScreen />)
+    typeAndSettle(utils, 'Nome', 'tizerpatida ')
+    expect(utils.getByTestId('catalog-suggestions')).toBeTruthy()
+    select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
+    expect(utils.queryByText('É este que você já tem?')).toBeNull()
+    await act(async () => fireEvent.press(utils.getByText('Salvar')))
+    expect(mockUpdate).toHaveBeenCalledWith('m1', expect.objectContaining({ therapeutic_class_code: 'A10S' }), expect.anything())
+    expect(mockCreate).not.toHaveBeenCalled()
   })
 })

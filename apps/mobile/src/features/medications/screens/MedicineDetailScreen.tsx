@@ -26,6 +26,7 @@ import { ROUTES } from '@navigation/routes'
 import { useMedicine } from '@medications/hooks/useMedicines'
 import { useMedicineDelete } from '@medications/hooks/useMedicineDelete'
 import { MedicineDeleteBlockedSheet } from '@medications/components/MedicineDeleteBlockedSheet'
+import { CatalogLinkCard } from '@medications/components/CatalogLinkCard'
 import { useStockTracking } from '@shared/hooks/useStockTracking'
 import { formatConcentration, PRESENTATION_LABELS, isLiquidMedicine } from '@dosiq/core'
 import { colors, spacing, borderRadius, shadows } from '@shared/styles/tokens'
@@ -445,6 +446,11 @@ export default function MedicineDetailScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* 119 US4: convite de vínculo só para cadastro SEM código (C-B7: a base só é lida aí). */}
+        {!state.data.therapeutic_class_code ? (
+          <CatalogLinkCard medicine={state.data} onLinked={state.refresh} />
+        ) : null}
+
         <MedicineDetailHero
           type={state.type}
           name={state.name}

@@ -42,8 +42,32 @@ const { ScanBarcode, ChevronRight } = LucideIcons as any
 // 066 Slice E: o fluxo (busca → passo 2 → rascunho) mora em `useMedicineSearchFlow`; aqui só o layout do sheet.
 export type { AnvisaSheetSelection } from '@medications/hooks/useMedicineSearchFlow'
 
-// 066 Slice E: `entryPoint` diz de onde a busca abriu (`medicine_form` | `onboarding`) — `surface` segue o canal.
-export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, entryPoint = 'medicine_form' }) {
+// 066 Slice E: `entryPoint` diz de onde a busca abriu (`medicine_form` | `onboarding` | 119:
+// `catalog_suggestion` | `catalog_link`) — `surface` segue o canal.
+// 119 B (FR-008 / RC3 E-1): `initialItem` abre direto na escolha da caixa daquele item (sugestão do
+// campo, convite de vínculo) — o MESMO `handleSelect` do toque na lista; `initialQuery` abre a busca
+// já digitada ("Ver todos na lista ANVISA"). "‹" no passo 2 volta à busca com o nome do item.
+export function MedicineAnvisaSheet({
+  open,
+  onClose,
+  onSelect,
+  onScan = null,
+  entryPoint = 'medicine_form',
+  initialItem = null,
+  initialQuery = null,
+  initialResults = null,
+}: {
+  open: boolean
+  onClose?: () => void
+  onSelect?: (selection: any) => void
+  onScan?: (() => void) | null
+  entryPoint?: string
+  initialItem?: any
+  initialQuery?: string | null
+  // 119 B (smoke iOS, "Metropolol"): o cartão casa por erro de digitação, a busca do sheet só por
+  // prefixo — enquanto a busca é a semeada, a lista mostra os itens que o cartão achou.
+  initialResults?: any[] | null
+}) {
   // States (R-010 — States → Memos → Effects → Handlers)
   const flow = useMedicineSearchFlow({ active: !!open, onSelect })
   const { query, setQuery, trimmed, results, hint, picked, presentationStep, presentationKey } = flow
@@ -58,6 +82,15 @@ export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, en
     if (open) logEvent(EVENTS.MEDICINE_SEARCH_OPENED, { surface: SURFACES.MOBILE, entry_point: entryPoint })
   }, [open, entryPoint])
 
+  // 119 B: abertura direta (sugestão/vínculo). Só na abertura — o item não é reaplicado a cada render.
+  useEffect(() => {
+    if (!open) return
+    const seed = initialQuery ?? initialItem?.name ?? ''
+    if (seed) flow.setQuery(seed)
+    if (initialItem) flow.handleSelect(initialItem, 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
   // Voltou do passo 2 (concentração CMED) para a busca: o campo remonta — foco de novo (AC-6.2).
   useEffect(() => {
     const isPresentation = Boolean(presentationStep)
@@ -67,7 +100,12 @@ export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, en
 
   // Handlers
   function focusSearch() {
-    searchRef.current?.focus()
+    // 119 B (smoke): aberto já com a busca/lista preenchida, a tarefa é escolher, não digitar —
+    // teclado em cima cobre a lista e o 1º toque só o fecha.
+    if (initialQuery || initialItem) return
+    // Moto g06 (smoke 119 B): no `onShow` a janela do Modal ainda não tem foco e o `focus()` não
+    // abre o teclado; um tique depois abre.
+    setTimeout(() => searchRef.current?.focus(), 150)
   }
 
   function handleClose() {
@@ -79,6 +117,10 @@ export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, en
     flow.reset()
     onClose?.()
   }
+
+  const seeded = !!initialResults?.length && !!initialQuery && query === initialQuery
+  const shownResults = seeded ? initialResults : results
+  const shownHint = seeded ? (initialResults.length === 1 ? '1 resultado' : `${initialResults.length} resultados`) : hint
 
   function renderItem({ item, index }) {
     return <MedicineSearchResultItem item={item} onPress={() => flow.handleSelect(item, index)} />
@@ -157,10 +199,10 @@ export function MedicineAnvisaSheet({ open, onClose, onSelect, onScan = null, en
             </Pressable>
           ) : null}
 
-          <Text style={styles.hint}>{hint}</Text>
+          <Text style={styles.hint}>{shownHint}</Text>
 
           <FlatList
-            data={results}
+            data={shownResults}
             keyExtractor={(item, idx) => `${item.id ?? item.name}-${idx}`}
             renderItem={renderItem}
             keyboardShouldPersistTaps="handled"
