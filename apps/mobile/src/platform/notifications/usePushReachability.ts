@@ -185,8 +185,10 @@ export function usePushReachability({ userId, critical = false }: { userId: stri
 
   // Tratamentos chegam depois do 1º foco: virou crítico ⇒ relê os canais (senão só no próximo foco).
   useEffect(() => {
+    // RC6 #957: também ao deixar de ser crítico — senão o bloqueio do canal crítico fica velho.
+    if (criticalRef.current === critical) return
     criticalRef.current = critical
-    if (critical) void refresh()
+    void refresh()
   }, [critical, refresh])
 
   useEffect(() => {

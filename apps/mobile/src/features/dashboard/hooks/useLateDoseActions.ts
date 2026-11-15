@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useToast } from '@shared/components/feedback/Toast'
 import { registerSkip } from '@platform/alarms/quickDoseRegistration'
 import { SURFACES } from '@platform/analytics/analyticsEvents'
@@ -17,6 +17,8 @@ import { toInstancedItems, toSkipPayload, skipToastMessage, type UnloggedGroup }
 export function useLateDoseActions({ setBulkModal, refresh }: { setBulkModal: (m: any) => void; refresh: () => void }) {
   const { show } = useToast()
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  // RC6 #957: trava síncrona — dois toques antes do re-render passariam pelo estado.
+  const inFlight = useRef(false)
 
   const registerLate = useCallback((doses: any[]) => {
     const list = (doses ?? []).filter((d) => d?.instanceId)
@@ -25,7 +27,8 @@ export function useLateDoseActions({ setBulkModal, refresh }: { setBulkModal: (m
   }, [setBulkModal])
 
   const skipGroup = useCallback(async (group: UnloggedGroup) => {
-    if (!group?.scheduledFor || busyKey) return
+    if (!group?.scheduledFor || inFlight.current) return
+    inFlight.current = true
     setBusyKey(group.scheduledFor)
     try {
       const result: any = await registerSkip(toSkipPayload(group), { surface: SURFACES.MOBILE, declaredAt: group.scheduledFor })
@@ -36,10 +39,11 @@ export function useLateDoseActions({ setBulkModal, refresh }: { setBulkModal: (m
         show(result?.message || 'Não foi possível pular esta dose.', { variant: 'error' })
       }
     } finally {
+      inFlight.current = false
       setBusyKey(null)
       refresh()
     }
-  }, [busyKey, refresh, show])
+  }, [refresh, show])
 
   /** Uma linha da agenda vira um grupo de 1 (mesmo caminho do card). */
   const skipDose = useCallback((dose: any) => skipGroup({

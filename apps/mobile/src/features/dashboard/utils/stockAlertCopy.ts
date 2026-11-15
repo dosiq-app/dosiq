@@ -33,7 +33,9 @@ function supplyCopy(item): Copy {
 function leftLabel(item): string {
   const byDoses = item.isDailyStock === false && Number.isFinite(item.dosesRemaining)
   if (byDoses) return `${plural(item.dosesRemaining, 'Resta 1 dose', `Restam ${item.dosesRemaining} doses`)} de ${item.medicineName}`
-  return `${item.medicineName} acaba em ${item.daysRemaining} ${plural(item.daysRemaining ?? 0, 'dia', 'dias')}`
+  // RC6 #957: sem número (cache sem previsão) não imprime "null dias".
+  if (!Number.isFinite(item.daysRemaining)) return `Estoque de ${item.medicineName} acabando`
+  return `${item.medicineName} acaba em ${item.daysRemaining} ${plural(item.daysRemaining, 'dia', 'dias')}`
 }
 
 function zeroSubtitle(level, nextDose, now: Date): string {

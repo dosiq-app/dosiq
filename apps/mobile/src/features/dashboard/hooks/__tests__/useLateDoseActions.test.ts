@@ -48,6 +48,19 @@ describe('useLateDoseActions', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  it('RC6 #957: dois toques no mesmo tick ⇒ UMA chamada (trava síncrona)', async () => {
+    let release: (v: any) => void = () => {}
+    mockRegisterSkip.mockImplementationOnce(() => new Promise((r) => { release = r }))
+    const { result } = renderHook(() => useLateDoseActions({ setBulkModal: jest.fn(), refresh: jest.fn() }))
+    await act(async () => {
+      const p1 = result.current.skipGroup(group)
+      const p2 = result.current.skipGroup(group)
+      release({ success: true })
+      await Promise.all([p1, p2])
+    })
+    expect(mockRegisterSkip).toHaveBeenCalledTimes(1)
+  })
+
   it('recusa do banco ⇒ toast de erro com a mensagem do core (R-305)', async () => {
     mockRegisterSkip.mockResolvedValueOnce({ success: false, message: 'Esta dose já passou do prazo' })
     const { result } = renderHook(() => useLateDoseActions({ setBulkModal: jest.fn(), refresh: jest.fn() }))
