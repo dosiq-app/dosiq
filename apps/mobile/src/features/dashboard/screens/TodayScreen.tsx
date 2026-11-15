@@ -22,9 +22,10 @@ import ScreenContainer from '@shared/components/ui/ScreenContainer'
 import LoadingState from '@shared/components/states/LoadingState'
 import EmptyState from '@shared/components/states/EmptyState'
 import ErrorState from '@shared/components/states/ErrorState'
-import { getPeriodFromTime, getNow, getUserTime, parseISO, getTodayLocal } from '@dosiq/core'
+import { getPeriodFromTime, getNow, getUserTime, parseISO, getTodayLocal, DEFAULT_TZ, summarizeWedgeProfile } from '@dosiq/core'
 import { useTodayMeasures } from '@measures/hooks/useTodayMeasures'
 import AdherenceDayCard from '@dashboard/components/AdherenceDayCard'
+import TreatmentWeekModule from '@dashboard/components/TreatmentWeekModule'
 import TimeBlockSeparator from '@dashboard/components/TimeBlockSeparator'
 import DoseTimelineCard from '@dashboard/components/DoseTimelineCard'
 import EvolutionSwitchSection from '@dashboard/components/EvolutionSwitchSection'
@@ -443,7 +444,7 @@ function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evo
 // só passa dados. Elegibilidade de cada superfície continua nos hooks dela.
 function TodayPrioritySection({
   data, protocols, scheduledProtocols, priorityDoses, heroItems, timeline, setBulkModal,
-  otaIdle, nudgeApi, navigation, evoRefreshTick, onSeeAgenda,
+  otaIdle, nudgeApi, navigation, evoRefreshTick, onSeeAgenda, afterDoses = null,
 }: any) {
   // States
   const [stockSource, setStockSource] = useState(EMPTY_STOCK)
@@ -498,6 +499,8 @@ function TodayPrioritySection({
         />
       )}
       {!surfaces.dosesFirst && dosesBlock}
+      {/* 121 A (H-2): superfície de dose/medida entre o bloco de doses e a promo — fora do árbitro (H-1). */}
+      {afterDoses}
       {/* 120 C (D-8): no máximo 1 promo, entre o bloco de doses e a agenda; some com alerta técnico. */}
       {surfaces.promo === 'stock_upsell' && (
         <StockUpsellCard
@@ -512,6 +515,26 @@ function TodayPrioritySection({
   )
 }
 
+// 121 A: perfil (FR-001) → o que a Hoje mostra. `nenhum` ⇒ Hoje de sempre (INV-4). No wedge a Agenda
+// fica enquanto há dose hoje (G-A2/H-4: caminho de correção do dia da 120 C).
+function useTreatmentWeekSlot({ wedge, timeline, protocols, data }: any) {
+  const profile = wedge?.profile ?? 'nenhum'
+  const isWedge = profile === 'wedge'
+  const hasDoseToday = timeline.some((item: any) => item.kind !== 'measure')
+  const wedgeProtocol = wedge?.wedgeProtocolId ? protocols.find((p: any) => p.id === wedge.wedgeProtocolId) : null
+  const weekModule = profile === 'nenhum' ? null : (
+    <TreatmentWeekModule
+      userId={data?.user?.id ?? null}
+      profile={profile}
+      medicineName={wedgeProtocol?.medicine?.name ?? null}
+      treatmentStart={wedge?.wedgeStart ?? null}
+      timezone={data?.timezone || DEFAULT_TZ}
+      reloadKey={data?.capturedAt}
+    />
+  )
+  return { isWedge, showAgenda: !isWedge || hasDoseToday, weekModule }
+}
+
 function TodayScreenContent({
   data, stale, loading, refresh,
   timeline, carryOver, lookAhead, protocols, scheduledProtocols, stats, hasAnyTreatment, nextDoseLabel,
@@ -523,6 +546,7 @@ function TodayScreenContent({
   refreshTodayMeasures,
   todayMeasures,
   navigation,
+  wedge = null,
 }: any) {
   const [evoRefreshTick, setEvoRefreshTick] = useState(0)
   const [speedDialOpen, setSpeedDialOpen] = useState(false)
@@ -566,6 +590,8 @@ function TodayScreenContent({
   const userId = data?.user?.id ?? ''
   const lastTodayMeasure = todayMeasures?.[0] ?? null
 
+  const { isWedge, showAgenda, weekModule } = useTreatmentWeekSlot({ wedge, timeline, protocols, data })
+
   const late = useLateDoseActions({ setBulkModal, refresh })
   // SEM_REGISTRO na agenda ⇒ registro tardio (lote c/ hora prevista); na janela ⇒ modal de sempre.
   const agendaRegister = useCallback((protocol: any, scheduledTime: any, instanceId: any, dose: any) => {
@@ -599,30 +625,40 @@ function TodayScreenContent({
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={() => { refresh(); nudgeApi.refresh(); setEvoRefreshTick((t) => t + 1) }} tintColor={colors.status.success} />}
       >
         <TodayHeader greeting={greeting} todayFormatted={todayFormatted} />
-        <AdherenceDayCard score={stats.score} trend={adherenceTrend} />
+        {/* 121 A (FR-003): wedge sem card de adesão. */}
+        {!isWedge && <AdherenceDayCard score={stats.score} trend={adherenceTrend} />}
         <TodayPrioritySection
           data={data} protocols={protocols} scheduledProtocols={scheduledProtocols}
           priorityDoses={priorityDoses} heroItems={heroItems} timeline={timeline}
           setBulkModal={setBulkModal} otaIdle={isIdleForOtaBanner} nudgeApi={nudgeApi}
           navigation={navigation} evoRefreshTick={evoRefreshTick} onSeeAgenda={scrollToAgenda}
+          afterDoses={weekModule}
         />
-        <View style={styles.agendaHeader} onLayout={(e) => { agendaY.current = e.nativeEvent.layout.y }}>
-          <Text style={styles.agendaTitle}>Agenda de Hoje</Text>
-        </View>
-        <TodayAgendaContent
-          protocols={protocols} hasAnyTreatment={hasAnyTreatment} nextDoseLabel={nextDoseLabel}
-          isComplex={isComplex} timeline={timeline}
-          shifts={shifts} groupedTimeline={groupedTimeline} countsByShift={countsByShift}
-          expandedShifts={expandedShifts} toggleShift={toggleShift} handleOpenRegister={agendaRegister}
-          onSkip={late.skipDose} busyKey={late.busyKey}
-        />
+        {/* 121 A (G-A2/H-4): no wedge a Agenda fica enquanto há dose hoje — é o caminho de correção
+            do dia da 120 C. Só o dia sem dose troca o vazio "Nenhuma dose hoje" pelo módulo. */}
+        {showAgenda && (
+          <>
+            <View style={styles.agendaHeader} onLayout={(e) => { agendaY.current = e.nativeEvent.layout.y }}>
+              <Text style={styles.agendaTitle}>Agenda de Hoje</Text>
+            </View>
+            <TodayAgendaContent
+              protocols={protocols} hasAnyTreatment={hasAnyTreatment} nextDoseLabel={nextDoseLabel}
+              isComplex={isComplex} timeline={timeline}
+              shifts={shifts} groupedTimeline={groupedTimeline} countsByShift={countsByShift}
+              expandedShifts={expandedShifts} toggleShift={toggleShift} handleOpenRegister={agendaRegister}
+              onSkip={late.skipDose} busyKey={late.busyKey}
+            />
+          </>
+        )}
         <OptionalDoseSection title="Em breve" doses={lookAhead} onRegister={handleOpenRegister} keyPrefix="ahead" />
 
-        <TodayLastMeasureSection
-          lastTodayMeasure={lastTodayMeasure}
-          openMeasuresHub={openMeasuresHub}
-          setMeasureLogOpen={setMeasureLogOpen}
-        />
+        {!isWedge && (
+          <TodayLastMeasureSection
+            lastTodayMeasure={lastTodayMeasure}
+            openMeasuresHub={openMeasuresHub}
+            setMeasureLogOpen={setMeasureLogOpen}
+          />
+        )}
       </ScrollView>
 
       <TodaySpeedDial
@@ -793,6 +829,12 @@ export default function TodayScreen({ route, navigation }) {
 
   // 086 RC2 D-13: "Nenhuma dose hoje" × "primeiro uso". Agendados = ativos que ainda não começaram.
   const hasAnyTreatment = protocols.length > 0 || scheduledProtocols.length > 0
+  // 121 A (FR-001): perfil sobre os tratamentos ATIVOS hoje (protocolos já trazem o medicamento com
+  // `therapeutic_class_code`). Cache antigo sem a classe ⇒ `nenhum` = Hoje de sempre (INV-4).
+  const wedge = useMemo(() => summarizeWedgeProfile(
+    protocols.map((p: any) => ({ id: p.id, medicine_id: p.medicine_id, start_date: p.start_date })),
+    Object.fromEntries(protocols.map((p: any) => [p.medicine_id, p.medicine?.therapeutic_class_code ?? null]))
+  ), [protocols])
   const nextDoseLabel = useMemo(
     () => summarizeNextDose([...protocols, ...scheduledProtocols], getNow()),
     [protocols, scheduledProtocols]
@@ -920,6 +962,7 @@ export default function TodayScreen({ route, navigation }) {
       bulkModal={bulkModal} setBulkModal={setBulkModal}
       handleOpenBulkDose={handleOpenBulkDose}
       navigation={navigation}
+      wedge={wedge}
     />
   )
 }

@@ -56,6 +56,16 @@ jest.mock('@shared/hooks/useStockTracking', () => ({ useStockTracking: () => ({ 
 // 120 C: o alerta de estoque é escolhido pelo árbitro e renderizado pelo TodayAlertCard (moldura única).
 jest.mock('../../components/TodayAlertCard', () => (props) => <MockView testID="today-alert" {...props} />);
 jest.mock('@shared/components/feedback/Toast', () => ({ useToast: () => ({ show: jest.fn() }) }));
+// 121 A: o módulo é REAL (classificador e estado persistido também — PO-1 boundary); só o repo de
+// medidas (rede) é mockado.
+const mockWeights: any[] = []
+jest.mock('@measures/services/measuresRepo', () => ({
+  measuresRepo: {
+    list: jest.fn(async () => mockWeights),
+    getLatest: jest.fn(async () => mockWeights[0] ?? null),
+    create: jest.fn(async (r: any) => r),
+  },
+}))
 jest.mock('../../../../shared/components/feedback/StaleBanner', () => (props) => <MockView testID="stale-banner" {...props} />);
 
 describe('TodayScreen', () => {
@@ -383,6 +393,90 @@ describe('TodayScreen', () => {
       const { getByTestId, queryByTestId } = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
       expect(getByTestId('hero-card')).toBeTruthy()
       expect(queryByTestId('unlogged-doses-card')).toBeNull()
+    })
+  })
+
+  // ── 121 A · PO-1 / PO-5 / PO-6: composição por perfil ─────────────────────────────────────────
+  describe('121 A — perfil wedge/misto', () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage')
+    const med = (name: string, code: string | null) => ({ name, therapeutic_class_code: code })
+    const proto = (id: string, m: any, start = '2026-10-01') => ({ id, name: id, medicine_id: `m-${id}`, start_date: start, medicine: m })
+    const WEDGE = [proto('p1', med('Mounjaro', 'A10S1'))]
+    const MISTO = [proto('p1', med('Mounjaro', 'A10S1')), proto('p2', med('Losartana', 'C9C'))]
+    const NENHUM = [proto('p2', med('Losartana', 'C9C'))]
+    const DOSE_NOW = [{ id: 'd1', scheduledTime: '08:00', timelineStatus: 'PROXIMA' }]
+
+    function setData(protocols: any[], timeline: any[] = []) {
+      jest.mocked(useTodayData).mockReturnValue({
+        data: { ...baseMockData, user: { id: 'u1', name: 'T' }, timezone: 'America/Sao_Paulo', protocols, timeline },
+        loading: false, error: null, refresh: mockRefresh,
+      } as any)
+    }
+
+    // Ordem real na árvore (testIDs em pré-ordem).
+    function order(json: any, ids: string[]): string[] {
+      const out: string[] = []
+      const walk = (n: any) => {
+        if (!n || typeof n !== 'object') return
+        if (Array.isArray(n)) return n.forEach(walk)
+        if (ids.includes(n.props?.testID) && !out.includes(n.props.testID)) out.push(n.props.testID)
+        walk(n.children)
+      }
+      walk(json)
+      return out
+    }
+
+    beforeEach(async () => {
+      mockWeights.length = 0
+      await AsyncStorage.clear()
+    })
+
+    it('PO-1: wedge sem dose ⇒ módulo com Peso ABERTA no lugar de "Nenhuma dose hoje"; sem adesão', async () => {
+      setData(WEDGE)
+      const s = render(<TodayScreen route={{} as any} navigation={{} as any} />)
+      expect(s.getByTestId('treatment-week-module')).toBeTruthy()
+      await waitFor(() => expect(s.getByTestId('weight-row-body')).toBeTruthy())
+      expect(s.getByText(/SEMANA DO TRATAMENTO · MOUNJARO/)).toBeTruthy()
+      expect(s.queryByTestId('empty-state')).toBeNull()
+      expect(s.queryByText('Agenda de Hoje')).toBeNull()
+      expect(s.queryByTestId('adherence-card')).toBeNull()
+      expect(s.queryByText('Última medida')).toBeNull()
+    })
+
+    it('PO-6 + G-A2: wedge com dose agora ⇒ hero antes do módulo; Agenda fica (correção do dia)', async () => {
+      setData(WEDGE, DOSE_NOW)
+      const s = render(<TodayScreen route={{} as any} navigation={{} as any} />)
+      expect(order(s.toJSON(), ['hero-card', 'treatment-week-module'])).toEqual(['hero-card', 'treatment-week-module'])
+      expect(s.getByText('Agenda de Hoje')).toBeTruthy()
+      expect(s.queryByTestId('adherence-card')).toBeNull()
+      // módulo não repete a ação de dose (AC-8)
+      expect(s.queryByText(/Já apliquei|Registrar dose/)).toBeNull()
+      await waitFor(() => expect(s.getByTestId('weight-row-body')).toBeTruthy())
+    })
+
+    it('PO-5: misto ⇒ módulo FECHADO + adesão + Agenda', async () => {
+      setData(MISTO, DOSE_NOW)
+      const s = render(<TodayScreen route={{} as any} navigation={{} as any} />)
+      expect(s.getByTestId('treatment-week-module')).toBeTruthy()
+      expect(s.getByTestId('adherence-card')).toBeTruthy()
+      expect(s.getByText('Agenda de Hoje')).toBeTruthy()
+      await act(async () => {})
+      expect(s.queryByTestId('weight-row-body')).toBeNull()
+      expect(order(s.toJSON(), ['adherence-card', 'hero-card', 'treatment-week-module'])).toEqual(['adherence-card', 'hero-card', 'treatment-week-module'])
+    })
+
+    it('PO-5 / INV-4: sem wedge ⇒ sem módulo, Hoje de sempre', () => {
+      setData(NENHUM)
+      const s = render(<TodayScreen route={{} as any} navigation={{} as any} />)
+      expect(s.queryByTestId('treatment-week-module')).toBeNull()
+      expect(s.getByTestId('adherence-card')).toBeTruthy()
+      expect(s.getByTestId('empty-state').props.title).toBe('Nenhuma dose hoje')
+    })
+
+    it('PO-5: medicamento sem código de classe ⇒ tratado como sem wedge (falha para a Hoje de sempre)', () => {
+      setData([proto('p1', med('Sem código', null))])
+      const s = render(<TodayScreen route={{} as any} navigation={{} as any} />)
+      expect(s.queryByTestId('treatment-week-module')).toBeNull()
     })
   })
 });

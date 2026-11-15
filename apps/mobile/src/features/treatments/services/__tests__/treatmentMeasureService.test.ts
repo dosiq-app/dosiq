@@ -99,7 +99,7 @@ describe('loadTreatmentMeasureSeries', () => {
     expect(mockRpc).toHaveBeenCalledWith('report_dose_days', { p_from: '2026-09-01', p_to: '2026-10-05' })
     expect(mockEq).toHaveBeenCalledWith('user_id', 'u1')
     expect(mockEq).toHaveBeenCalledWith('type', 'peso')
-    expect(r?.state).toBe('B0')
+    expect(r?.state).toBe('chart')
     expect(r?.hasLadder).toBe(false)
     expect(r?.today).toBe('2026-10-05')
   })
@@ -160,11 +160,11 @@ describe('loadTreatmentMeasureSeries', () => {
     await expect(loadTreatmentMeasureSeries({ ...PROTO, start_date: '2025-09-01' } as any)).rejects.toMatchObject({ code: 'XX000' })
   })
 
-  it('start_date futuro: nenhuma leitura de peso/RPC, B3', async () => {
+  it('start_date futuro: nenhuma leitura de peso/RPC, empty', async () => {
     const r = await loadTreatmentMeasureSeries({ ...PROTO, start_date: '2026-11-01' } as any)
     expect(mockRpc).not.toHaveBeenCalled()
     expect(mockBiomarkerPage).not.toHaveBeenCalled()
-    expect(r?.state).toBe('B3')
+    expect(r?.state).toBe('empty')
   })
 
   it('start_date nulo sem escada: janela de 1 dia, sem erro', async () => {

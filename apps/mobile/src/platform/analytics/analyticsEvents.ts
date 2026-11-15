@@ -103,7 +103,10 @@ export const EVENTS = {
   MEASURE_PROMPT_SHOWN: 'measure_prompt_shown',         // biomarker_type, trigger: single|bulk, treatment_id? (só single), entry_point? ('reminder'), surface, measure_source (configured|fallback — 100 B)
   MEASURE_PROMPT_DISMISSED: 'measure_prompt_dismissed', // biomarker_type, reason: skip|swipe|close_after_error, trigger, surface, measure_source (100 B)
   // Peso durante o tratamento (spec 069 Bb). Nunca valor, média ou diferença (§6).
-  MEASURE_SERIES_VIEWED: 'measure_series_viewed',       // biomarker_type, state: chart|missing_count|missing_time|missing_both|error, step_count, treatment_id, surface
+  MEASURE_SERIES_VIEWED: 'measure_series_viewed',       // biomarker_type, state: chart|missing_count|missing_both|error (121 A: missing_time saiu com o limiar), step_count, treatment_id, surface
+  // Hoje · "Semana do tratamento" (spec 121 A · FR-009/FR-020). Só meta — nunca peso nem variação.
+  TODAY_WEEK_ROW_TOGGLED: 'today_week_row_toggled',     // row: dose|peso|evolucao, open: boolean, surface
+  TODAY_WEIGHT_LOGGED: 'today_weight_logged',           // source: 'today_inline', surface
   MEASURE_SERIES_STEPS_TOGGLED: 'measure_series_steps_toggled', // expanded: boolean, treatment_id, surface
   AI_ASSISTANT_MESSAGE_SENT: 'ai_assistant_message_sent', // has_error: boolean — NUNCA a mensagem nem a resposta
   PROFILE_UPDATED: 'profile_updated',                 // {} — NUNCA display_name/birth_date/city/phone
@@ -150,6 +153,8 @@ export const ENTRY_POINTS = {
   DOSE_PROMPT: 'dose_prompt',
   // 069 Bb: medida registrada pelo CTA dos vazios do card "Peso durante o tratamento".
   MEASURE_SERIES: 'measure_series',
+  // 121 A: peso registrado na linha Peso do módulo "Semana do tratamento" na Hoje.
+  TODAY_INLINE: 'today_inline',
 }
 
 // Ponto de pedido da PERMISSÃO de push (120 US4). Eixo próprio: não é a origem da criação de

@@ -59,3 +59,23 @@ describe('WeightStepChart — rótulo curto da faixa', () => {
     expect(view.getByText('Dose em comprimido')).toBeTruthy()
   })
 })
+
+describe('WeightStepChart — linha (121 PO-7 · ADR-125)', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+    jest.clearAllTimers()
+  })
+
+  it('2 pontos ⇒ uma linha reta ligando os pontos', () => {
+    const view = renderAt(300, true)
+    expect(view.getAllByTestId('weight-line')).toHaveLength(1)
+    expect(view.getAllByTestId('weight-point')).toHaveLength(2)
+  })
+
+  it('1 ponto ⇒ sem linha', () => {
+    const one = { ...series(true), points: [{ day: '2026-10-03', kg: 81 }], lastDay: '2026-10-03' }
+    const view = render(<WeightStepChart series={one as never} today="2026-11-12" showBands />)
+    fireEvent(view.getByTestId('weight-plot'), 'layout', { nativeEvent: { layout: { width: 300, height: 180 } } })
+    expect(view.queryByTestId('weight-line')).toBeNull()
+  })
+})

@@ -106,3 +106,48 @@ export function effectiveMeasure(protocol: { frequency?: string | null; tracked_
   if (typeof value === 'string' && TRACKED_SET.has(value)) return value as TrackedMeasure
   return { missing: true }
 }
+
+/** Perfil da Hoje (spec 121 FR-001): `wedge` = todos os ativos GLP-1/antiobesidade · `misto` = algum. */
+export type WedgeProfile = 'wedge' | 'misto' | 'nenhum'
+
+export interface WedgeProfileProtocol {
+  id: string
+  medicine_id: string | null | undefined
+  start_date?: string | null
+}
+
+export interface WedgeProfileSummary {
+  profile: WedgeProfile
+  /** Tratamento wedge iniciado mais recentemente (FR-023: o módulo é dele). `null` se não há wedge. */
+  wedgeProtocolId: string | null
+  /** Início mais antigo entre os tratamentos wedge ativos (YYYY-MM-DD): a jornada GLP-1 do paciente,
+   *  início da janela "Tratamento" do peso (smoke 121 A). `null` se não há wedge ou data. */
+  wedgeStart: string | null
+}
+
+/**
+ * Agrega `classifyWedge` sobre os tratamentos ATIVOS do usuário (o chamador filtra). Medicamento
+ * ausente do mapa ou sem código ⇒ não-wedge (falha para a Hoje atual, nunca para o módulo).
+ * Desempate de `start_date` igual: maior `id`, para o mesmo resultado em toda renderização.
+ */
+export function summarizeWedgeProfile(
+  protocols: ReadonlyArray<WedgeProfileProtocol>,
+  classCodeByMedicine: Readonly<Record<string, string | null | undefined>>
+): WedgeProfileSummary {
+  const wedge = protocols.filter(
+    (p) => !!p.medicine_id && classifyWedge(classCodeByMedicine[p.medicine_id]) === 'glp1_antiobesidade'
+  )
+  if (wedge.length === 0) return { profile: 'nenhum', wedgeProtocolId: null, wedgeStart: null }
+  const latest = wedge.reduce((a, b) => {
+    const sa = a.start_date ?? ''
+    const sb = b.start_date ?? ''
+    if (sa !== sb) return sb > sa ? b : a
+    return b.id > a.id ? b : a
+  })
+  const starts = wedge.map((p) => p.start_date).filter((d): d is string => !!d).sort()
+  return {
+    profile: wedge.length === protocols.length ? 'wedge' : 'misto',
+    wedgeProtocolId: latest.id,
+    wedgeStart: starts[0] ?? null,
+  }
+}

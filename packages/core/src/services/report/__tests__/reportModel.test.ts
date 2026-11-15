@@ -213,7 +213,7 @@ describe('buildReportModel — escada de titulação (DS-5, AP-311) e peso por e
     expect(m.medications.every((r) => r.titrationChip === null)).toBe(true)
   })
 
-  it('gráfico de peso só no B-0 (≥3 pesagens e ≥14 dias); abaixo disso, só as linhas por etapa', () => {
+  it('gráfico de peso com ≥ 2 dias de pesagem, em linha (ADR-125); com 1, só as linhas por etapa', () => {
     const peso = (day: string, kg: number) => ({ id: day, type: 'peso', value: kg, value_secondary: null, unit: 'kg', measured_at: `${day}T07:00:00-03:00`, context: null })
     const window = { from: '2026-09-01', to: '2026-09-30', days: 30 }
     const ok = buildReportModel(
@@ -230,11 +230,18 @@ describe('buildReportModel — escada de titulação (DS-5, AP-311) e peso por e
       { generatedAt: GEN }
     )
     expect(few.ladders[0].weightSeries?.points).toHaveLength(2)
-    expect(few.ladders[0].weightChart).toBe(false)
-    const html = renderReportHtml(few)
+    expect(few.ladders[0].weightChart).toBe(true)
+    expect(renderReportHtml(few)).toContain('<polyline')
+
+    const one = buildReportModel(
+      fixture({ window, titrationSteps: steps, biomarkers: [peso('2026-09-09', 89)] }),
+      { generatedAt: GEN }
+    )
+    expect(one.ladders[0].weightChart).toBe(false)
+    const html = renderReportHtml(one)
     expect(html).toContain('Peso durante o tratamento')
     expect(html).not.toContain('aria-label="Peso durante o tratamento"')
-    expect(html).toMatch(/Peso médio [\d,]+ kg · 2 pesagens/)
+    expect(html).toMatch(/Peso médio [\d,]+ kg · 1 pesagem/)
   })
 
   it('tratamento oral diário com escada: nunca gráfico de peso', () => {

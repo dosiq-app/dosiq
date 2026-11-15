@@ -61,7 +61,7 @@ function seriesOf(measures, { steps = LADDER_STEPS, today = TODAY } = {}) {
     biomarkerType: 'peso', measures, steps, doseDays: [{ day: '2026-08-08', taken: 1, missed: 0 }],
     timezone: TZ, from: '2026-08-01', to: today,
   })
-  return { series, state: pickMeasureSeriesState(series, today), hasLadder: steps.length > 1, today, timezone: TZ }
+  return { series, state: pickMeasureSeriesState(series), hasLadder: steps.length > 1, today, timezone: TZ }
 }
 
 const ready = (data) => ({ data, loading: false, error: null, refreshAfterSave: jest.fn(), retry: jest.fn() })
@@ -82,8 +82,9 @@ describe('TreatmentWeightCard', () => {
   it('PO-6: 3 pesagens em 14+ dias renderiza gráfico com 1 faixa por etapa', () => {
     mockHook = ready(B0())
     const utils = render(<TreatmentWeightCard protocol={PROTO as any} />)
-    expect(utils.getByTestId('weight-card-B0')).toBeTruthy()
-    expect(utils.getByText('3 pesagens · 2 ago a 1 out · kg')).toBeTruthy()
+    expect(utils.getByTestId('weight-card-chart')).toBeTruthy()
+    // Variação informativa (ADR-125): mesma conta do PDF, sem cor/seta.
+    expect(utils.getByText('3 pesagens · 2 ago a 1 out · kg · −4 kg')).toBeTruthy()
     layout(utils)
     expect(utils.getAllByTestId('weight-step-band')).toHaveLength(3)
     expect(utils.getAllByTestId('weight-point')).toHaveLength(3)
@@ -141,14 +142,11 @@ describe('TreatmentWeightCard', () => {
     expect(utils.toJSON()).toBeNull()
   })
 
-  // PO-7: os 7 casos — nenhum vazio monta gráfico; cada um diz só o que falta.
+  // 121 PO-7 / ADR-125: sem limiar 3×14d — 0 = convite, 1 = número, ≥ 2 = linha.
   it.each([
-    ['0 pesagens → B-3', [], 'B3', 'Nenhum peso registrado', 'Registre o peso em 3 dias diferentes, ao longo de 2 semanas, para ver o gráfico.'],
-    ['1 pesagem há 3 dias → B-3 com data', [peso('2026-10-02', 88)], 'B3', 'Faltam 2 pesagens', 'Registre o peso em mais 2 dias diferentes. O gráfico aparece a partir de 16 out.'],
-    ['2 pesagens, 1ª há 20 dias → B-1', [peso('2026-09-15', 88), peso('2026-10-01', 87)], 'B1', 'Falta 1 pesagem', 'Registre o peso em mais 1 dia diferente para ver o gráfico.'],
-    ['2 pesagens em 5 dias → B-3 com data', [peso('2026-09-30', 88), peso('2026-10-04', 87)], 'B3', 'Falta 1 pesagem', 'Registre o peso em mais 1 dia diferente. O gráfico aparece a partir de 14 out.'],
-    ['3 pesagens em 5 dias → B-2', [peso('2026-09-30', 88), peso('2026-10-02', 87), peso('2026-10-04', 87)], 'B2', 'O gráfico aparece em 14 out', 'Registre o peso nesse dia ou depois.'],
-    ['2 pesagens no mesmo dia contam 1', [peso('2026-10-02', 88, '07:00'), peso('2026-10-02', 87, '20:00')], 'B3', 'Faltam 2 pesagens', 'Registre o peso em mais 2 dias diferentes. O gráfico aparece a partir de 16 out.'],
+    ['0 pesagens → empty', [], 'empty', 'Nenhum peso registrado', 'Registre o peso para acompanhar durante o tratamento.'],
+    ['1 pesagem → número', [peso('2026-10-02', 88.4)], 'single', '88,4 kg · 2 out', 'Só 1 pesagem até agora. Com mais uma, o gráfico aparece.'],
+    ['2 pesagens no mesmo dia contam 1', [peso('2026-10-02', 88, '07:00'), peso('2026-10-02', 87, '20:00')], 'single', '87,0 kg · 2 out', 'Só 1 pesagem até agora. Com mais uma, o gráfico aparece.'],
   ])('PO-7: %s', (_n, measures, state, title, body) => {
     mockHook = ready(seriesOf(measures))
     const utils = render(<TreatmentWeightCard protocol={PROTO as any} />)
@@ -158,8 +156,8 @@ describe('TreatmentWeightCard', () => {
     expect(utils.queryByTestId('weight-step-chart')).toBeNull()
   })
 
-  it('PO-7: 3 pesagens em 14 dias → B-0 (7º caso)', () => {
-    mockHook = ready(seriesOf([peso('2026-09-20', 88), peso('2026-09-27', 87), peso('2026-10-04', 87)]))
+  it('PO-7: 2 pesagens em 2 dias seguidos → gráfico (antes exigia 3 em 14 dias)', () => {
+    mockHook = ready(seriesOf([peso('2026-10-03', 88), peso('2026-10-04', 87)]))
     const utils = render(<TreatmentWeightCard protocol={PROTO as any} />)
     expect(utils.getByTestId('weight-step-chart')).toBeTruthy()
   })

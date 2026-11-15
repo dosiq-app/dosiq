@@ -23,11 +23,12 @@ export type MeasureSeriesError = 'network' | 'other'
 
 type LoadCause = 'focus' | 'save' | 'retry'
 
+// ADR-125 (121 A · G-A3): sem limiar, `missing_time` deixou de existir. Os valores que sobraram
+// mantêm o nome antigo para não quebrar as séries do PostHog.
 const VIEWED_STATE: Record<MeasureSeriesState, string> = {
-  B0: 'chart',
-  B1: 'missing_count',
-  B2: 'missing_time',
-  B3: 'missing_both',
+  chart: 'chart',
+  single: 'missing_count',
+  empty: 'missing_both',
 }
 
 export function useTreatmentMeasureSeries(protocol: TreatmentMeasureProtocol | null | undefined) {

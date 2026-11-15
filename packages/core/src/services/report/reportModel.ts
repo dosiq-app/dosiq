@@ -73,9 +73,9 @@ function _weightSeries(ladder: Ladder, inputs: ReportInputs): Pick<ReportLadder,
     floor: inputs.window.from,
     to: inputs.window.to,
   })
-  // Linhas por etapa com qualquer pesagem (fato); gráfico só no B-0, como no app (smoke 097 A2).
+  // Linhas por etapa com qualquer pesagem (fato); gráfico com ≥ 2 dias, como no app (ADR-125).
   if (!result || result.series.points.length === 0) return none
-  return { weightSeries: result.series, weightChart: result.state === 'B0' }
+  return { weightSeries: result.series, weightChart: result.state === 'chart' }
 }
 
 /**

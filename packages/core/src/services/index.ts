@@ -96,12 +96,14 @@ export type { ConsentGateMode, ConsentGateDecision } from './consentGate'
 // Relatório clínico (097): fora do barrel de propósito — só por `@dosiq/core/services/report`,
 // para o template não entrar no grafo estático de quem importa o barrel (SC-003).
 
+// Variação de peso no período (121 FR-012 · ADR-125)
+export { weightChange } from './weightChange'
+export type { WeightChange } from './weightChange'
+
 // Medida × etapa do tratamento (contrato 069 FR-010/FR-012; criado pela 097 DS-7)
 export {
   buildTreatmentMeasureSeries,
   pickMeasureSeriesState,
-  MEASURE_SERIES_MIN_POINTS,
-  MEASURE_SERIES_MIN_SPAN_DAYS,
 } from './treatmentMeasureSeries'
 export type {
   BuildTreatmentMeasureSeriesArgs,
@@ -120,11 +122,12 @@ export {
   GROWTH_COHORTS,
   SMALL_SAMPLE_THRESHOLD,
   classifyWedge,
+  summarizeWedgeProfile,
   normalizeClassCode,
   inferMeasure,
   effectiveMeasure,
 } from './trackedMeasure'
-export type { Measure, EffectiveMeasure, WedgeBucket, GrowthCohortKey } from './trackedMeasure'
+export type { Measure, EffectiveMeasure, WedgeBucket, GrowthCohortKey, WedgeProfile, WedgeProfileProtocol, WedgeProfileSummary } from './trackedMeasure'
 
 // Aritmética de dia local (YYYY-MM-DD) da série — o card da 069-B precisa das mesmas contas da ponte.
 export { shiftDay, daysBetween } from './report/reportFormat'

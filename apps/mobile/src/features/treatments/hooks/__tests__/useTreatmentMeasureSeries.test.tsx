@@ -54,8 +54,8 @@ describe('useTreatmentMeasureSeries', () => {
     const { result: h } = renderHook(() => useTreatmentMeasureSeries(PROTO as any))
     expect(h.current.loading).toBe(true)
     expect(viewed()).toEqual([])
-    await act(async () => d.resolve(result('B0', 3)))
-    expect(h.current.data?.state).toBe('B0')
+    await act(async () => d.resolve(result('chart', 3)))
+    expect(h.current.data?.state).toBe('chart')
     expect(viewed()).toEqual([
       { biomarker_type: 'peso', state: 'chart', step_count: 3, treatment_id: 'p1', surface: 'mobile' },
     ])
@@ -72,7 +72,7 @@ describe('useTreatmentMeasureSeries', () => {
   })
 
   it('1× por foco: novo foco reemite', async () => {
-    mockLoad.mockResolvedValue(result('B3'))
+    mockLoad.mockResolvedValue(result('empty'))
     renderHook(() => useTreatmentMeasureSeries(PROTO as any))
     await waitFor(() => expect(viewed()).toHaveLength(1))
     await act(async () => { mockFocus() })
@@ -80,24 +80,24 @@ describe('useTreatmentMeasureSeries', () => {
   })
 
   it('após salvar: reemite só quando o estado muda (E-B5)', async () => {
-    mockLoad.mockResolvedValueOnce(result('B3'))
+    mockLoad.mockResolvedValueOnce(result('empty'))
     const { result: h } = renderHook(() => useTreatmentMeasureSeries(PROTO as any))
     await waitFor(() => expect(viewed()).toHaveLength(1))
-    mockLoad.mockResolvedValueOnce(result('B3'))
+    mockLoad.mockResolvedValueOnce(result('empty'))
     await act(async () => { await h.current.refreshAfterSave() })
     expect(viewed()).toHaveLength(1)
-    mockLoad.mockResolvedValueOnce(result('B2'))
+    mockLoad.mockResolvedValueOnce(result('single'))
     await act(async () => { await h.current.refreshAfterSave() })
-    expect(viewed().map((v) => v.state)).toEqual(['missing_both', 'missing_time'])
+    expect(viewed().map((v) => v.state)).toEqual(['missing_both', 'missing_count'])
   })
 
   it('resposta velha chegando depois é descartada (reqId)', async () => {
     const old = deferred()
-    mockLoad.mockReturnValueOnce(old.promise).mockResolvedValueOnce(result('B0', 2))
+    mockLoad.mockReturnValueOnce(old.promise).mockResolvedValueOnce(result('chart', 2))
     const { result: h } = renderHook(() => useTreatmentMeasureSeries(PROTO as any))
     await act(async () => { await h.current.retry() })
-    await act(async () => old.resolve(result('B3')))
-    expect(h.current.data?.state).toBe('B0')
+    await act(async () => old.resolve(result('empty')))
+    expect(h.current.data?.state).toBe('chart')
     expect(viewed().map((v) => v.state)).toEqual(['chart'])
   })
 
