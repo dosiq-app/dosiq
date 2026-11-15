@@ -5,9 +5,11 @@
 // auth de admin (fail-closed, ADR-091). Só leitura: uma chamada à RPC `get_admin_growth_analytics`
 // (SECURITY DEFINER, EXECUTE só para service_role — ADR-119), que consolida tudo no banco.
 //
-// 🔴 INV-2 / SC-004: a RPC não lê `medicines.name`. Mesmo assim o payload passa por `stripForbidden`
-//    antes de sair: chave `name` ou `push_token` em qualquer nível é removida (defesa em profundidade
-//    — uma RPC alterada no futuro não vaza nome comercial nem token).
+// 🔴 INV-2 / SC-004 / PO-SEC-119-1: desde a 119 a RPC LÊ `medicines.name` e `active_ingredient`,
+//    só para achar o código no catálogo CMED ("provável GLP-1"); devolve apenas contagens e o
+//    booleano `probable_wedge`. Mesmo assim o payload passa por `stripForbidden` antes de sair:
+//    `name`, `active_ingredient`, `med_name`, `med_ingredient` e `push_token` em qualquer nível são
+//    removidos (defesa em profundidade — uma RPC alterada no futuro não vaza texto do usuário).
 // 🔴 RC-SEC S-4/S-5: `Cache-Control: no-store`; erro da RPC ⇒ 500 genérico, log só com code/message.
 //
 // Spec 118: `cohort=v034` (whitelist em GROWTH_COHORTS) faz DUAS chamadas em paralelo — base total
@@ -19,7 +21,7 @@ import { parseExcludedUserIds } from '../../../server/utils/excludedUserIds.js'
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
-const FORBIDDEN_KEYS = new Set(['name', 'push_token'])
+const FORBIDDEN_KEYS = new Set(['name', 'active_ingredient', 'med_name', 'med_ingredient', 'push_token'])
 const GENERIC_ERROR = 'Falha ao carregar analytics'
 
 /** Inteiro da query limitado a [min, max]; ausente ou não numérico ⇒ fallback. */

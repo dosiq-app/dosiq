@@ -224,7 +224,7 @@ BEGIN
   -- coorte vazio: corte no futuro ⇒ zeros, listas vazias, 4 buckets do wedge
   r := public.get_admin_growth_analytics(100, 0, others || x, now() + interval '1 second');
   IF (r->>'total_users')::int <> 0 OR jsonb_array_length(r->'users') <> 0 OR jsonb_array_length(r->'class_distribution') <> 0
-     OR (SELECT count(*) FROM jsonb_object_keys(r->'wedge')) <> 4 OR (r#>>'{wedge,glp1_antiobesidade,users_pct}')::numeric <> 0
+     OR (SELECT count(*) FROM jsonb_object_keys(r->'wedge')) <> 6 /* 119: +glp1_antiobesidade_probable, +sem_codigo_outros */ OR (r#>>'{wedge,glp1_antiobesidade,users_pct}')::numeric <> 0
      OR jsonb_array_length(r->'feature_rates') <> 5 OR (r#>>'{totals,push_active_pct}')::numeric <> 0 THEN
     RAISE EXCEPTION 'coorte vazio=%', r;
   END IF;

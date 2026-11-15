@@ -181,6 +181,19 @@ export type { CmedPackage, InjectionContainer } from './cmed/cmedPackage'
 export { defaultIntakeUnitFor, intakeUnitFromPresentation } from './cmed/cmedIntakeUnit'
 export type { CmedMedicineDraft, CmedStrengthChoice } from './cmed/cmedMedicine'
 export { brandDiffers, classifySameMedicine, findMedicineCandidates } from './cmed/medicineCandidates'
+export {
+  MATCH_KEY_MAX,
+  MATCH_TOKEN_MIN,
+  MATCH_FUZZY_MIN,
+  matchKey,
+  matchTokens,
+  fuzzyThreshold,
+  levenshtein,
+  buildClassTokenMap,
+  matchClassCodes,
+  isProbableWedge,
+} from './cmed/nameMatch'
+export type { ClassTokenMap, ClassMatch, MatchLayer } from './cmed/nameMatch'
 export type {
   CandidateMedicineLike,
   CandidateDraftLike,

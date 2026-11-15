@@ -19,6 +19,7 @@
     "lint:vigency": "bash scripts/vigency-single-source.sh",
     "lint:stock-forecast": "bash scripts/stock-forecast-single-source.sh",
     "lint:migration-grants": "node scripts/migration-grants-gate.mjs",
+    "cmed:publish": "tsx scripts/cmed-publish.mjs",
     "preview": "npm run preview --workspace @dosiq/web",
     "dev:web": "npm run dev --workspace @dosiq/web",
     "build:web": "npm run build --workspace @dosiq/web",

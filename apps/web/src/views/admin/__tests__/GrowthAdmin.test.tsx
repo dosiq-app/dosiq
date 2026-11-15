@@ -144,3 +144,42 @@ describe('GrowthAdmin — funil de 5 KPIs (spec 123, PO-123-11)', () => {
     expect(kpis.textContent).toContain('0% confirmam · 0 sem confirmar')
   })
 })
+
+describe('GrowthAdmin — provável GLP-1 pelo nome (spec 119, PO-119-5)', () => {
+  const withProbable = () => {
+    const d = analytics({ users: 95, withProtocols: 60, glp1Pct: 33.3, featurePct: 20 })
+    return {
+      ...d,
+      catalog_version: '1.2.0',
+      wedge: {
+        ...d.wedge,
+        sem_codigo: { users: 10, protocols: 12, users_pct: 16.7 },
+        glp1_antiobesidade_probable: { users: 4, protocols: 4, users_pct: 6.7 },
+        sem_codigo_outros: { users: 7, protocols: 8, users_pct: 11.7 },
+      },
+    }
+  }
+
+  it('estimativa visível e rotulada, separada do confirmado; versão do catálogo no rodapé', async () => {
+    svc.load.mockResolvedValueOnce({ base: withProbable(), cohort: null })
+    render(<GrowthAdmin />)
+    const kpis = await screen.findByRole('region', { name: 'Indicadores' })
+    const wedgeCard = within(kpis).getByText('Wedge GLP-1').closest('.growth-kpi') as HTMLElement
+    expect(wedgeCard.textContent).toContain('33,3%')
+    expect(wedgeCard.textContent).toContain('+ 4 prováveis pelo nome (estimativa)')
+    const split = screen.getByRole('group', { name: 'Sem código de classe, por estimativa pelo nome' })
+    expect(within(split).getByRole('note').textContent).toMatch(/Estimativa pelo nome.*não entra no wedge confirmado/)
+    expect(within(split).getByText('Provável GLP-1 (pelo nome · estimativa)')).toBeTruthy()
+    expect(within(split).getByText('Sem código · outros')).toBeTruthy()
+    expect(screen.getByText(/catálogo CMED 1\.2\.0/)).toBeTruthy()
+  })
+
+  it('RPC anterior à 119 (sem os campos): nada de estimativa, sem erro', async () => {
+    svc.load.mockResolvedValueOnce({ base: BASE, cohort: null })
+    render(<GrowthAdmin />)
+    const kpis = await screen.findByRole('region', { name: 'Indicadores' })
+    expect(kpis.textContent).not.toContain('prováveis')
+    expect(screen.queryByRole('group', { name: /estimativa pelo nome/ })).toBeNull()
+    expect(screen.queryByText(/catálogo CMED/)).toBeNull()
+  })
+})
