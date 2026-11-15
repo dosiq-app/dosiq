@@ -39,7 +39,7 @@ const doseInstanceRepo = createDoseInstanceRepository({ client: supabase })
  * continua sendo o fato quando o protocolo é editado ou trocado depois (R-299).
  * Ausência é resultado válido: id certo com nome vazio > nome errado (R-299 §4).
  */
-function _doseEventProps(base, { surface = null, treatmentId = null, entryPoint = null } = {}) {
+function _doseEventProps(base, { surface = null, treatmentId = null, entryPoint = null, late = false } = {}) {
   // Chave com valor ausente NÃO entra no payload — mesmo princípio do `surface`. Um
   // `medicine_id: undefined` viaja como propriedade existente e vazia, que no PostHog é pior que
   // ausência: aparece na lista de propriedades e polui qualquer contagem por medicamento.
@@ -48,6 +48,8 @@ function _doseEventProps(base, { surface = null, treatmentId = null, entryPoint 
   if (treatmentId) props.treatment_id = treatmentId
   // 065 AD-8: `entry_point: 'reminder'` só quando a modal foi aberta por um lembrete. Sem default.
   if (entryPoint) props.entry_point = entryPoint
+  // 120 C (FR-015 · U-4): registro TARDIO pela Hoje é variação do mesmo fato ⇒ propriedade.
+  if (late) props.late = true
   return props
 }
 
@@ -63,11 +65,11 @@ function _doseEventProps(base, { surface = null, treatmentId = null, entryPoint 
 function _emitDoseLogged(events: Array<{ base: Record<string, unknown>, opts: Parameters<typeof _doseEventProps>[1] }>) {
   void (async () => {
     const forms = await getMedicinePresentations(events.map((e) => e.base.medicine_id as string | null))
-    for (const { base, opts: { surface, treatmentId, entryPoint } } of events) {
+    for (const { base, opts: { surface, treatmentId, entryPoint, late } } of events) {
       const presentation = forms[base.medicine_id as string]
       await logEvent(
         EVENTS.DOSE_LOGGED,
-        _doseEventProps(presentation ? { ...base, presentation } : base, { surface, treatmentId, entryPoint }),
+        _doseEventProps(presentation ? { ...base, presentation } : base, { surface, treatmentId, entryPoint, late }),
       )
     }
   })()
@@ -313,7 +315,7 @@ function _validateManyLogs(logsData) {
 // (doseLogService.registerDoseMany). As props vêm de `logsData[i].event_props`, montadas na tela
 // (siteEventProps); o Zod não as vê (metadado, como o instance_id). Devolve as props dos itens
 // bem-sucedidos para as contagens do agregado.
-function _emitBulkDoseEvents(results, logsData, { surface, entryPoint }) {
+function _emitBulkDoseEvents(results, logsData, { surface, entryPoint, late = false }) {
   const succeededProps = []
   const events = []
   for (let i = 0; i < results.length; i++) {
@@ -323,7 +325,7 @@ function _emitBulkDoseEvents(results, logsData, { surface, entryPoint }) {
     succeededProps.push(itemProps)
     events.push({
       base: { medicine_id: (res as any).data?.medicine_id, ...itemProps },
-      opts: { surface, treatmentId: (res as any).data?.protocol_id, entryPoint },
+      opts: { surface, treatmentId: (res as any).data?.protocol_id, entryPoint, late },
     })
   }
   if (events.length > 0) _emitDoseLogged(events)
@@ -336,7 +338,7 @@ function _emitBulkDoseEvents(results, logsData, { surface, entryPoint }) {
  * @param {Array<Object>} logsData
  * @returns {Promise<{ success: boolean, results: Array<Object>, error?: string }>}
  */
-export async function registerDoseMany(logsData, { surface = null, entryPoint } = {} as { surface?: string | null, entryPoint?: string }) {
+export async function registerDoseMany(logsData, { surface = null, entryPoint, late = false } = {} as { surface?: string | null, entryPoint?: string, late?: boolean }) {
   if (!logsData || logsData.length === 0) {
     return { success: false, results: [], error: 'Nenhuma dose selecionada.' }
   }
@@ -380,7 +382,7 @@ export async function registerDoseMany(logsData, { surface = null, entryPoint } 
     //
     // DEPOIS do laço de cancelamento de alarme, nunca antes: analytics não atrasa o cancelamento do
     // alarme de uma dose já registrada.
-    const succeededProps = _emitBulkDoseEvents(results, logsData, { surface, entryPoint })
+    const succeededProps = _emitBulkDoseEvents(results, logsData, { surface, entryPoint, late })
 
     if (succeeded.length > 0) {
       // O agregado PERMANECE, e continua sem `treatment_id`: o lote atravessa tratamentos por

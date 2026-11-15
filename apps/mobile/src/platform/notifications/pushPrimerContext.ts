@@ -14,7 +14,7 @@ export interface OpenPushPrimerArgs {
    * Android que parou de perguntar). Força o modo Ajustes sem sondar o SO; `hint` = o passo a passo.
    * O CTA abre os Ajustes e fecha como `not_granted` (não houve decisão do SO ⇒ sem evento).
    */
-  settings?: { hint: string } | null
+  settings?: { hint: string; channelId?: string | null } | null
 }
 
 export type Ctx = { openPushPrimer: (args: OpenPushPrimerArgs) => Promise<PrimerOutcome> }

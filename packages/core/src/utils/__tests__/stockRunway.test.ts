@@ -227,7 +227,17 @@ describe('computeSupplyDate — escada com troca (FR-003, PO-105-3/4)', () => {
       steps: [step({ started_at: '2026-10-20T12:00:00Z', duration_days: 21 }), nextB],
       instances: days(6, 10), stocks: { [MED_A]: solid(1) }, tz: TZ, now: NOW,
     })
-    expect(r).toMatchObject({ date: '2026-11-07' })
+    // S-16: o saldo do ATUAL acaba (07/11) antes do fim da etapa (10/11) ⇒ compra é do atual.
+    expect(r).toEqual({ status: 'due', date: '2026-11-07', medicineId: MED_A, reason: 'sparse', protocolId: P1 })
+  })
+
+  it('S-16: atual zerado com doses antes do fim da etapa ⇒ aviso do ATUAL mesmo com o próximo coberto', () => {
+    const r = computeSupplyDate({
+      medicineId: MED_A, protocols: [daily],
+      steps: [step({ started_at: '2026-10-20T12:00:00Z', duration_days: 21 }), nextB],
+      instances: days(6, 4), stocks: { [MED_A]: solid(0), [MED_B]: solid(5) }, tz: TZ, now: NOW,
+    })
+    expect(r).toEqual({ status: 'due', date: '2026-11-06', medicineId: MED_A, reason: 'sparse', protocolId: P1 })
   })
 
   it('próxima etapa já com saldo para a 1ª dose ⇒ covered', () => {

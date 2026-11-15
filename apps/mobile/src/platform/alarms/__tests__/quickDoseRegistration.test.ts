@@ -563,3 +563,29 @@ describe('103 A — doseChangedBus após escrita', () => {
     expect(heard).toBe(0)
   })
 })
+
+// spec 120 C · US9 (PO-120-17) — pulo tardio pela Hoje declara o horário previsto.
+describe('registerSkip — pulo tardio com instante declarado (120 C)', () => {
+  const ATRASADA = { ...BASE, scheduledFor: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString() }
+
+  it('declaredAt ⇒ pula a guarda de client e envia o instante declarado à RPC', async () => {
+    const res = await registerSkip(ATRASADA, { declaredAt: ATRASADA.scheduledFor })
+    expect(res.success).toBe(true)
+    expect(mockSkipDose).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ skippedAt: ATRASADA.scheduledFor }))
+  })
+
+  it('dose_skipped leva late:true só no pulo tardio', async () => {
+    await registerSkip(ATRASADA, { declaredAt: ATRASADA.scheduledFor, surface: 'today_agenda' })
+    expect(mockLogEvent).toHaveBeenCalledWith('dose_skipped', expect.objectContaining({ late: true, surface: 'today_agenda' }))
+    mockLogEvent.mockClear()
+    await registerSkip(BASE)
+    expect(mockLogEvent).toHaveBeenCalledWith('dose_skipped', expect.not.objectContaining({ late: true }))
+  })
+
+  it('banco recusa ⇒ resultado com mensagem, sem trilha', async () => {
+    mockSkipDose.mockImplementationOnce(() => Promise.reject(new Error('Dose fora da janela')))
+    const res = await registerSkip(ATRASADA, { declaredAt: ATRASADA.scheduledFor })
+    expect(res.success).toBe(false)
+    expect(res.message).toBeTruthy()
+  })
+})

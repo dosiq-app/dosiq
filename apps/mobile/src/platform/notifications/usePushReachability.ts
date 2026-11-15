@@ -17,6 +17,7 @@ import { AppState, Platform } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { getPushPermissionStatus, getPushChannelState } from './pushPermission'
 import { nativeStorageAdapter } from '@platform/storage/nativeStorageAdapter'
+import { ANDROID_PUSH_CHANNEL } from '@dosiq/core'
 
 export type ReachReason = 'undetermined' | 'denied' | 'channel_blocked'
 
@@ -40,6 +41,20 @@ export function evaluateReachability(
   }
   if (os === 'android') return { usable: false, reason: 'undetermined' }
   return { usable: false, reason: perm.status === 'undetermined' ? 'undetermined' : 'denied' }
+}
+
+/**
+ * Canais que o push precisa (120 C, smoke U-1): o comum sempre; o CRÍTICO (`dosiq-critical-v1`) só
+ * quando há tratamento com alarme crítico — desligado, a dose essencial some calada. Devolve o estado
+ * consolidado e QUAL canal está bloqueado (o toque abre direto nele).
+ */
+export async function readPushChannels(critical: boolean): Promise<{ channel: ChannelState; blockedChannel: string | null }> {
+  const channel: ChannelState = await getPushChannelState(ANDROID_PUSH_CHANNEL.DEFAULT)
+  if (channel === 'blocked') return { channel, blockedChannel: ANDROID_PUSH_CHANNEL.DEFAULT }
+  if (critical && (await getPushChannelState(ANDROID_PUSH_CHANNEL.CRITICAL)) === 'blocked') {
+    return { channel: 'blocked', blockedChannel: ANDROID_PUSH_CHANNEL.CRITICAL }
+  }
+  return { channel, blockedChannel: null }
 }
 
 export type SnoozeRecord = { count: number; until: number }
@@ -73,6 +88,8 @@ export interface PushReachability {
   granted: boolean | null
   /** Canal do push no Android ('ok' no iOS). Configurações mostra 'silenced'. */
   channel: ChannelState
+  /** Canal bloqueado que o toque deve abrir (`null` = nenhum ou não é canal). */
+  blockedChannel: string | null
   /** Card adiado agora (7 dias ou teto). `null` = storage não lido. */
   snoozed: boolean | null
   /** Quantas vezes foi adiado (D-5: no 3º o botão vira "Não mostrar de novo"). */
@@ -81,13 +98,14 @@ export interface PushReachability {
   snooze: () => void
 }
 
-export function usePushReachability({ userId }: { userId: string | null }): PushReachability {
+export function usePushReachability({ userId, critical = false }: { userId: string | null; critical?: boolean }): PushReachability {
   // 1. States
-  const [state, setState] = useState<{ usable: boolean | null; reason: ReachReason | null; granted: boolean | null; channel: ChannelState }>({
+  const [state, setState] = useState<{ usable: boolean | null; reason: ReachReason | null; granted: boolean | null; channel: ChannelState; blockedChannel: string | null }>({
     usable: null,
     reason: null,
     granted: null,
     channel: 'ok',
+    blockedChannel: null,
   })
   // `hidden` calculado no callback (Date.now fora do render — React Compiler).
   const [snoozeRec, setSnoozeRec] = useState<{ rec: SnoozeRecord; hidden: boolean } | null>(null)
@@ -98,6 +116,8 @@ export function usePushReachability({ userId }: { userId: string | null }): Push
   // mostra o card de novo (o "Agora não" antigo não cala um problema novo). Refs porque a leitura do
   // status e a do storage correm em paralelo no foco — quem chegar por último decide.
   const usableRef = useRef<boolean | null>(null)
+  // Ref: `refresh` fica estável (foco/AppState) e lê o valor mais novo de "tem tratamento crítico".
+  const criticalRef = useRef(critical)
   const snoozeRef = useRef<SnoozeRecord | null>(null)
 
   const clearSnoozeIfUsable = useCallback(() => {
@@ -117,10 +137,10 @@ export function usePushReachability({ userId }: { userId: string | null }): Push
     } catch {
       perm = null
     }
-    const channel: ChannelState = perm?.granted ? await getPushChannelState() : 'ok'
+    const { channel, blockedChannel } = perm?.granted ? await readPushChannels(criticalRef.current) : { channel: 'ok' as ChannelState, blockedChannel: null }
     const next = evaluateReachability(Platform.OS, perm, channel)
     if (mounted.current && mine === gen.current) {
-      setState({ ...next, granted: perm ? !!perm.granted : null, channel })
+      setState({ ...next, granted: perm ? !!perm.granted : null, channel, blockedChannel })
       // Leitura falhou (perm null) dá usable:true sem afirmar nada — não apaga adiamento por ela.
       usableRef.current = perm ? next.usable : null
       clearSnoozeIfUsable()
@@ -163,6 +183,12 @@ export function usePushReachability({ userId }: { userId: string | null }): Push
     }, [readSnooze, refresh])
   )
 
+  // Tratamentos chegam depois do 1º foco: virou crítico ⇒ relê os canais (senão só no próximo foco).
+  useEffect(() => {
+    criticalRef.current = critical
+    if (critical) void refresh()
+  }, [critical, refresh])
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
       if (s === 'active') void refresh()
@@ -184,6 +210,7 @@ export function usePushReachability({ userId }: { userId: string | null }): Push
     reason: state.reason,
     granted: state.granted,
     channel: state.channel,
+    blockedChannel: state.blockedChannel,
     snoozed: snoozeRec ? snoozeRec.hidden : null,
     snoozeCount: snoozeRec?.rec.count ?? 0,
     refresh,

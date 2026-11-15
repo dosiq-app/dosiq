@@ -103,10 +103,10 @@ describe('useTodayDerived — timeline ← dose_instances (F4.3b)', () => {
     expect(timeline[0].timelineStatus).toBe('PLANEJADA')
   })
 
-  it('pending pós-tolerância (zona null) → PERDIDA', () => {
+  it('pending pós-tolerância (zona null) → SEM_REGISTRO (120 C — corrigível até o cron)', () => {
     // 100min atrasada com tolerância 90 → fora do actionável
     const { timeline } = build([inst('i1', -100, 'pending', 90)])
-    expect(timeline[0].timelineStatus).toBe('PERDIDA')
+    expect(timeline[0].timelineStatus).toBe('SEM_REGISTRO')
   })
 
   it('skipped_* não entra na timeline', () => {
@@ -284,7 +284,7 @@ describe('deriveStockAlerts (090 D-5)', () => {
     const stock = transformStockData([med('mw', 'Semanal', 1, [{ id: 'pw', active: true, start_date: getTodayLocal(),
       end_date: null, frequency: 'semanal', weekdays: [3], time_schedule: ['20:00'], dosage_per_intake: 1 }])])
     const [alert] = deriveStockAlerts(stock)
-    expect(alert).toEqual({ medicineId: 'mw', medicineName: 'Semanal', daysRemaining: 7, dosesRemaining: 1, isDailyStock: false })
+    expect(alert).toEqual({ medicineId: 'mw', medicineName: 'Semanal', daysRemaining: 7, dosesRemaining: 1, isDailyStock: false, isZero: false, isUrgent: true })
   })
 
   it.each([[null], [undefined], [[]], [[null]], [[{ id: 'x', name: 'NaN', daysRemaining: NaN }]]])(

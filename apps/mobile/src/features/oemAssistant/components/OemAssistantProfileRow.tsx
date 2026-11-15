@@ -12,6 +12,8 @@ const { AlarmClock, ChevronRight } = LucideIcons as any
 import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatteryAssistant'
 import { buildChecklist, summarizeChecklist } from '@features/oemAssistant/oemChecklist'
 import { colors, spacing } from '@shared/styles/tokens'
+import SignalDot from '@shared/components/ui/SignalDot'
+import { useHomeSignal } from '@dashboard/state/todaySurfaceSignal'
 
 interface Props {
   onPress: () => void
@@ -25,6 +27,7 @@ function OemAssistantProfileRowAndroid({ onPress }: Props) {
   )
   const subtitle = summary.label ?? 'Confira os ajustes do aparelho'
   const pending = summary.status === 'pending'
+  const signal = useHomeSignal('profile_battery')
 
   return (
     <TouchableOpacity
@@ -32,11 +35,15 @@ function OemAssistantProfileRowAndroid({ onPress }: Props) {
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`Alarme e bateria, ${subtitle}`}
+      accessibilityLabel={`Alarme e bateria${signal ? ', novo aviso' : ''}, ${subtitle}`}
     >
       <AlarmClock size={20} color={colors.brand.primary} strokeWidth={1.5} />
       <View style={styles.textGroup}>
-        <Text style={styles.label}>Alarme e bateria</Text>
+        <View style={styles.labelWithDot}>
+          <Text style={styles.label}>Alarme e bateria</Text>
+          {/* 120 C D-6: aviso de bateria suprimido na Hoje mora aqui. */}
+          {signal && <SignalDot testID="signal-dot-battery" />}
+        </View>
         <Text style={pending ? styles.subtitlePending : styles.subtitle}>{subtitle}</Text>
       </View>
       <ChevronRight size={18} color={colors.text.secondary} strokeWidth={1.5} />
@@ -60,6 +67,7 @@ const styles = StyleSheet.create({
     borderTopColor: colors.border.light,
   },
   textGroup: { flex: 1, gap: 2 },
+  labelWithDot: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   label: { fontSize: 16, color: colors.text.primary, fontWeight: '500' },
   subtitle: { fontSize: 12, color: colors.text.secondary },
   subtitlePending: { fontSize: 12, color: colors.status.warning, fontWeight: '600' },

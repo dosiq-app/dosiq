@@ -1,6 +1,6 @@
 // 120 US2 / E-3 / D-4..D-7 — preparo na raiz (PO-120-3, PO-120-5).
 import React from 'react'
-import { Linking, Pressable, Text } from 'react-native'
+import { Pressable, Text } from 'react-native'
 import { render, fireEvent, act, waitFor } from '@testing-library/react-native'
 
 const mockRequest = jest.fn()
@@ -8,7 +8,9 @@ const mockAskMode = jest.fn(async () => 'ask')
 jest.mock('../pushPermission', () => ({
   requestPushOrOpenSettings: (...a: any[]) => mockRequest(...a),
   getPushAskMode: () => mockAskMode(),
+  openPushSettings: () => mockOpenSettings(),
 }))
+const mockOpenSettings = jest.fn()
 jest.mock('@platform/supabase/nativeSupabaseClient', () => ({ supabase: { tag: 'sb' } }))
 const mockLogEvent = jest.fn()
 jest.mock('@platform/analytics/productAnalytics', () => ({ logEvent: (...a: any[]) => mockLogEvent(...a) }))
@@ -106,7 +108,6 @@ describe('PushPrimerProvider (PO-120-3)', () => {
   })
 
   it('smoke 120: aberto em modo Ajustes ⇒ passo a passo de quem chamou; CTA abre Ajustes sem pedir ao SO', async () => {
-    const spy = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined as any)
     const { getByText, getByLabelText } = render(
       <PushPrimerProvider>
         <Opener settings={{ hint: 'Passo a passo X.' }} />
@@ -118,7 +119,7 @@ describe('PushPrimerProvider (PO-120-3)', () => {
     expect(mockAskMode).not.toHaveBeenCalled()
     fireEvent.press(getByLabelText('Abrir Ajustes'))
     await act(async () => {})
-    expect(spy).toHaveBeenCalled()
+    expect(mockOpenSettings).toHaveBeenCalledTimes(1)
     expect(mockRequest).not.toHaveBeenCalled()
     expect(mockLogEvent).not.toHaveBeenCalled()
     expect(outcomes).toEqual(['not_granted'])

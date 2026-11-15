@@ -49,15 +49,18 @@ export default function DoseHistoryList({ instances = [], timezone = 'America/Sa
       )
     }
 
+    // S-09 (smoke 14/11): rótulo = mesmo instante da ordenação — hora EFETIVA do registro
+    // (tomada/pulada); sem registro (pendente/perdida) cai no horário previsto.
+    const shownAt = item.occurred_at ?? item.scheduled_for
     const timeStr = (() => {
       try {
         return new Intl.DateTimeFormat('pt-BR', {
           timeZone: timezone,
           hour: '2-digit',
           minute: '2-digit',
-        }).format(parseISO(item.scheduled_for))
+        }).format(parseISO(shownAt))
       } catch {
-        const d = parseISO(item.scheduled_for)
+        const d = parseISO(shownAt)
         const hh = String(d.getHours()).padStart(2, '0')
         const min = String(d.getMinutes()).padStart(2, '0')
         return `${hh}:${min}`

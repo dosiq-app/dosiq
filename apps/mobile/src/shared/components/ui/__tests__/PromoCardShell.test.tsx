@@ -47,6 +47,45 @@ describe('PromoCardShell', () => {
   })
 })
 
+// 120 C · RC2-C DC-1/DC-2: uma casca no slot de alerta — tom por situação, dispensa por ícone.
+describe('PromoCardShell — tom e dispensa (DC-1/DC-2)', () => {
+  const { colors } = jest.requireActual('@shared/styles/tokens')
+  const bgOf = (el: any) => [].concat(el.props.style).reduce((acc: any, s: any) => ({ ...acc, ...(s || {}) }), {}).backgroundColor
+
+  it.each([
+    [undefined, colors.status.warningLight],
+    ['warning', colors.status.warningLight],
+    ['error', colors.status.errorLight],
+    ['neutral', colors.bg.card],
+  ])('tone=%s ⇒ fundo %s (mesma casca)', (tone, bg) => {
+    const { getByTestId } = render(
+      <PromoCardShell testID="shell" tone={tone as any} icon={<Text>i</Text>} title="T" subtitle="S"
+        primary={{ label: 'A', accessibilityLabel: 'A', onPress: jest.fn() }} />
+    )
+    expect(bgOf(getByTestId('shell'))).toBe(bg)
+  })
+
+  it('sem secundário: só o CTA primário', () => {
+    const { queryByText } = render(
+      <PromoCardShell icon={<Text>i</Text>} title="T" subtitle="S"
+        primary={{ label: 'Registrar compra', accessibilityLabel: 'Registrar compra', onPress: jest.fn() }} />
+    )
+    expect(queryByText('Registrar compra')).toBeTruthy()
+    expect(queryByText('Agora não')).toBeNull()
+  })
+
+  it('dispensa por ícone com rótulo próprio', () => {
+    const onDismiss = jest.fn()
+    const { getByLabelText } = render(
+      <PromoCardShell icon={<Text>i</Text>} title="T" subtitle="S"
+        primary={{ label: 'A', accessibilityLabel: 'A', onPress: jest.fn() }}
+        dismiss={{ accessibilityLabel: 'Dispensar aviso de estoque de Glifage', onPress: onDismiss }} />
+    )
+    fireEvent.press(getByLabelText('Dispensar aviso de estoque de Glifage'))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('OemBatteryAssistantCard sobre a casca (guard PO-120-9)', () => {
   it('mantém título, subtítulos e os dois botões da 068', () => {
     const onAdjust = jest.fn()

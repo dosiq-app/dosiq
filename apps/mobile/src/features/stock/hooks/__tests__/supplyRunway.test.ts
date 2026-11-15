@@ -187,7 +187,7 @@ describe('nome completo do remédio a comprar (smoke 2026-11-06)', () => {
   })
 
   const { supplyBuyIdsMissing, attachSupplyBuyNames } = jest.requireActual('../_stockDataTransformer')
-  const { supplyNoticeCopy } = jest.requireActual('../../../dashboard/components/SupplyNoticeInline')
+  const { supplyNoticeCopy } = jest.requireActual('../../../dashboard/utils/supplyNoticeCopy')
   const ladder = attachSupplyRunway([item('m-a', [ladderProto], { totalQuantity: 10 })], { steps: switchSteps, instances: [], now: NOW })
 
   it('escada: remédio da próxima etapa fora da lista ⇒ pedido de cadastro; dentro ⇒ não', () => {
@@ -214,7 +214,7 @@ describe('nome completo do remédio a comprar (smoke 2026-11-06)', () => {
     const monthlyItems = attachSupplyBuyNames(
       attachSupplyRunway([item('m-inj', [monthly], { name: 'Mesigyna' })], { steps: [], instances: [monthlyInstance], now: NOW }),
     )
-    const [n] = deriveSupplyNotices(monthlyItems, '2026-11-05')
+    const [n] = deriveSupplyNotices(monthlyItems, '2026-11-05', [monthly])
     expect(supplyNoticeCopy(n)).toEqual({ title: 'Dose mensal de Mesigyna em 08/11', hint: 'Você ainda não tem estoque para ela.' })
   })
 })

@@ -14,6 +14,7 @@ jest.mock('@dosiq/core', () => ({
 }))
 
 import TodayPushPermission from '../TodayPushPermission'
+import { ANDROID_PUSH_CHANNEL } from '@dosiq/core'
 import { isPushPermissionVisible } from '@dashboard/hooks/useTodayPushPermission'
 
 const daily = (over: any = {}) => ({
@@ -58,6 +59,15 @@ describe('TodayPushPermission', () => {
       settings: null,
     })
     expect(r.refresh).toHaveBeenCalled()
+  })
+
+  it('S-14: canal CRÍTICO bloqueado ⇒ exemplo vem da próxima dose crítica, não da geral', () => {
+    const crit = daily({ name: 'Varfarina', time_schedule: ['20:00'], critical_alarm: true, medicine: { name: 'Varfarina', presentation: 'comprimido' } })
+    const r = reach({ reason: 'channel_blocked', blockedChannel: ANDROID_PUSH_CHANNEL.CRITICAL })
+    const { queryByText } = render(<TodayPushPermission reach={r as any} protocols={[daily(), crit]} />)
+    expect(queryByText(/Varfarina/)).toBeTruthy()
+    expect(queryByText(/Losartana/)).toBeNull()
+    expect(queryByText('Os lembretes de dose crítica estão desligados nos Ajustes')).toBeTruthy() // S-15
   })
 
   it('vários tratamentos ⇒ "a próxima dose (X)"', () => {

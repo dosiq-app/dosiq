@@ -58,6 +58,7 @@ Detalhamento sobre as escolhas arquiteturais do monorepo TypeScript pós-040.
 | [`architecture/PWA_WEB_PUSH.md`](architecture/PWA_WEB_PUSH.md) | Service Workers, cache offline (Workbox) e Web Push do PWA |
 | [`architecture/EXPO_METRO_PIPELINE.md`](architecture/EXPO_METRO_PIPELINE.md) | Bundler Metro, Hermes, EAS e pipeline de build mobile |
 | [`architecture/NUDGE_BANNERS.md`](architecture/NUDGE_BANNERS.md) | Arquitetura de banners informativos e sistema de nudges |
+| [`architecture/TODAY_SURFACES.md`](architecture/TODAY_SURFACES.md) | ⭐ Aba Hoje: árbitro único das superfícies (régua de alertas, bloco de doses, promo, sinal nas casas) e correção do dia (registrar/pular tardio) |
 
 ---
 

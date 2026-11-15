@@ -37,6 +37,7 @@ import { Platform, Linking } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import { colors } from '@shared/styles/tokens'
 import { debugLog } from '@shared/utils/debugLog'
+import { openPushSettings } from '@platform/notifications/pushPermission'
 import { emitDoseChanged } from './doseChangedBus'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
@@ -207,6 +208,22 @@ async function _androidAlarmStatus(pushOk: boolean): Promise<CriticalAlarmDevice
     return { kind: 'degraded', fix: 'settings', reason: 'channel_no_popup' }
   }
   return { kind: 'active' }
+}
+
+/**
+ * U-1 (120 C): abre direto o canal REAL do alarme (`-v3`, senão o `-v2` legado — como C-25), 1 toque
+ * até o interruptor. Sem permissão ou falha ⇒ página do app (fallback do `openPushSettings`).
+ */
+export async function openAlarmChannelSettings(): Promise<void> {
+  let channelId = ALARM_CRITICAL_CHANNEL_ID
+  try {
+    if (!(await notifee.getChannel(ALARM_CRITICAL_CHANNEL_ID)) && (await notifee.getChannel(LEGACY_CRITICAL_CHANNEL_ID))) {
+      channelId = LEGACY_CRITICAL_CHANNEL_ID
+    }
+  } catch {
+    // mantém o -v3
+  }
+  await openPushSettings(channelId)
 }
 
 export async function getCriticalAlarmDeviceStatus(): Promise<CriticalAlarmDeviceStatus> {

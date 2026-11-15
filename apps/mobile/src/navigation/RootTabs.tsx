@@ -16,9 +16,30 @@ import ProfileStack from './ProfileStack'
 import { useStockTracking } from '@shared/hooks/useStockTracking'
 import { colors } from '../shared/styles/tokens'
 import { useScanResume } from '@medications/scan/useScanResume'
+import { useHomeSignal, useAnyHomeSignal, SIGNAL_DOT_SIZE } from '@dashboard/state/todaySurfaceSignal'
 
 // TODO(040-strict): createBottomTabNavigator<any>() — sem ParamList tipada, overload exige `id`
 const Tab = createBottomTabNavigator<any>()
+
+const PROFILE_HOMES: Array<'profile_notifications' | 'profile_battery'> = ['profile_notifications', 'profile_battery']
+
+// Badge do React Navigation sem texto, reduzido a um ponto de 8 dp (`status.warning`).
+const signalBadge = (on: boolean, label: string) => (on
+  ? {
+      tabBarBadge: '',
+      tabBarBadgeStyle: {
+        minWidth: SIGNAL_DOT_SIZE,
+        maxHeight: SIGNAL_DOT_SIZE,
+        height: SIGNAL_DOT_SIZE,
+        borderRadius: SIGNAL_DOT_SIZE / 2,
+        backgroundColor: colors.status.warning,
+        fontSize: 0,
+        lineHeight: 0,
+        paddingHorizontal: 0,
+      },
+      tabBarAccessibilityLabel: `${label}, novo aviso`,
+    }
+  : {})
 
 // Mesmos ícones do BottomNavRedesign.jsx e Sidebar.jsx da web (lucide-react)
 // Calendar → Hoje | Pill → Tratamentos | Package → Estoque | User → Perfil
@@ -34,6 +55,9 @@ export default function RootTabs() {
   // Spec 044 F3: enquanto `ready === false` não sabemos se a Estoque deve existir —
   // não renderizar as tabs evita o piscar da aba pro usuário dose-only (AP-277).
   const { enabled: stockEnabled, ready: stockReady } = useStockTracking()
+  // 120 C D-6/DC-8: ponto na aba enquanto houver aviso da casa fora da Hoje — presença, nunca número.
+  const stockSignal = useHomeSignal('stock_tab')
+  const profileSignal = useAnyHomeSignal(PROFILE_HOMES)
   // 066 D1 (C-D1-6): iPhone encerrado pelos Ajustes ao liberar a câmera volta ao scan.
   useScanResume(stockReady)
 
@@ -102,7 +126,7 @@ export default function RootTabs() {
         <Tab.Screen
           name={ROUTES.STOCK}
           component={StockStack}
-          options={{ title: 'Estoque' }}
+          options={{ title: 'Estoque', ...signalBadge(stockSignal, 'Estoque') }}
           listeners={({ navigation, route }) => ({
             tabPress: (e) => {
               // Re-tap na tab ativa enquanto em sub-tela → volta para a raiz do stack.
@@ -122,7 +146,7 @@ export default function RootTabs() {
       <Tab.Screen
         name={ROUTES.PROFILE}
         component={ProfileStack}
-        options={{ title: 'Perfil' }}
+        options={{ title: 'Perfil', ...signalBadge(profileSignal, 'Perfil') }}
         listeners={({ navigation, route }) => ({
           tabPress: (e) => {
             const isFocused = navigation.isFocused()

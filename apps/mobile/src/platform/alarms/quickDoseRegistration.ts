@@ -203,9 +203,10 @@ export async function registerTaken(data, { surface = null } = {}) {
  * Best-effort e chamado DEPOIS da RPC: analytics nunca altera o resultado de uma ação clínica da
  * paciente (Constituição IX). @private
  */
-async function _emitDoseSkipped(skipInstances, surface) {
+async function _emitDoseSkipped(skipInstances, surface, late = false) {
   try {
-    const base = surface ? { surface } : {}
+    // 120 C (FR-015 · U-4): pulo tardio é variação do mesmo fato ⇒ propriedade `late`, não evento novo.
+    const base = { ...(surface ? { surface } : {}), ...(late ? { late: true } : {}) }
     await Promise.all(
       skipInstances.map(({ protocolId }) =>
         logEvent(EVENTS.DOSE_SKIPPED, protocolId ? { ...base, treatment_id: protocolId } : base),
@@ -229,10 +230,29 @@ async function _endSkippedSurfaces(ids) {
 }
 
 /**
+ * 120 C: o pulo tardio declara o horário PREVISTO ⇒ não há relógio do aparelho a comparar. A guarda de
+ * client só barra o lado ADIANTADO (`refuseIfOutOfWindow`) e um instante passado nunca cai nela; é
+ * pulada explicitamente para a decisão ficar só com o banco (instante futuro recusado, piso 067). @private
+ */
+async function _clientWindowGuard(data, declaredAt) {
+  if (declaredAt) return { outOfWindow: false, result: null }
+  return refuseIfOutOfWindow(data, 'registerSkip')
+}
+
+/** Params da RPC: `skippedAt` só existe quando DECLARADO (sem ele, vale o `now()` do servidor). @private */
+function _skipParams(userId, ids, declaredAt) {
+  return declaredAt ? { userId, instanceIds: ids, skippedAt: declaredAt } : { userId, instanceIds: ids }
+}
+
+/**
  * Pula a dose: status='skipped_user' (sem log, sem consumo).
  * @param {object} data - { doseInstanceId }
+ * @param {string|null} [opts.declaredAt] - 120 C (US9 · D-10): pulo TARDIO pela Hoje declara o
+ *   instante = horário PREVISTO da dose (decisão registrada "no horário", PO 14/11). Com ele, a
+ *   guarda de client (só lado adiantado) é pulada e vale a do banco, contra o instante declarado —
+ *   futuro recusado, piso da janela (067). Ausente ⇒ comportamento de sempre (instante do servidor).
  */
-export async function registerSkip(data, { surface = null } = {}) {
+export async function registerSkip(data, { surface = null, declaredAt }: { surface?: string | null; declaredAt?: string | null } = {}) {
   const { doseInstanceId, isGrouped, groupedDoses } = data || {}
   if (!doseInstanceId) return { success: false }
   await alarmService.cancelAlarm(doseInstanceId) // silencia primeiro
@@ -241,7 +261,7 @@ export async function registerSkip(data, { surface = null } = {}) {
   // 067 A2 (FR-005): o skip é a transição que destruiu a dose do incidente — grava fato clínico sem
   // declarar a que instante se refere (a fronteira que o Slice B fecha no banco). Aqui, no client, a
   // recusa fora da janela é o que impede um disparo torto de virar `skipped_user`.
-  const guard = await refuseIfOutOfWindow(data, 'registerSkip')
+  const guard = await _clientWindowGuard(data, declaredAt)
   if (guard.outOfWindow) return guard.result
 
   let ids = [doseInstanceId]
@@ -275,7 +295,9 @@ export async function registerSkip(data, { surface = null } = {}) {
     // `now()` do SERVIDOR. Mandar o relógio do aparelho seria mandar exatamente o relógio que o
     // incidente provou não ser confiável — a guarda do banco existe justamente para não depender
     // dele. O retorno traz esse instante do servidor, e é ELE que vai para a trilha (FR-042).
-    ;({ skippedAt } = await skipDose(supabase, { userId, instanceIds: ids }))
+    // 120 C: a única exceção é o pulo TARDIO, que declara o horário PREVISTO (`scheduled_for`, dado
+    // do banco — não o relógio do aparelho). Banco segue recusando instante futuro.
+    ;({ skippedAt } = await skipDose(supabase, _skipParams(userId, ids, declaredAt)))
   } catch (error) {
     // R-305/FR-013: recusa é BARULHENTA e chega legível à paciente — nunca "nada aconteceu".
     return {
@@ -305,7 +327,7 @@ export async function registerSkip(data, { surface = null } = {}) {
   // relógio do aparelho contradiria a própria razão de o skip ter descido para o banco, e num
   // aparelho adiantado — o cenário do incidente — gravaria uma hora que nunca existiu. Se a RPC não
   // devolver o instante, vai `null`: "hora desconhecida" é honesto, um palpite não é.
-  await _emitDoseSkipped(skipInstances, surface)
+  await _emitDoseSkipped(skipInstances, surface, !!declaredAt)
 
   const resolvedAt = skippedAt || null
   await Promise.all(

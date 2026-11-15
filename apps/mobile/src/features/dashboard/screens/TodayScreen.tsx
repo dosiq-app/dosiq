@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { useFocusEffect } from '@react-navigation/native'
+import { useFocusEffect, useScrollToTop } from '@react-navigation/native'
 import {
   ScrollView,
   View,
@@ -29,8 +29,9 @@ import TimeBlockSeparator from '@dashboard/components/TimeBlockSeparator'
 import DoseTimelineCard from '@dashboard/components/DoseTimelineCard'
 import EvolutionSwitchSection from '@dashboard/components/EvolutionSwitchSection'
 import HeroDoseCard from '@dashboard/components/HeroDoseCard'
-import StockAlertInline from '@dashboard/components/StockAlertInline'
-import SupplyNoticeInline from '@dashboard/components/SupplyNoticeInline'
+import TodayAlertCard from '@dashboard/components/TodayAlertCard'
+import TodayOtaCard from '@dashboard/components/TodayOtaCard'
+import UnloggedDosesCard from '@dashboard/components/UnloggedDosesCard'
 import { ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
 import DoseRegisterModal from '@dose/components/DoseRegisterModal'
 import ChatEntryButton from '@features/chatbot/components/ChatEntryButton'
@@ -50,7 +51,10 @@ import { navigateCrossTab } from '@navigation/navigateCrossTab'
 import { useStockUpsell } from '@dashboard/hooks/useStockUpsell'
 import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatteryAssistant'
 import OemBatteryAssistantCard from '@features/oemAssistant/components/OemBatteryAssistantCard'
-import { pickPromoCard } from '@dashboard/utils/pickPromoCard'
+import { useTodaySurfaces } from '@dashboard/hooks/useTodaySurfaces'
+import { useLateDoseActions } from '@dashboard/hooks/useLateDoseActions'
+import { useTodaySurfaceSignal } from '@dashboard/hooks/useTodaySurfaceSignal'
+import { groupUnloggedDoses } from '@dashboard/utils/unloggedDoses'
 import { hasRemindableTreatment } from '@dashboard/utils/hasRemindableTreatment'
 import TodayPushPermission from '@dashboard/components/TodayPushPermission'
 import { useTodayPushPermission } from '@dashboard/hooks/useTodayPushPermission'
@@ -120,7 +124,7 @@ function _computeInitialExpanded(shifts, groupedTimeline) {
 }
 
 // Renderiza conteúdo de um turno expandido (Complex mode). Itens podem ser dose ou medida.
-function _renderShiftDoses(items, handleOpenRegister) {
+function _renderShiftDoses(items, handleOpenRegister, onSkip = null, busyKey = null) {
   if (items.length === 0) {
     return (
       <View style={styles.emptyShiftContainer}>
@@ -131,7 +135,7 @@ function _renderShiftDoses(items, handleOpenRegister) {
   return items.map((item) =>
     item.kind === 'measure'
       ? <MeasureCard key={item.id} item={item.measure} variant="timeline" />
-      : <DoseTimelineCard key={item.id} dose={item} onRegister={handleOpenRegister} />
+      : <DoseTimelineCard key={item.id} dose={item} onRegister={handleOpenRegister} onSkip={onSkip} busy={!!busyKey && busyKey === item.scheduledFor} />
   )
 }
 
@@ -256,6 +260,7 @@ function TodayModals({
         instancesByKey={instancesByKey}
         instancedItems={bulkModal?.items ?? null}
         entryPoint={bulkModal?.entryPoint ?? null}
+        initialTakenAt={bulkModal?.initialTakenAt ?? null}
         onClose={() => setBulkModal(null)}
         onSuccess={() => { setBulkModal(null); refresh(); refreshTodayMeasures?.() }}
       />
@@ -343,60 +348,165 @@ function TodaySpeedDial({ protocols, speedDialOpen, setSpeedDialOpen, setMeasure
   )
 }
 
-// 090 D-5: o banner lê os itens da ABA ESTOQUE (INV-3 — uma fórmula de dias restantes). Componente
-// próprio para o `useStock` só montar com o controle de estoque LIGADO (sem fetch à toa quando
-// desligado); o snapshot `@dosiq/stock-snapshot` evita rede no 2º acesso.
+// 090 D-5: o estoque da Hoje lê os itens da ABA ESTOQUE (INV-3 — uma fórmula de dias restantes).
+// Componente próprio para o `useStock` só montar com o controle de estoque LIGADO (sem fetch à toa
+// quando desligado); o snapshot `@dosiq/stock-snapshot` evita rede no 2º acesso. 120 C: não renderiza
+// mais nada — entrega a elegibilidade (alertas + avisos de compra) ao árbitro da tela.
 //
 // `refreshKey` = `capturedAt` do Hoje: cada recarga do Hoje (inclusive a que segue um registro de
-// dose) relê o estoque. Sem isto o banner congelava os dias do 1º render (achado no smoke 28/09).
-// A 1ª montagem já carrega pelo próprio `useStock`; `refresh(true)` fura o throttle de 10 s.
-function TodayStockAlert({ refreshKey }) {
-  const { data: stockData, refresh } = useStock()
+// dose) relê o estoque. Sem isto os dias congelavam no 1º render (achado no smoke 28/09).
+function TodayStockSource({ refreshKey, onChange, protocols }) {
+  const { data: stockData, refresh, loading: stockLoading } = useStock()
   const firstKey = useRef(refreshKey)
+  const focusedOnce = useRef(false)
   const alerts = useMemo(() => deriveStockAlerts(stockData?.active), [stockData])
-  // 105 G-B5: próxima compra (mensal / etapa de passagem), neutra, ≤ 7 dias.
+  // 105 G-B5: próxima compra (mensal / etapa de passagem), ≤ 7 dias.
   const supplyNotices = useMemo(
-    () => deriveSupplyNotices(stockData?.active, stockData?.localDay ?? getTodayLocal()),
-    [stockData],
+    () => deriveSupplyNotices(stockData?.active, stockData?.localDay ?? getTodayLocal(), protocols),
+    [stockData, protocols],
   )
   useEffect(() => {
     if (refreshKey === firstKey.current) return
     refresh(true)
   }, [refreshKey, refresh])
+  // S-19 (smoke 14/11): comprou na aba Estoque e voltou ⇒ o aviso tem de refletir já, sem puxar para
+  // atualizar. 1º foco = montagem (o `useStock` já carregou); dali em diante relê a cada volta à aba.
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) refresh(true)
+      focusedOnce.current = true
+    }, [refresh]),
+  )
+  // Reporta só quando o CONTEÚDO muda: referência nova com os mesmos itens (refetch, cache) não pode
+  // re-renderizar a tela pai — com o estado subindo, isso viraria laço de render.
+  // S-23: `ready` = 1ª carga do estoque terminou (com dado ou erro). Antes disso o árbitro escolheria
+  // sem o estoque e trocaria o card 1–2 s depois.
+  const ready = !stockLoading || !!stockData
+  const signature = JSON.stringify([alerts, supplyNotices, ready])
+  useEffect(() => {
+    onChange({ alerts, supplyNotices, ready })
+  }, [signature, onChange]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => onChange(EMPTY_STOCK), [onChange])
+  return null
+}
+
+const EMPTY_STOCK = { alerts: [], supplyNotices: [], ready: false }
+
+// 120 C · ADR-129: o slot de ALERTA renderiza só o que o árbitro escolheu (≤ 1).
+function TodayAlertSlot(props: any) {
+  // S-23: até 2 avisos (o 2º só no caso do árbitro: vermelho + técnico, sem hero).
   return (
     <>
-      <StockAlertInline alerts={alerts} />
-      <SupplyNoticeInline notices={supplyNotices} />
+      <TodayAlertView {...props} alert={props.surfaces.alert} />
+      <TodayAlertView {...props} alert={props.surfaces.companion} />
     </>
   )
 }
 
-function TodayBannersSection({
-  stockTrackingEnabled,
-  stockRefreshKey,
-  priorityDoses = [],
-  heroItems,
-  setBulkModal,
-  otaBanner,
-  dashboardNudge,
-  applyUpdate,
-  handleNudgeAction,
-  dismissNudge,
-  permissionCard = null,
-}: any) {
+function TodayAlertView({ alert, surfaces, pushReach, remindableProtocols, oemReason, onOemAdjust, onOemDismiss, applyUpdate }: any) {
+  if (!alert) return null
+  switch (alert.kind) {
+    case 'push':
+      return <TodayPushPermission reach={pushReach} protocols={remindableProtocols} />
+    case 'oem':
+      return <OemBatteryAssistantCard reason={oemReason as 'restricted' | 'battery'} onAdjust={onOemAdjust} onDismiss={onOemDismiss} />
+    case 'ota':
+      return <TodayOtaCard onApply={applyUpdate} />
+    default:
+      return (
+        <TodayAlertCard
+          payload={alert.payload}
+          stockCount={surfaces.stockCount}
+          onDismiss={() => surfaces.dismissAlert(alert.key)}
+        />
+      )
+  }
+}
+
+// 120 C (FR-013): bloco de doses — hero (com carry-over; a seção "Doses pendentes" saiu: repetia os
+// mesmos itens, A-6) · troca de etapa · "doses de hoje sem registro" (só sem hero).
+function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evoRefreshTick, unloggedGroups, onSeeAgenda }: any) {
   return (
     <>
-      {/* 120 D-1 (rev. 13/11, 121 FR-002): permissão primeiro na faixa de alertas, acima do hero. */}
-      {permissionCard}
-      {stockTrackingEnabled && <TodayStockAlert refreshKey={stockRefreshKey} />}
-      {priorityDoses.length > 0 ? (
+      {priorityDoses.length > 0 && (
         <HeroDoseCard doses={priorityDoses} onPress={() => setBulkModal({ mode: 'hero', items: heroItems })} />
-      ) : (
-        <NudgeBanner
-          nudge={otaBanner ?? dashboardNudge}
-          onAction={otaBanner ? applyUpdate : handleNudgeAction}
-          onDismiss={otaBanner ? undefined : dismissNudge}
+      )}
+      <EvolutionSwitchSection timezone={timezone} refreshToken={evoRefreshTick} />
+      {priorityDoses.length === 0 && (
+        <UnloggedDosesCard groups={unloggedGroups} onSeeAgenda={onSeeAgenda} />
+      )}
+    </>
+  )
+}
+
+// 120 C · ADR-129: tudo que o árbitro decide (bloco de doses, alerta, promo) num lugar — a tela
+// só passa dados. Elegibilidade de cada superfície continua nos hooks dela.
+function TodayPrioritySection({
+  data, protocols, scheduledProtocols, priorityDoses, heroItems, timeline, setBulkModal,
+  otaIdle, nudgeApi, navigation, evoRefreshTick, onSeeAgenda,
+}: any) {
+  // States
+  const [stockSource, setStockSource] = useState(EMPTY_STOCK)
+  // Memos
+  const unloggedGroups = useMemo(() => groupUnloggedDoses(timeline), [timeline])
+  // Hooks de elegibilidade
+  const { enabled: stockTrackingEnabled } = useStockTracking()
+  const { visible: stockUpsellVisible, dismiss: dismissStockUpsell } = useStockUpsell(data?.timezone)
+  // 120 E-7: alcance do push — fonte única do card de permissão e do gate do card de bateria (S-2).
+  const { reach: pushReach, remindable: remindableProtocols } = useTodayPushPermission({ data, protocols, scheduledProtocols })
+  const { eligible: oemEligible, dismissed: oemDismissed, reason: oemReason, dismiss: dismissOem } = useOemBatteryAssistant({ hasTreatment: hasRemindableTreatment(protocols), pushUsable: pushReach.usable })
+  const { updateReady, applyUpdate } = useOtaUpdate()
+  const surfaces = useTodaySurfaces({
+    userId: data?.user?.id ?? null,
+    hasHero: priorityDoses.length > 0,
+    push: { usable: pushReach.usable, snoozed: pushReach.snoozed, remindable: hasRemindableTreatment(remindableProtocols) },
+    oem: { eligible: oemEligible, dismissed: oemDismissed },
+    // 120 C (C-4): OTA pronto é alerta TÉCNICO #7 (não mais nudge); espera ocioso como antes (E-8).
+    otaReady: !!updateReady && otaIdle,
+    stockUpsellVisible,
+    nudge: nudgeApi.nudge,
+    stockAlerts: stockTrackingEnabled ? stockSource.alerts : [],
+    supplyNotices: stockTrackingEnabled ? stockSource.supplyNotices : [],
+    protocols,
+  })
+  useTodaySurfaceSignal(surfaces)
+
+  const dosesBlock = (
+    <TodayDosesBlock
+      priorityDoses={priorityDoses}
+      heroItems={heroItems}
+      setBulkModal={setBulkModal}
+      timezone={data?.timezone}
+      evoRefreshTick={evoRefreshTick}
+      unloggedGroups={unloggedGroups}
+      onSeeAgenda={onSeeAgenda}
+    />
+  )
+  return (
+    <>
+      {stockTrackingEnabled && <TodayStockSource refreshKey={data?.capturedAt} onChange={setStockSource} protocols={protocols} />}
+      {surfaces.dosesFirst && dosesBlock}
+      {(!stockTrackingEnabled || stockSource.ready) && (
+        <TodayAlertSlot
+          surfaces={surfaces}
+          pushReach={pushReach}
+          remindableProtocols={remindableProtocols}
+          oemReason={oemReason}
+          onOemAdjust={() => navigation?.navigate?.(ROUTES.OEM_BATTERY_ASSISTANT)}
+          onOemDismiss={dismissOem}
+          applyUpdate={applyUpdate}
         />
+      )}
+      {!surfaces.dosesFirst && dosesBlock}
+      {/* 120 C (D-8): no máximo 1 promo, entre o bloco de doses e a agenda; some com alerta técnico. */}
+      {surfaces.promo === 'stock_upsell' && (
+        <StockUpsellCard
+          onActivate={() => navigation?.navigate?.(ROUTES.STOCK_INITIAL_BALANCE, { source: 'upsell' })}
+          onDismiss={dismissStockUpsell}
+        />
+      )}
+      {surfaces.promo === 'nudge' && (
+        <NudgeBanner nudge={nudgeApi.nudge} onAction={nudgeApi.handleAction} onDismiss={nudgeApi.dismiss} />
       )}
     </>
   )
@@ -414,28 +524,17 @@ function TodayScreenContent({
   todayMeasures,
   navigation,
 }: any) {
-  const { nudge: dashboardNudge, dismiss: dismissNudge, handleAction: handleNudgeAction, refresh: refreshNudge } = useNudges('dashboard')
-  const { enabled: stockTrackingEnabled } = useStockTracking()
-  const { visible: stockUpsellVisible, dismiss: dismissStockUpsell } = useStockUpsell(data?.timezone)
-  // 120 E-7: alcance do push — fonte única do card de permissão e do gate do card de bateria (S-2).
-  const { reach: pushReach, remindable: remindableProtocols, visible: permissionVisible } = useTodayPushPermission({ data, protocols, scheduledProtocols })
-  const { visible: oemAssistantVisible, reason: oemReason, dismiss: dismissOemAssistant } = useOemBatteryAssistant({ hasTreatment: hasRemindableTreatment(protocols), pushUsable: pushReach.usable })
   const [evoRefreshTick, setEvoRefreshTick] = useState(0)
   const [speedDialOpen, setSpeedDialOpen] = useState(false)
   const [measureLogOpen, setMeasureLogOpen] = useState(false)
-
-  const { updateReady, applyUpdate } = useOtaUpdate()
+  const scrollRef = useRef<any>(null)
+  const agendaY = useRef(0)
+  // Smoke 14/11 (S-10): tocar na aba Hoje já ativa volta ao topo (padrão de tabs).
+  useScrollToTop(scrollRef)
+  const nudgeApi = useNudges('dashboard')
   const alarmScreenActive = useAlarmScreenActive()
   const isIdleForOtaBanner = modalProtocol === null && bulkModal === null
     && !measureLogOpen && !speedDialOpen && !alarmScreenActive
-  const otaBanner = (updateReady && isIdleForOtaBanner)
-    ? {
-        title: 'Atualização no Dosiq',
-        body: 'Uma nova atualização de segurança no app foi baixada e está pronta para uso.',
-        action_type: 'apply',
-        action_payload: { label: 'Reiniciar o aplicativo' },
-      }
-    : null
 
   const priorityDoses = useMemo(() => {
     const todayUrgent = timeline.filter((d: any) => d.timelineStatus === 'PROXIMA' || d.timelineStatus === 'ATRASADA')
@@ -443,7 +542,6 @@ function TodayScreenContent({
     return [...carryOver, ...todayUrgent, ...aheadImminent]
       .sort((a: any, b: any) => (a.scheduledFor || '').localeCompare(b.scheduledFor || ''))
   }, [carryOver, timeline, lookAhead])
-  const promoCard = pickPromoCard({ hasHero: priorityDoses.length > 0, nudge: otaBanner ?? dashboardNudge, stockVisible: stockUpsellVisible, oemVisible: oemAssistantVisible, permissionVisible })
 
   const instancesByKey = useMemo(() => timeline.reduce((map: any, d: any) => {
     if (d.instanceId && d.protocol?.id && d.scheduledTime) {
@@ -468,6 +566,20 @@ function TodayScreenContent({
   const userId = data?.user?.id ?? ''
   const lastTodayMeasure = todayMeasures?.[0] ?? null
 
+  const late = useLateDoseActions({ setBulkModal, refresh })
+  // SEM_REGISTRO na agenda ⇒ registro tardio (lote c/ hora prevista); na janela ⇒ modal de sempre.
+  const agendaRegister = useCallback((protocol: any, scheduledTime: any, instanceId: any, dose: any) => {
+    if (dose?.timelineStatus === 'SEM_REGISTRO') late.registerLate([dose])
+    else handleOpenRegister(protocol, scheduledTime, instanceId)
+  }, [late, handleOpenRegister])
+  // "Ver na agenda" do card resumo: abre (modo complexo) o turno da 1ª dose sem registro e rola.
+  const scrollToAgenda = useCallback(() => {
+    const first = timeline.find((d: any) => d.timelineStatus === 'SEM_REGISTRO')
+    const shift = first && isComplex ? shifts.find((s: any) => (groupedTimeline[s] || []).includes(first)) : null
+    if (shift && !expandedShifts[shift]) toggleShift(shift)
+    scrollRef.current?.scrollTo?.({ y: Math.max(0, agendaY.current - 8), animated: true })
+  }, [timeline, isComplex, shifts, groupedTimeline, expandedShifts, toggleShift])
+
   const handleSaveMeasure = useCallback(async (payload: any) => {
     const created = await measuresRepo.create(payload)
     refreshTodayMeasures?.()
@@ -482,60 +594,27 @@ function TodayScreenContent({
     <ScreenContainer>
       {stale && <StaleBanner />}
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={() => { refresh(); refreshNudge(); setEvoRefreshTick((t) => t + 1) }} tintColor={colors.status.success} />}
+        refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={() => { refresh(); nudgeApi.refresh(); setEvoRefreshTick((t) => t + 1) }} tintColor={colors.status.success} />}
       >
         <TodayHeader greeting={greeting} todayFormatted={todayFormatted} />
         <AdherenceDayCard score={stats.score} trend={adherenceTrend} />
-        <EvolutionSwitchSection timezone={data?.timezone} refreshToken={evoRefreshTick} />
-        <TodayBannersSection
-          stockTrackingEnabled={stockTrackingEnabled}
-          stockRefreshKey={data?.capturedAt}
-          priorityDoses={priorityDoses}
-          heroItems={heroItems}
-          setBulkModal={setBulkModal}
-          otaBanner={otaBanner}
-          dashboardNudge={dashboardNudge}
-          applyUpdate={applyUpdate}
-          handleNudgeAction={handleNudgeAction}
-          dismissNudge={dismissNudge}
-          permissionCard={<TodayPushPermission reach={pushReach} protocols={remindableProtocols} />}
+        <TodayPrioritySection
+          data={data} protocols={protocols} scheduledProtocols={scheduledProtocols}
+          priorityDoses={priorityDoses} heroItems={heroItems} timeline={timeline}
+          setBulkModal={setBulkModal} otaIdle={isIdleForOtaBanner} nudgeApi={nudgeApi}
+          navigation={navigation} evoRefreshTick={evoRefreshTick} onSeeAgenda={scrollToAgenda}
         />
-        <OptionalDoseSection
-          title="Doses pendentes"
-          subtitle="Doses anteriores ainda no prazo de registro"
-          doses={carryOver}
-          onRegister={handleOpenRegister}
-          keyPrefix="carry"
-          isCarryOver
-        />
-        {/* Upsell de estoque (spec 044, F4b / T018) — nudge, não modal (R-239). Posição do
-            mock: entre o card de PENDÊNCIAS e o título "Agenda de Hoje". */}
-        {/* 068 D-5/E-7: no máximo 1 card promocional por render — nudge (intenção) > estoque >
-            assistente de bateria (passivo cede). */}
-        {promoCard === 'stock' && (
-          <StockUpsellCard
-            onActivate={() =>
-              navigation?.navigate?.(ROUTES.STOCK_INITIAL_BALANCE, { source: 'upsell' })
-            }
-            onDismiss={dismissStockUpsell}
-          />
-        )}
-        {promoCard === 'oem' && (
-          <OemBatteryAssistantCard
-            reason={oemReason as 'restricted' | 'battery'}
-            onAdjust={() => navigation?.navigate?.(ROUTES.OEM_BATTERY_ASSISTANT)}
-            onDismiss={dismissOemAssistant}
-          />
-        )}
-        <View style={styles.agendaHeader}>
+        <View style={styles.agendaHeader} onLayout={(e) => { agendaY.current = e.nativeEvent.layout.y }}>
           <Text style={styles.agendaTitle}>Agenda de Hoje</Text>
         </View>
         <TodayAgendaContent
           protocols={protocols} hasAnyTreatment={hasAnyTreatment} nextDoseLabel={nextDoseLabel}
           isComplex={isComplex} timeline={timeline}
           shifts={shifts} groupedTimeline={groupedTimeline} countsByShift={countsByShift}
-          expandedShifts={expandedShifts} toggleShift={toggleShift} handleOpenRegister={handleOpenRegister}
+          expandedShifts={expandedShifts} toggleShift={toggleShift} handleOpenRegister={agendaRegister}
+          onSkip={late.skipDose} busyKey={late.busyKey}
         />
         <OptionalDoseSection title="Em breve" doses={lookAhead} onRegister={handleOpenRegister} keyPrefix="ahead" />
 
@@ -601,7 +680,7 @@ function NoDoseToday({ nextDoseLabel, measures = [] }) {
 }
 
 // Renderiza a agenda de doses (Simple ou Complex mode)
-function TodayAgendaContent({ protocols, hasAnyTreatment, nextDoseLabel, isComplex, timeline, shifts, groupedTimeline, countsByShift, expandedShifts, toggleShift, handleOpenRegister }) {
+function TodayAgendaContent({ protocols, hasAnyTreatment, nextDoseLabel, isComplex, timeline, shifts, groupedTimeline, countsByShift, expandedShifts, toggleShift, handleOpenRegister, onSkip = null, busyKey = null }: any) {
   // 086 D-13: primeiro uso = nenhum tratamento ativo, nem agendado. Quem TEM tratamento (que começa
   // no futuro, ou sem dose hoje) nunca é convidada a "criar o primeiro" — risco de cadastro duplicado.
   if (!hasAnyTreatment) {
@@ -626,7 +705,7 @@ function TodayAgendaContent({ protocols, hasAnyTreatment, nextDoseLabel, isCompl
         {timeline.map((item) =>
           item.kind === 'measure'
             ? <MeasureCard key={item.id} item={item.measure} variant="timeline" />
-            : <DoseTimelineCard key={item.id} dose={item} onRegister={handleOpenRegister} />
+            : <DoseTimelineCard key={item.id} dose={item} onRegister={handleOpenRegister} onSkip={onSkip} busy={!!busyKey && busyKey === item.scheduledFor} />
         )}
       </View>
     )
@@ -646,7 +725,7 @@ function TodayAgendaContent({ protocols, hasAnyTreatment, nextDoseLabel, isCompl
         />
         {isExpanded && (
           <View style={styles.dosesList}>
-            {_renderShiftDoses(doses, handleOpenRegister)}
+            {_renderShiftDoses(doses, handleOpenRegister, onSkip, busyKey)}
           </View>
         )}
       </View>

@@ -208,4 +208,27 @@ describe('BulkDoseRegisterModal', () => {
       expect(getAllByText('Plano Cardio')).toHaveLength(1)
     })
   })
+
+  // 120 C (C1.5 C-3 · PO-120-16): registro tardio abre com o horário PREVISTO e marca `late`.
+  it('initialTakenAt ⇒ taken_at = horário previsto e late:true no registro', async () => {
+    const { getByText } = render(<BulkDoseRegisterModal {...DEFAULT_PROPS} initialTakenAt="2026-11-14T11:00:00.000Z" />)
+    await waitFor(() => expect(getByText('Registrar 4 doses')).toBeTruthy())
+    await act(async () => {
+      fireEvent.press(getByText('Registrar 4 doses'))
+    })
+    await waitFor(() => {
+      const [logs, opts] = registerDoseMany.mock.calls[0]
+      expect(logs.every((l) => l.taken_at === '2026-11-14T11:00:00.000Z')).toBe(true)
+      expect(opts).toEqual(expect.objectContaining({ late: true }))
+    })
+  })
+
+  it('sem initialTakenAt ⇒ late:false (comportamento de sempre)', async () => {
+    const { getByText } = render(<BulkDoseRegisterModal {...DEFAULT_PROPS} />)
+    await waitFor(() => expect(getByText('Registrar 4 doses')).toBeTruthy())
+    await act(async () => {
+      fireEvent.press(getByText('Registrar 4 doses'))
+    })
+    await waitFor(() => expect(registerDoseMany.mock.calls[0][1]).toEqual(expect.objectContaining({ late: false })))
+  })
 })

@@ -7,6 +7,23 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### A Hoje mostra só o aviso que importa e deixa corrigir o dia (spec 120, Fatia C)
+
+- **Mobile** (`Changed`/`Added`, **patch** `APP_VERSION` 0.34.23 → **0.34.24**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — muda o propósito da tela inicial e cria ações novas):
+  - **Um aviso por vez.** Quando vários avisos valem ao mesmo tempo, aparece só o mais importante: sem estoque com dose nas próximas 24 h › lembretes desligados › estoque acabando (até 3 dias, ou 1 dose no não diário) › próxima compra › estoque baixo › bateria do aparelho › atualização pronta. Se há dose para agora, ela vem antes do aviso. **Exceção:** sem dose agora, se o aviso é vermelho e os lembretes (ou a bateria) também estão com problema, os dois aparecem — um agrava o outro.
+  - **Sem avisos em fila.** Resolveu ou dispensou o aviso (ou o banner), o próximo só aparece quando o app voltar ao primeiro plano; a falta de remédio para a dose das próximas 24 h não espera. Na abertura, o espaço do aviso espera o estoque carregar, sem trocar de card.
+  - **Nada some sem rastro.** O aviso que não coube (ou que a pessoa dispensou, inclusive a bateria em "Não mostrar de novo") deixa um ponto na aba Estoque ou no Perfil (Notificações e a engrenagem das Preferências, Alarme e bateria) enquanto existir. Sair da conta apaga os pontos.
+  - **Aviso de estoque com uma cara só** e ícone por situação: sem estoque (vermelho), acabando (âmbar), estoque baixo (neutro). O toque abre o registro de compra **daquele** remédio; X de dispensar volta se a situação piorar ou em 7 dias. A Hoje relê o estoque ao voltar para a aba.
+  - **Próxima compra escala como a aba Estoque:** neutra; a 1–2 dias, âmbar; no dia, vermelha. O título diz a cadência real ("Dose semanal/quinzenal/mensal/a cada N dias de X") e "hoje"/"amanhã" perto da data.
+  - **Lembretes desligados no Android abrem direto no canal certo** — o comum ou, para quem tem alarme crítico, o de doses críticas (antes ninguém avisava que ele estava desligado). O card do alarme crítico também abre direto o canal do alarme.
+  - **Corrigir o dia.** Sem dose para agora, um resumo "N doses de hoje sem registro" leva à agenda. Lá, a dose que passou do prazo deixa de aparecer como perdida até o fim do dia e ganha **Registrar** (já com o horário previsto, editável) e **Pular** compactos; na janela, **Tomar** ganha o **Pular** ao lado. Pular registra a decisão no horário da dose; a correção para "tomada" fica no histórico.
+  - Banner de divulgação só aparece sem aviso técnico pendente (mesmo escondido por outro aviso), entre as doses e a agenda; a atualização pronta passa a ser aviso. A seção "Doses pendentes" saiu (as doses já estão no card em destaque). Tocar na aba Hoje já aberta volta ao topo.
+- **Mobile** (`Fixed`): a agenda mostra o nome do remédio gravado na dose, não o do tratamento atual (R-299); o histórico de doses mostra a hora em que a dose foi registrada (a mesma da ordenação), não a prevista.
+- **Core** (`Fixed`, comportamental — app **e** servidor): na escada com troca de remédio, se o estoque do remédio da etapa **atual** acaba antes do fim da etapa, a compra avisada passa a ser dele (antes saía o nome do remédio da próxima etapa com a data do atual, ou nada se o próximo já tinha estoque).
+- **Core** (`Added`): `deriveStockForecast` ganha `isUrgent` e `STOCK_URGENT_DAYS = 3` (aditivo, CON-046).
+- **Backend** (`Changed`, sem version source): o push de compra para "amanhã" passa a "🗓️ Dose de amanhã sem estoque" (antes "Dose mensal amanhã", que agora também vale para a escada semanal). Vale após o deploy do servidor.
+- **Docs** (`Added`): `docs/architecture/TODAY_SURFACES.md` — modelo das superfícies da Hoje e regra de manutenção.
+
 ### Enfileiramento de relatórios ignora conta apagada em vez de falhar o ciclo (DOSIQ-SERVER-C)
 
 - **Backend** (`Fixed`, **patch** comportamental, sem version source): quando havia configurações de notificação de uma conta que já não existe, o enfileiramento de relatórios errava com violação de chave estrangeira e o ciclo todo caía, atrasando os relatórios dos demais usuários. Agora a conta sem cadastro é ignorada, o restante entra na fila normalmente e o aviso no log informa quantas contas foram ignoradas. Apareceu no ambiente de QA (3 de 16 configurações órfãs); a mesma classe de erro valia para produção.

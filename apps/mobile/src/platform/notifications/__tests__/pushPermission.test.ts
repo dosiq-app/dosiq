@@ -8,13 +8,14 @@ jest.mock('expo-notifications', () => ({
   getNotificationChannelAsync: jest.fn(),
   AndroidImportance: { NONE: 1, MIN: 2, LOW: 3, DEFAULT: 4, HIGH: 5 },
 }))
+jest.mock('expo-application', () => ({ applicationId: 'app.dosiq.test' }))
 jest.mock('../registerPushToken', () => ({ registerPushToken: jest.fn(() => Promise.resolve()) }))
 const mockLogEvent = jest.fn()
 jest.mock('@platform/analytics/productAnalytics', () => ({ logEvent: (...a: any[]) => mockLogEvent(...a) }))
 
 import { getPushPermissionStatus, ensurePushPermission } from '../pushPermission'
 import { registerPushToken } from '../registerPushToken'
-import { enablePushAtIntent, getPushChannelState, requestPushOrOpenSettings, getPushAskMode, PUSH_OS_BLOCKED_KEY } from '../pushPermission'
+import { enablePushAtIntent, getPushChannelState, requestPushOrOpenSettings, getPushAskMode, openPushSettings, PUSH_OS_BLOCKED_KEY } from '../pushPermission'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const RN = require('react-native')
@@ -235,5 +236,39 @@ describe('pushPermission — medição por ponto de pedido (120 PO-120-5)', () =
     expect(await requestPushOrOpenSettings({ supabase: {}, entryPoint: 'today_banner' })).toBe(false)
     expect(req).not.toHaveBeenCalled()
     expect(spy).toHaveBeenCalled()
+  })
+})
+
+describe('openPushSettings — U-1 (120 C)', () => {
+  it('Android com permissão ⇒ abre direto a tela do canal de push', async () => {
+    RN.Platform.OS = 'android'
+    get.mockResolvedValue({ status: 'granted', canAskAgain: true, granted: true })
+    const send = jest.spyOn(RN.Linking, 'sendIntent').mockResolvedValue(undefined)
+    const open = jest.spyOn(RN.Linking, 'openSettings').mockResolvedValue(undefined)
+    await openPushSettings()
+    expect(send).toHaveBeenCalledWith('android.settings.CHANNEL_NOTIFICATION_SETTINGS', [
+      { key: 'android.provider.extra.APP_PACKAGE', value: 'app.dosiq.test' },
+      { key: 'android.provider.extra.CHANNEL_ID', value: expect.any(String) },
+    ])
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('intent falha ⇒ cai na página do app', async () => {
+    RN.Platform.OS = 'android'
+    get.mockResolvedValue({ status: 'granted', canAskAgain: true, granted: true })
+    jest.spyOn(RN.Linking, 'sendIntent').mockRejectedValue(new Error('no activity'))
+    const open = jest.spyOn(RN.Linking, 'openSettings').mockResolvedValue(undefined)
+    await openPushSettings()
+    expect(open).toHaveBeenCalledTimes(1)
+  })
+
+  it('Android sem permissão ⇒ página do app (o bloqueio não é o canal)', async () => {
+    RN.Platform.OS = 'android'
+    get.mockResolvedValue({ status: 'denied', canAskAgain: false, granted: false })
+    const send = jest.spyOn(RN.Linking, 'sendIntent').mockResolvedValue(undefined)
+    const open = jest.spyOn(RN.Linking, 'openSettings').mockResolvedValue(undefined)
+    await openPushSettings()
+    expect(send).not.toHaveBeenCalled()
+    expect(open).toHaveBeenCalledTimes(1)
   })
 })
