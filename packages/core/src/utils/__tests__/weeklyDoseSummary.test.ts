@@ -4,6 +4,7 @@ import {
   resolveNextOpenDay,
   normalizeIntervalDays,
   resolveEarlyAnchorInstance,
+  summarizeDailyWindow,
   summarizeWeeklyDose,
 } from '../weeklyDoseSummary'
 
@@ -166,5 +167,136 @@ describe('resolveNextOpenDay (smoke 121 B: "Já apliquei" na 1ª dose futura)', 
     expect(resolveNextOpenDay(days, inst, TZ)).toBe('2026-11-25')
     expect(resolveNextOpenDay(days, null, TZ)).toBe('2026-11-18')
     expect(resolveNextOpenDay([], [], TZ)).toBeNull()
+  })
+})
+
+// ─── 121 C · L1 diária — janela móvel de 7 d (PO-16, PO-17; decisões PO 17/11) ───────
+// Fixtures em instante local de São Paulo (−03:00), nunca derivadas de toISOString (AP-270).
+describe('summarizeDailyWindow', () => {
+  const everyDay = () => true
+  const at = (day: string, hm: string) => `${day}T${hm}:00-03:00`
+  const now = (day: string, hm: string) => new Date(at(day, hm))
+  const base = { isScheduled: everyDay, startDay: '2026-10-01', truncated: false, tz: TZ }
+
+  it('7 dias terminando hoje (hoje na ponta direita), segunda não zera a faixa', () => {
+    const s = summarizeDailyWindow({
+      ...base, timesOfDay: ['08:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '07:00'),
+      applications: [{ taken_at: at('2026-11-15', '08:10') }, { taken_at: at('2026-11-13', '08:00') }],
+    })
+    expect(s.days.map((d) => d.day)).toEqual(['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16'])
+    expect(s.days.map((d) => d.state)).toEqual(['open', 'open', 'open', 'full', 'open', 'full', 'pending'])
+    expect(s.days[6].isToday).toBe(true)
+    expect(s.taken).toBe(2)
+    expect(s.due).toBe(6) // hoje 08:00 ainda não venceu ⇒ fora da conta (decisão 2)
+    expect(s.since).toBeNull()
+  })
+
+  it('R-299: passado pelas ocorrências gravadas — trocar 1→2 horários não reescreve a semana', () => {
+    const days = ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15']
+    const s = summarizeDailyWindow({
+      ...base, timesOfDay: ['08:00', '20:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '07:00'),
+      applications: days.map((d) => ({ taken_at: at(d, '08:05') })),
+      pastInstances: days.map((d) => ({ scheduled_for: at(d, '08:00'), status: 'taken' })),
+    })
+    expect(s.days.slice(0, 6).map((d) => d.state)).toEqual(['full', 'full', 'full', 'full', 'full', 'full'])
+    expect(s.days.slice(0, 6).every((d) => d.scheduled === 1)).toBe(true)
+    expect(s.days[6].scheduled).toBe(2) // hoje = horário atual
+    expect(s.taken).toBe(6)
+    expect(s.due).toBe(6)
+  })
+
+  it('R-299: dia pausado gravado = off; dia sem ocorrência gravada cai no calendário atual', () => {
+    const s = summarizeDailyWindow({
+      ...base, timesOfDay: ['08:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '07:00'),
+      applications: [],
+      pastInstances: [
+        { scheduled_for: at('2026-11-14', '08:00'), status: 'skipped_paused' },
+        { scheduled_for: at('2026-11-15', '08:00'), status: 'skipped_user' },
+        { scheduled_for: at('2026-11-16', '08:00'), status: 'pending' }, // hoje: ignorada
+      ],
+    })
+    const by = Object.fromEntries(s.days.map((d) => [d.day, d]))
+    expect(by['2026-11-14'].state).toBe('off')
+    expect(by['2026-11-15']).toMatchObject({ state: 'open', scheduled: 1 })
+    expect(by['2026-11-13']).toMatchObject({ state: 'open', scheduled: 1 }) // sem fato ⇒ calendário
+    expect(s.due).toBe(5)
+  })
+
+  it('R-299: pastInstances null (leitura falhou) ⇒ calendário atual', () => {
+    const s = summarizeDailyWindow({
+      ...base, timesOfDay: ['08:00', '20:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '07:00'),
+      applications: [], pastInstances: null,
+    })
+    expect(s.days[0].scheduled).toBe(2)
+  })
+
+  it('dose de hoje entra só depois da janela (08:00 + 120 min)', () => {
+    const args = { ...base, timesOfDay: ['08:00'], todayLocal: '2026-11-16', applications: [] }
+    expect(summarizeDailyWindow({ ...args, now: now('2026-11-16', '09:59') }).days[6].state).toBe('pending')
+    const after = summarizeDailyWindow({ ...args, now: now('2026-11-16', '10:00') })
+    expect(after.days[6].state).toBe('open')
+    expect(after.due).toBe(7)
+  })
+
+  it('2 doses/dia: 1 de 2 vencidas = parcial; registro adiantado conta; extra não passa do previsto', () => {
+    const s = summarizeDailyWindow({
+      ...base, timesOfDay: ['08:00', '20:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '15:00'),
+      applications: [
+        { taken_at: at('2026-11-16', '08:05') },
+        { taken_at: at('2026-11-15', '08:00') },
+        { taken_at: at('2026-11-14', '08:00') }, { taken_at: at('2026-11-14', '20:00') }, { taken_at: at('2026-11-14', '22:00') },
+      ],
+    })
+    const by = Object.fromEntries(s.days.map((d) => [d.day, d]))
+    expect(by['2026-11-14']).toMatchObject({ state: 'full', registered: 2, scheduled: 2 })
+    expect(by['2026-11-15']).toMatchObject({ state: 'partial', registered: 1 })
+    expect(by['2026-11-16']).toMatchObject({ state: 'full', registered: 1, due: 1 }) // 20:00 ainda por vir
+    expect(s.todayLast).toEqual({ time: '08:05' })
+    expect(s.taken).toBe(4)
+    expect(s.due).toBe(13) // 6 dias × 2 + hoje 1
+  })
+
+  it('registro antes da janela fechar entra nos dois lados (nunca "2 de 1")', () => {
+    const s = summarizeDailyWindow({ ...base, timesOfDay: ['20:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '19:30'), applications: [{ taken_at: at('2026-11-16', '19:25') }] })
+    expect(s.days[6]).toMatchObject({ state: 'full', registered: 1 })
+    expect(s.taken).toBe(1)
+    expect(s.due).toBe(7)
+  })
+
+  it('registro 23:30 local conta no dia LOCAL (UTC já é o dia seguinte)', () => {
+    const s = summarizeDailyWindow({ ...base, timesOfDay: ['23:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '07:00'), applications: [{ taken_at: '2026-11-16T02:30:00.000Z' }] })
+    expect(s.days[5]).toMatchObject({ day: '2026-11-15', state: 'full' })
+  })
+
+  it('tratamento com menos de 7 dias: faixa começa no início e devolve `since`', () => {
+    const s = summarizeDailyWindow({ ...base, startDay: '2026-11-14', timesOfDay: ['08:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '12:00'), applications: [] })
+    expect(s.days.map((d) => d.day)).toEqual(['2026-11-14', '2026-11-15', '2026-11-16'])
+    expect(s.since).toBe('2026-11-14')
+    expect(s.due).toBe(3)
+  })
+
+  it('dia não previsto ⇒ off, fora da conta; sem horários ⇒ nada vence', () => {
+    const s = summarizeDailyWindow({ ...base, isScheduled: (d) => d !== '2026-11-12', timesOfDay: ['08:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '12:00'), applications: [] })
+    expect(s.days[2]).toMatchObject({ day: '2026-11-12', state: 'off' })
+    expect(s.due).toBe(6)
+    const none = summarizeDailyWindow({ ...base, timesOfDay: [], todayLocal: '2026-11-16', now: now('2026-11-16', '12:00'), applications: [] })
+    expect(none.due).toBe(0)
+  })
+
+  it('null / taken_at inválido ⇒ ignorado, nunca lança', () => {
+    const s = summarizeDailyWindow({ ...base, timesOfDay: ['08:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '12:00'), applications: null })
+    expect(s.taken).toBe(0)
+    const bad = summarizeDailyWindow({ ...base, timesOfDay: ['08:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '12:00'), applications: [{ taken_at: 'xx' }] })
+    expect(bad.taken).toBe(0)
+  })
+
+  it('lista truncada (C-A3): dias antes do registro mais antigo carregado = unknown, fora da conta', () => {
+    const s = summarizeDailyWindow({
+      ...base, truncated: true, timesOfDay: ['08:00'], todayLocal: '2026-11-16', now: now('2026-11-16', '12:00'),
+      applications: [{ taken_at: at('2026-11-16', '08:00') }, { taken_at: at('2026-11-15', '08:00') }],
+    })
+    expect(s.days.slice(0, 5).every((d) => d.state === 'unknown')).toBe(true)
+    expect(s.taken).toBe(2)
+    expect(s.due).toBe(2)
   })
 })

@@ -184,7 +184,7 @@ function timeToMinutes(time: string): number | null {
  * @param {string} frequency - frequência normalizada (lowercase) do protocolo
  * @returns {{tolerance: number, earlyWindow: number}[]} janela por slot (ordem de sortedMinutes)
  */
-function computeTolerances(
+export function computeTolerances(
   sortedMinutes: number[],
   frequency: string,
   intervalDays: number | null = null

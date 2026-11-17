@@ -7,6 +7,18 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### A linha Dose chega ao GLP-1 diário e a quem cadastrou a caneta como comprimido (spec 121, Fatia C)
+
+- **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.28 → **0.34.29**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — feature nova na tela inicial):
+  - **Tratamento diário** (oral ou injetável) ganha a linha Dose no cartão "Semana do tratamento": "Tomado hoje · 08:05" (injetável: "Aplicado hoje · 08:05") ou "Hoje às 20:00" (o próximo horário de hoje), e embaixo "11 de 13 doses nos últimos 7 dias" (injetável: "aplicações"; tratamento com menos de 7 dias: "desde o início") — sem porcentagem nem cor. A dose de hoje só entra na conta depois que a janela dela fecha, ou quando é registrada. Aberta, mostra os últimos 7 dias terminando hoje: dia com as doses registradas cheio, dia com parte delas meio-cheio na diagonal (como no relatório em PDF), dia que passou sem registro em cinza neutro, hoje ainda por vir vazio; o injetável diário com local registrado mostra também o mapa com a última aplicação. A linha diária não tem botão: a dose do dia continua no destaque do topo e na Agenda.
+  - **GLP-1 semanal cadastrado sem forma injetável** (caneta salva como comprimido, por exemplo) passa a ter a linha Dose, com verbo neutro ("Registrada há 3 dias", "Primeira dose", "Último registro") e sem mapa — o mapa só aparece se o registro tiver local. O botão de adiantar vira "Registrar".
+  - **Linha Evolução em escada diária:** aberta, mostra "Dia 3 de 7 desta etapa" e quando a próxima etapa está prevista, no lugar das bolinhas por dose.
+  - Os dias que já passaram contam as doses que estavam previstas **naquele dia**: mudar o horário ou a frequência do tratamento não reescreve a semana anterior ("7 de 7" não vira "7 de 14" ao passar de 1 para 2 horários). Dia sem esse registro, ou se a busca falhar, usa o horário atual.
+  - Leitura: os registros vêm na mesma busca das aplicações (limite maior) e as doses previstas dos últimos 7 dias numa busca a mais, as duas depois de a tela aparecer — nada novo antes da Hoje ficar pronta.
+- **Core** (`Added`): `summarizeDailyWindow` (`weeklyDoseSummary.ts`) — os últimos 7 dias em doses, com as doses previstas dos dias passados tiradas das ocorrências gravadas (`dose_instances`, pausa fora; sem ocorrência ⇒ calendário do gerador) e a janela de cada dose pela mesma tolerância dele (`computeTolerances` passa a ser exportada); dia sem dado carregado fica fora da conta.
+- **Web**: sem mudança.
+- **Store-note:** "A Semana do tratamento agora acompanha também GLP-1 diário: as doses registradas nos últimos 7 dias e o horário de hoje."
+
 ### A Semana do tratamento ganha a dose da semana e a evolução da escada (spec 121, Fatia B)
 
 - **Mobile** (`Added`, **patch** `APP_VERSION` 0.34.27 → **0.34.28**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — feature nova na tela inicial):

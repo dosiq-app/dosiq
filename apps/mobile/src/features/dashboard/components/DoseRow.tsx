@@ -6,14 +6,19 @@
 // do expandir (INV-1). Aberta (D14): frente e costas, só a ÚLTIMA marcada, sem números (INV-2/AC-14)
 // + "Últimas 4 aplicações" com a data como âncora. Contagem de semanas saiu da L1 (D16 → Evolução).
 // Identidade/local = a linha de FATO (`medicine_logs`, R-299).
+//
+// 121 C: vale para qualquer cadência conhecida (FR-040). Não injetável ⇒ verbo neutro e ícone de
+// comprimido (FR-043). Diário (`daily`) ⇒ sem "Já apliquei" (FR-042) e aberta = faixa dos últimos 7 d
+// (+ mapa só com local na última), SEM lista — não vaza do viewport (C-A5).
 
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
-const { Syringe, ChevronDown, ChevronUp } = LucideIcons as any
+const { Syringe, Pill, ChevronDown, ChevronUp } = LucideIcons as any
 import BodyMapView from '@shared/components/data/BodyMapView'
-import { formatLocalDate, getKnownInjectionSiteLabel, getUserTime, parseISO, type WeeklyDoseSummary } from '@dosiq/core'
+import { formatLocalDate, getKnownInjectionSiteLabel, getUserTime, parseISO, type DailyWindowSummary, type WeeklyDoseSummary } from '@dosiq/core'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
+import WeekStrip from '@dashboard/components/WeekStrip'
 import { doseRowCopy, siteShort, weekdayDate } from '@dashboard/utils/treatmentWeek'
 import type { RecentApplicationRow } from '@dashboard/hooks/useTreatmentWeekDose'
 
@@ -29,7 +34,14 @@ type Props = {
   onRetry: () => void
   canRegisterEarly: boolean
   onRegisterEarly: () => void
+  /** FR-043: forma cadastrada injetável — muda só verbo/ícone, nunca a elegibilidade. */
+  injectable?: boolean
+  /** 121 C: L1 diária — semana resumida + copy pronta. Presente ⇒ variante diária. */
+  daily?: { week: DailyWindowSummary; copy: { primary: string; secondary: string | null } } | null
 }
+
+/** Lista das últimas (só semanal) — a da B, com o título pelo verbo. */
+const LIST_MAX = 4
 
 /** D14/D15: data = âncora; local abaixo (capitalizado), "última" na mais recente; sem local, só data. */
 function recentItem(row: RecentApplicationRow, index: number, tz: string): { date: string; detail: string | null } {
@@ -40,13 +52,96 @@ function recentItem(row: RecentApplicationRow, index: number, tz: string): { dat
   return { date, detail: parts.length ? parts.join(' · ') : null }
 }
 
+function rowCopy({ error, daily, summary, nextDoseLabel, injectable }: Pick<Props, 'error' | 'daily' | 'summary' | 'nextDoseLabel'> & { injectable: boolean }) {
+  if (error) return null
+  if (daily) return daily.copy
+  return summary ? doseRowCopy(summary, nextDoseLabel, injectable) : null
+}
+
+function HeadAction({ error, onRetry, canRegisterEarly, onRegisterEarly, injectable }: {
+  error: boolean; onRetry: () => void; canRegisterEarly: boolean; onRegisterEarly: () => void; injectable: boolean
+}) {
+  if (error) {
+    return (
+      <Pressable onPress={onRetry} style={styles.action} accessibilityRole="button" testID="dose-row-retry">
+        <Text style={styles.actionText}>Tentar de novo</Text>
+      </Pressable>
+    )
+  }
+  if (!canRegisterEarly) return null
+  return (
+    <Pressable onPress={onRegisterEarly} style={styles.action} accessibilityRole="button" testID="dose-row-register-early">
+      <Text style={styles.actionText}>{injectable ? 'Já apliquei' : 'Registrar'}</Text>
+    </Pressable>
+  )
+}
+
+function listTitle(n: number, injectable: boolean): string {
+  if (n === 1) return injectable ? 'ÚLTIMA APLICAÇÃO' : 'ÚLTIMO REGISTRO'
+  return injectable ? `ÚLTIMAS ${n} APLICAÇÕES` : `ÚLTIMOS ${n} REGISTROS`
+}
+
+function RecentList({ shown, timezone, injectable }: { shown: RecentApplicationRow[]; timezone: string; injectable: boolean }) {
+  if (shown.length === 0) {
+    return (
+      <View style={styles.placeholder} testID="dose-row-empty">
+        <Text style={styles.placeholderText}>
+          {injectable
+            ? 'Nenhuma aplicação registrada ainda. Com a primeira, o histórico e o local aparecem aqui.'
+            : 'Nenhum registro ainda. Com o primeiro, o histórico aparece aqui.'}
+        </Text>
+      </View>
+    )
+  }
+  return (
+    <View style={styles.listWrap}>
+      <Text style={styles.listTitle}>{listTitle(shown.length, injectable)}</Text>
+      <View style={styles.listCard}>
+        {shown.map((r, i) => {
+          const item = recentItem(r, i, timezone)
+          return (
+            <View key={r.id} style={[styles.item, i > 0 && styles.itemDivider]} testID={`dose-row-recent-${i + 1}`}>
+              <View style={[styles.dot, i === 0 ? styles.dotLatest : styles.dotPast]} />
+              <View style={styles.flex}>
+                <Text style={[styles.itemDate, i === 0 && styles.itemDateLatest]}>{item.date}</Text>
+                {item.detail ? <Text style={styles.itemDetail}>{item.detail}</Text> : null}
+              </View>
+            </View>
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+/** Aberta: diário = faixa (+ mapa); semanal = mapa + lista (B). Mapa só com local na ÚLTIMA (RC5/INV-2). */
+function DoseRowBody({ daily, recent, timezone, injectable }: {
+  daily: Props['daily']; recent: RecentApplicationRow[]; timezone: string; injectable: boolean
+}) {
+  const shown = recent.slice(0, LIST_MAX)
+  const sites = shown.map((r) => r.injection_site)
+  const hasKnownSite = !!getKnownInjectionSiteLabel(sites[0] ?? null)
+  return (
+    <View style={styles.body} testID="dose-row-body">
+      {daily ? <WeekStrip days={daily.week.days} injectable={injectable} /> : null}
+      {hasKnownSite ? (
+        <View style={styles.mapCard}>
+          <BodyMapView recentSites={sites} />
+        </View>
+      ) : null}
+      {daily ? null : <RecentList shown={shown} timezone={timezone} injectable={injectable} />}
+    </View>
+  )
+}
+
 export default function DoseRow({
   open, onToggle, summary, recent, nextDoseLabel, timezone, loading, error, onRetry, canRegisterEarly, onRegisterEarly,
+  injectable = true, daily = null,
 }: Props) {
-  const copy = summary && !error ? doseRowCopy(summary, nextDoseLabel) : null
-  const sites = recent.map((r) => r.injection_site)
-  // RC5: o mapa marca só a ÚLTIMA — sem local nela, não há o que mostrar.
-  const hasKnownSite = !!getKnownInjectionSiteLabel(sites[0] ?? null)
+  const isDaily = !!daily
+  const ready = isDaily || !!summary
+  const copy = rowCopy({ error, daily, summary, nextDoseLabel, injectable })
+  const Icon = injectable ? Syringe : Pill
 
   return (
     <View style={styles.root} testID="week-row-dose">
@@ -60,59 +155,20 @@ export default function DoseRow({
           testID="week-row-dose-toggle"
         >
           <View style={styles.icon}>
-            <Syringe size={18} color={colors.brand.primary} strokeWidth={2} />
+            <Icon size={18} color={colors.brand.primary} strokeWidth={2} />
           </View>
           <View style={styles.flex}>
             <Text style={styles.title}>Dose</Text>
-            {loading && !summary ? <View style={styles.skeletonLine} testID="dose-row-loading" /> : null}
-            {error ? <Text style={styles.neutral}>Não foi possível carregar as aplicações.</Text> : null}
-            {copy ? <Text style={styles.value} testID="dose-row-primary">{copy.primary}</Text> : null}
+            {loading && !ready ? <View style={styles.skeletonLine} testID="dose-row-loading" /> : null}
+            {error ? <Text style={styles.neutral}>{`Não foi possível carregar ${injectable ? 'as aplicações' : 'os registros'}.`}</Text> : null}
+            {copy?.primary ? <Text style={styles.value} testID="dose-row-primary">{copy.primary}</Text> : null}
             {copy?.secondary ? <Text style={styles.neutral} testID="dose-row-secondary">{copy.secondary}</Text> : null}
           </View>
           {open ? <ChevronUp size={18} color={colors.text.secondary} /> : <ChevronDown size={18} color={colors.text.secondary} />}
         </Pressable>
-        {error ? (
-          <Pressable onPress={onRetry} style={styles.action} accessibilityRole="button" testID="dose-row-retry">
-            <Text style={styles.actionText}>Tentar de novo</Text>
-          </Pressable>
-        ) : canRegisterEarly ? (
-          <Pressable onPress={onRegisterEarly} style={styles.action} accessibilityRole="button" testID="dose-row-register-early">
-            <Text style={styles.actionText}>Já apliquei</Text>
-          </Pressable>
-        ) : null}
+        <HeadAction error={!!error} onRetry={onRetry} canRegisterEarly={canRegisterEarly && !isDaily} onRegisterEarly={onRegisterEarly} injectable={injectable} />
       </View>
-      {open && !error && summary ? (
-        <View style={styles.body} testID="dose-row-body">
-          {hasKnownSite ? (
-            <View style={styles.mapCard}>
-              <BodyMapView recentSites={sites} />
-            </View>
-          ) : null}
-          {recent.length > 0 ? (
-            <View style={styles.listWrap}>
-              <Text style={styles.listTitle}>{recent.length === 1 ? 'ÚLTIMA APLICAÇÃO' : `ÚLTIMAS ${recent.length} APLICAÇÕES`}</Text>
-              <View style={styles.listCard}>
-                {recent.map((r, i) => {
-                  const item = recentItem(r, i, timezone)
-                  return (
-                    <View key={r.id} style={[styles.item, i > 0 && styles.itemDivider]} testID={`dose-row-recent-${i + 1}`}>
-                      <View style={[styles.dot, i === 0 ? styles.dotLatest : styles.dotPast]} />
-                      <View style={styles.flex}>
-                        <Text style={[styles.itemDate, i === 0 && styles.itemDateLatest]}>{item.date}</Text>
-                        {item.detail ? <Text style={styles.itemDetail}>{item.detail}</Text> : null}
-                      </View>
-                    </View>
-                  )
-                })}
-              </View>
-            </View>
-          ) : (
-            <View style={styles.placeholder} testID="dose-row-empty">
-              <Text style={styles.placeholderText}>Nenhuma aplicação registrada ainda. Com a primeira, o histórico e o local aparecem aqui.</Text>
-            </View>
-          )}
-        </View>
-      ) : null}
+      {open && !error && ready ? <DoseRowBody daily={daily} recent={recent} timezone={timezone} injectable={injectable} /> : null}
     </View>
   )
 }

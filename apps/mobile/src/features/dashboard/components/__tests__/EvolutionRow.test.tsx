@@ -17,6 +17,7 @@ const detail: EvolutionDetail = {
   bar: { done: 4, total: 5 },
   stageDoses: { total: 4, done: 2, nextOrdinal: 3, nextDay: '2026-11-18', nextText: 'próxima: 3ª de 4\nqua, 18/11' },
   currentDose: null,
+  stageCalendar: null,
   steps: [
     { position: 0, label: 'Etapa 1 · 2,5 mg', note: 'concluída', state: 'done' },
     { position: 3, label: 'Etapa 4 · 10 mg', note: 'até 02/12', state: 'now' },
@@ -66,5 +67,14 @@ describe('EvolutionRow', () => {
     expect(onOpen).toHaveBeenCalledTimes(1)
     expect(onToggle).not.toHaveBeenCalled()
     expect(s.queryByText(/Iniciar etapa/i)).toBeNull()
+  })
+
+  it('121 C (PO-19): escada diária aberta mostra "Dia N de M desta etapa", nunca bolinhas', () => {
+    const daily = { ...detail, stageDoses: null, stageCalendar: { day: 3, total: 7, nextText: 'Etapa 3 prevista · seg, 23/11' } }
+    const s = render(<EvolutionRow {...base} detail={daily} open copy={{ key: 'em_evolucao', primary: 'Etapa 2 de 3 · 2 mg', secondary: 'Em evolução' }} />)
+    expect(s.getByText('Dia 3 de 7 desta etapa')).toBeTruthy()
+    expect(s.getByText('Etapa 3 prevista · seg, 23/11')).toBeTruthy()
+    expect(s.queryByTestId('evolution-row-stage-doses')).toBeNull()
+    expect(s.queryAllByTestId(/^evolution-dose-/)).toHaveLength(0)
   })
 })

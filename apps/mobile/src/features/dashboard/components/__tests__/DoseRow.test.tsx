@@ -9,6 +9,12 @@ jest.mock('@shared/components/data/BodyMapView', () => (props: any) => {
   return <Text testID="bodymap-view-mock">{JSON.stringify(props.recentSites)}</Text>
 })
 
+jest.mock('react-native-svg', () => {
+  const { View } = require('react-native')
+  const Svg = ({ children, testID }: any) => <View testID={testID}>{children}</View>
+  return { __esModule: true, default: Svg, Svg, Circle: () => null, Path: () => null }
+})
+
 import DoseRow from '../DoseRow'
 
 const TZ = 'America/Sao_Paulo'
@@ -87,5 +93,61 @@ describe('DoseRow', () => {
     const s = render(<DoseRow {...base} summary={null} recent={[]} error="network" />)
     expect(s.queryByText(/Primeira aplicação/)).toBeNull()
     expect(s.getByTestId('dose-row-retry')).toBeTruthy()
+  })
+
+  // ─── 121 C ───────────────────────────────────────────────────────────────────
+  // Janela móvel terminando hoje (qua 18/11): qui 12 … qua 18. Contrave 08:00/20:00.
+  const d = (day: string, weekday: number, state: string, registered: number, due: number, isToday = false) =>
+    ({ day, weekday, state, registered, scheduled: 2, due, isToday })
+  const week = {
+    days: [
+      d('2026-11-12', 4, 'full', 2, 2), d('2026-11-13', 5, 'full', 2, 2), d('2026-11-14', 6, 'open', 0, 2),
+      d('2026-11-15', 0, 'partial', 1, 2), d('2026-11-16', 1, 'full', 2, 2), d('2026-11-17', 2, 'full', 2, 2),
+      d('2026-11-18', 3, 'full', 1, 1, true),
+    ] as any,
+    taken: 10, due: 13, since: null, todayLast: { time: '08:05' },
+  }
+  const daily = { week, copy: { primary: 'Tomado hoje · 08:05', secondary: '10 de 13 doses nos últimos 7 dias' } }
+  const oral = [
+    { id: 'o1', taken_at: '2026-11-18T11:05:00.000Z', injection_site: null, medicine_id: 'm', protocol_id: 'p' },
+    { id: 'o2', taken_at: '2026-11-16T11:00:00.000Z', injection_site: null, medicine_id: 'm', protocol_id: 'p' },
+  ]
+
+  it('PO-16: diário fechado mostra a copy diária e NUNCA "Já apliquei" (FR-042)', () => {
+    const s = render(<DoseRow {...base} summary={null} recent={oral} injectable={false} daily={daily} canRegisterEarly />)
+    expect(s.getByText('Tomado hoje · 08:05')).toBeTruthy()
+    expect(s.getByText('10 de 13 doses nos últimos 7 dias')).toBeTruthy()
+    expect(s.queryByTestId('dose-row-register-early')).toBeNull()
+    expect(s.getByTestId('icon-Pill')).toBeTruthy()
+  })
+
+  it('PO-17/C-A5: diário aberto = faixa móvel (hoje na ponta), parcial na diagonal, neutro sem registro; sem lista', () => {
+    const s = render(<DoseRow {...base} open summary={null} recent={oral} injectable={false} daily={daily} />)
+    expect(s.getByTestId('week-strip')).toBeTruthy()
+    expect(s.getByTestId('week-strip-2026-11-14-open').props.accessibilityLabel).toBe('sábado: sem registro')
+    expect(s.getByTestId('week-strip-2026-11-15-partial').props.accessibilityLabel).toBe('domingo: 1 de 2 doses registradas')
+    expect(s.getByTestId('week-strip-partial')).toBeTruthy()
+    expect(s.getByTestId('week-strip-2026-11-18-full').props.accessibilityLabel).toBe('quarta (hoje): registrado')
+    expect(s.queryByText(/ÚLTIM/)).toBeNull()
+    expect(s.queryByTestId('bodymap-view-mock')).toBeNull()
+    expect(JSON.stringify(s.toJSON())).not.toMatch(/perd|%|parab/i)
+  })
+
+  it('PO-17/INV-2: injetável diário com local na última ⇒ mapa (só o passado) junto da faixa', () => {
+    const inj = [{ ...oral[0], injection_site: 'abdomen_d' }, oral[1]]
+    const s = render(<DoseRow {...base} open summary={null} recent={inj} daily={daily} />)
+    expect(s.getByTestId('week-strip')).toBeTruthy()
+    expect(s.getByTestId('bodymap-view-mock').props.children).toBe(JSON.stringify(['abdomen_d', null]))
+  })
+
+  it('PO-18: semanal "comprimido" ⇒ verbo neutro, ícone de comprimido, sem mapa, "Registrar" no lugar de "Já apliquei"', () => {
+    const noSite = { ...summary, last: { ...summary.last, site: null, siteLabel: null } }
+    const recentNo = recent.map((r) => ({ ...r, injection_site: null }))
+    const s = render(<DoseRow {...base} open summary={noSite} recent={recentNo} injectable={false} canRegisterEarly />)
+    expect(s.getByText('Registrada há 3 dias · sex, 13/11')).toBeTruthy()
+    expect(s.getByText('Registrar')).toBeTruthy()
+    expect(s.queryByText('Já apliquei')).toBeNull()
+    expect(s.getByText('ÚLTIMOS 2 REGISTROS')).toBeTruthy()
+    expect(s.queryByTestId('bodymap-view-mock')).toBeNull()
   })
 })

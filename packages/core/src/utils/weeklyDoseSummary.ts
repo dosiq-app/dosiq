@@ -11,8 +11,9 @@
  * `injection_site`; nada aqui deriva atributo da entidade viva.
  * R-020: todo "dia" é dia LOCAL do dono no fuso informado — nunca UTC.
  */
-import { daysDifference, formatLocalDate, getUserTime, parseISO } from './dateUtils'
+import { daysDifference, formatLocalDate, getUserTime, parseISO, parseLocalDate } from './dateUtils'
 import { getKnownInjectionSiteLabel } from './injectionSites'
+import { computeTolerances } from './doseInstanceGenerator'
 
 const DEFAULT_INTERVAL_DAYS = 7
 const MS_MINUTE = 60_000
@@ -171,4 +172,165 @@ export function resolveNextOpenDay(
     if (p) resolved.add(p.day)
   }
   return calendarDays.find((d) => !resolved.has(d)) ?? null
+}
+
+// ─── 121 C · L1 diária — janela móvel de 7 d (FR-041, AC-16/AC-17; decisões PO 17/11) ───
+
+/**
+ * Estado de um dia da faixa. Neutro por desenho (FR-046): `open` = doses vencidas sem registro
+ * (nunca "perdeu"); `partial` = parte das vencidas registrada (mesmo meio-cheio do PDF);
+ * `pending` = hoje, nada venceu ainda; `unknown` = fora do que a leitura carregou (C-A3).
+ */
+export type DailyDayState = 'full' | 'partial' | 'open' | 'pending' | 'off' | 'unknown'
+
+export interface DailyWindowDay {
+  day: string
+  /** 0 = domingo … 6 = sábado (rótulo da faixa). */
+  weekday: number
+  state: DailyDayState
+  isToday: boolean
+  /** Registros do dia, limitados às doses previstas (registro extra não infla). */
+  registered: number
+  /** Doses previstas no dia. */
+  scheduled: number
+  /** Doses cuja janela já fechou (passado = todas; hoje = só as vencidas). */
+  due: number
+}
+
+export interface DailyWindowSummary {
+  /** Até 7 dias terminando hoje; começa no início do tratamento quando ele é mais recente. */
+  days: DailyWindowDay[]
+  /** Doses registradas na janela (contadas só as que entram na conta). */
+  taken: number
+  /** Doses na conta: vencidas + registradas antes de vencer (nunca "2 de 1"). */
+  due: number
+  /** Início do tratamento quando a janela foi encurtada por ele; senão null. */
+  since: string | null
+  /** Hora local do registro mais recente de hoje, ou null. */
+  todayLast: { time: string } | null
+}
+
+const WINDOW_DAYS = 7
+
+/** Dia local YYYY-MM-DD deslocado em n dias (aritmética de calendário local, R-020). */
+function addLocalDays(day: string, n: number): string {
+  const d = parseLocalDate(day)
+  d.setDate(d.getDate() + n)
+  return formatLocalDate(d)
+}
+
+function toMinutes(hm: string): number | null {
+  const m = /^(\d{2}):(\d{2})/.exec(hm)
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null
+}
+
+/** Registros por dia local, dia mais antigo carregado e último horário de hoje. */
+function indexApplications(applications: readonly WeeklyApplication[] | null | undefined, todayLocal: string, tz: string) {
+  const perDay = new Map<string, number>()
+  let oldest: string | null = null
+  let todayLast: DailyWindowSummary['todayLast'] = null
+  for (const app of Array.isArray(applications) ? applications : []) {
+    const p = app?.taken_at ? localParts(app.taken_at, tz) : null
+    if (!p) continue
+    perDay.set(p.day, (perDay.get(p.day) ?? 0) + 1)
+    if (!oldest || p.day < oldest) oldest = p.day
+    if (p.day === todayLocal && (!todayLast || p.time > todayLast.time)) todayLast = { time: p.time }
+  }
+  return { perDay, oldest, todayLast }
+}
+
+/** Quantas doses de HOJE já tiveram a janela fechada (horário + tolerância do gerador). */
+function countDueToday(timesOfDay: readonly string[] | null | undefined, now: Date, tz: string): { perDay: number; dueToday: number } {
+  const minutes = (timesOfDay ?? []).map(toMinutes).filter((m): m is number => m !== null).sort((a, b) => a - b)
+  const tolerances = computeTolerances(minutes, 'diário').map((w) => w.tolerance)
+  const local = getUserTime(now, tz)
+  const nowMinutes = local.getHours() * 60 + local.getMinutes()
+  return { perDay: minutes.length, dueToday: minutes.filter((m, i) => m + tolerances[i] <= nowMinutes).length }
+}
+
+/**
+ * R-299 (RC6 #964): doses previstas por dia PASSADO a partir das ocorrências gravadas
+ * (`dose_instances`), nunca do tratamento vivo — editar horário/frequência não reescreve a semana.
+ * Dia com linha gravada = quantas não são `skipped_paused` (pausa ⇒ não previsto). Dia sem linha
+ * fica fora do mapa (sem fato ⇒ o chamador cai no calendário atual).
+ */
+function indexPastInstances(
+  instances: readonly { scheduled_for: string; status: string }[] | null | undefined,
+  todayLocal: string,
+  tz: string
+): Map<string, number> | null {
+  if (!Array.isArray(instances)) return null
+  const perDay = new Map<string, number>()
+  for (const inst of instances) {
+    const p = inst?.scheduled_for ? localParts(inst.scheduled_for, tz) : null
+    if (!p || p.day >= todayLocal) continue
+    perDay.set(p.day, (perDay.get(p.day) ?? 0) + (inst.status === 'skipped_paused' ? 0 : 1))
+  }
+  return perDay
+}
+
+function dayState(unknown: boolean, scheduled: number, registered: number, due: number): DailyDayState {
+  if (unknown) return 'unknown'
+  if (scheduled === 0) return 'off'
+  if (registered === 0) return due > 0 ? 'open' : 'pending'
+  return registered >= due ? 'full' : 'partial'
+}
+
+/**
+ * Resumo da L1 diária: 7 dias móveis terminando hoje, contados em DOSES.
+ * Dose de hoje entra na conta só depois da janela (horário + tolerância do gerador,
+ * `computeTolerances`) — ou antes, se já foi registrada (decisão PO 17/11, item 2).
+ * @param applications - registros do tratamento/remédio, MAIS RECENTE PRIMEIRO (fato, R-299)
+ * @param isScheduled - dia local previsto? Calendário do gerador (`isProtocolActiveOnDate`, C-A1)
+ * @param timesOfDay - horários "HH:mm" do tratamento (`time_schedule`)
+ * @param startDay - início do tratamento (YYYY-MM-DD); encurta a janela quando é recente
+ * @param truncated - a leitura bateu no limite: dias antes do registro mais antigo = `unknown`
+ * @param pastInstances - ocorrências gravadas do tratamento nos dias passados da janela (R-299);
+ *   null/ausente = leitura indisponível ⇒ calendário atual (fallback declarado)
+ * @param now - instante real; convertido ao fuso para decidir o que venceu hoje
+ */
+export function summarizeDailyWindow({
+  applications,
+  isScheduled,
+  timesOfDay,
+  startDay,
+  truncated = false,
+  pastInstances = null,
+  todayLocal,
+  now,
+  tz,
+}: {
+  applications: readonly WeeklyApplication[] | null | undefined
+  isScheduled: (day: string) => boolean
+  timesOfDay: readonly string[] | null | undefined
+  startDay: string | null | undefined
+  truncated?: boolean
+  pastInstances?: readonly { scheduled_for: string; status: string }[] | null
+  todayLocal: string
+  now: Date
+  tz: string
+}): DailyWindowSummary {
+  const { perDay, oldest, todayLast } = indexApplications(applications, todayLocal, tz)
+  const slots = countDueToday(timesOfDay, now, tz)
+  const frozen = indexPastInstances(pastInstances, todayLocal, tz)
+  const windowStart = addLocalDays(todayLocal, -(WINDOW_DAYS - 1))
+  const from = startDay && startDay > windowStart && startDay <= todayLocal ? startDay : windowStart
+  const coverFrom = truncated ? oldest : null
+  let taken = 0
+  let due = 0
+  const days: DailyWindowDay[] = []
+  for (let d = from; d <= todayLocal; d = addLocalDays(d, 1)) {
+    const isToday = d === todayLocal
+    const recorded = isToday ? undefined : frozen?.get(d)
+    const scheduled = recorded ?? (isScheduled(d) ? slots.perDay : 0)
+    const registered = Math.min(perDay.get(d) ?? 0, scheduled)
+    const dayDue = scheduled === 0 ? 0 : isToday ? slots.dueToday : scheduled
+    const state = dayState(!!coverFrom && d < coverFrom, scheduled, registered, dayDue)
+    if (state !== 'unknown' && state !== 'off') {
+      taken += registered
+      due += Math.max(dayDue, registered)
+    }
+    days.push({ day: d, weekday: parseLocalDate(d).getDay(), state, isToday, registered, scheduled, due: dayDue })
+  }
+  return { days, taken, due, since: from === windowStart ? null : from, todayLast }
 }

@@ -357,6 +357,7 @@ export type { BodyMapFace, BodyMapRegion, BodyMapPoint, BodyMapBounds, BodyMapMa
 // Semana do tratamento — L1 Dose (121 B) e registro adiantado (ADR-130)
 export {
   summarizeWeeklyDose,
+  summarizeDailyWindow,
   resolveEarlyAnchorInstance,
   resolveNextOpenDay,
   normalizeIntervalDays,
@@ -368,6 +369,9 @@ export type {
   WeeklyDoseLast,
   WeeklyDoseNext,
   AnchorCandidate,
+  DailyWindowDay,
+  DailyDayState,
+  DailyWindowSummary,
 } from './weeklyDoseSummary'
 
 // SemVer utilities (026 — Nudges In-App)

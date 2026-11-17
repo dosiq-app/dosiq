@@ -1,7 +1,8 @@
 // TreatmentWeekModule.tsx — "Semana do tratamento" na Hoje (spec 121 A · FR-005..FR-011, FR-023; B · FR-030..FR-034).
 // Um card, linhas independentes, na ordem Dose · Peso · Evolução (T025). Eyebrow, L1 e L3 = tratamento
 // wedge iniciado mais recentemente (herança 1); o peso (L2) é do paciente (FR-023).
-// L1 só para injetável de cadência ≥ 7 d (G-B5); L3 só com escada COMPLETA (AP-311) — sem ela, some.
+// L1 para wedge com cadência conhecida — diária ou ≥ 7 d; a forma muda só o verbo (121 C · FR-040, substitui
+// G-B5). L3 só com escada COMPLETA (AP-311) — sem ela, some.
 // Superfície de dose/medida, não alerta nem promo: não entra no árbitro da 120 C (H-1).
 
 import { useMemo, useState } from 'react'
@@ -14,11 +15,14 @@ import {
   getTodayLocal,
   getUserTime,
   isInjectable,
+  isProtocolActiveOnDate,
   listUpcomingDoseDates,
+  listUpcomingOccurrences,
   parseISO,
   resolveEarlyAnchorInstance,
   resolveNextOpenDay,
   shiftDay,
+  summarizeDailyWindow,
   summarizeWeeklyDose,
   type WedgeProfile,
 } from '@dosiq/core'
@@ -28,7 +32,16 @@ import EvolutionRow from '@dashboard/components/EvolutionRow'
 import { useTreatmentWeekDose } from '@dashboard/hooks/useTreatmentWeekDose'
 import { useTodayWeekRows } from '@dashboard/hooks/useTodayWeekRows'
 import { useTodayWeightSeries } from '@dashboard/hooks/useTodayWeightSeries'
-import { chartAxisFrom, defaultWeightWindow, evolutionDetail, evolutionRowCopy, weeklyCadenceDays, type WeightWindow } from '@dashboard/utils/treatmentWeek'
+import {
+  chartAxisFrom,
+  dailyRowCopy,
+  defaultWeightWindow,
+  doseCadence,
+  evolutionDetail,
+  evolutionRowCopy,
+  firstScheduledTime,
+  type WeightWindow,
+} from '@dashboard/utils/treatmentWeek'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 
 type Props = {
@@ -47,7 +60,7 @@ type Props = {
 }
 
 /**
- * L1/L3 do módulo (121 B): elegibilidade (G-B5), leituras e derivações puras do core.
+ * L1/L3 do módulo (121 B/C): elegibilidade por cadência (FR-040), leituras e derivações puras do core.
  * Separado do componente para manter a ordem States → Memos legível (e a complexidade baixa).
  */
 function useWeekDoseView({ protocol, userId, timezone, today, reloadKey }: {
@@ -57,12 +70,16 @@ function useWeekDoseView({ protocol, userId, timezone, today, reloadKey }: {
   today: string
   reloadKey?: unknown
 }) {
-  const cadence = weeklyCadenceDays(protocol)
-  const doseEligible = cadence !== null && isInjectable(protocol?.medicine)
+  const cadenceOf = doseCadence(protocol)
+  const isDaily = cadenceOf?.kind === 'daily'
+  const cadence = cadenceOf && !isDaily ? cadenceOf.days : null
+  const doseEligible = cadenceOf !== null
+  const injectable = isInjectable(protocol?.medicine)
   const dose = useTreatmentWeekDose({
     enabled: !!protocol,
     doseEnabled: doseEligible,
     cadenceDays: cadence,
+    cadenceKind: isDaily ? 'daily' : 'weekly',
     userId,
     protocolId: protocol?.id ?? null,
     medicineId: protocol?.medicine_id ?? protocol?.medicine?.id ?? null,
@@ -75,20 +92,43 @@ function useWeekDoseView({ protocol, userId, timezone, today, reloadKey }: {
     [protocol, dose.upcoming, timezone]
   )
   const doseSummary = useMemo(() => {
-    if (!doseEligible || dose.loading || dose.error) return null
+    if (!doseEligible || isDaily || dose.loading || dose.error) return null
     return summarizeWeeklyDose({ applications: dose.recent, nextDay, intervalDays: cadence, todayLocal: today, tz: timezone })
-  }, [doseEligible, dose.loading, dose.error, dose.recent, nextDay, cadence, today, timezone])
+  }, [doseEligible, isDaily, dose.loading, dose.error, dose.recent, nextDay, cadence, today, timezone])
+  // 121 C (AC-16/17): janela móvel de 7 d pelo calendário do gerador (C-A1); dose de hoje só conta
+  // depois da janela (decisão PO 17/11). Próxima só se hoje não é dia previsto.
+  const daily = useMemo(() => {
+    if (!isDaily || dose.loading || dose.error) return null
+    const week = summarizeDailyWindow({
+      applications: dose.recent,
+      isScheduled: (day) => isProtocolActiveOnDate(protocol, day),
+      timesOfDay: Array.isArray(protocol?.time_schedule) ? protocol.time_schedule : [],
+      startDay: protocol?.start_date ?? null,
+      truncated: dose.truncated,
+      pastInstances: dose.pastInstances,
+      todayLocal: today,
+      now: getRawNow(),
+      tz: timezone,
+    })
+    const todayScheduled = isProtocolActiveOnDate(protocol, today)
+    const upcoming = listUpcomingOccurrences(protocol, 1).occurrences[0] ?? null
+    // Hoje: próximo horário ainda por vir; todos passados ⇒ o 1º do dia (fato neutro, sem "atrasado").
+    const todayTime = todayScheduled ? (upcoming?.date === today ? upcoming.time : firstScheduledTime(protocol)) : null
+    const copy = dailyRowCopy(week, { injectable, todayTime, next: todayScheduled ? null : upcoming })
+    return { week, copy }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
+  }, [isDaily, dose.loading, dose.error, dose.recent, dose.truncated, dose.pastInstances, protocol, injectable, today, timezone, reloadKey])
   // ADR-130: só ocorrência FUTURA dentro da tolerância; atrasada fica no hero.
   // RC6: instante REAL (`getRawNow`) contra `scheduled_for` absoluto — `getNow` é relógio de parede do fuso.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
-  const earlyAnchor = useMemo(() => (doseEligible ? resolveEarlyAnchorInstance(dose.upcoming, getRawNow()) : null), [doseEligible, dose.upcoming, reloadKey])
+  const earlyAnchor = useMemo(() => (doseEligible && !isDaily ? resolveEarlyAnchorInstance(dose.upcoming, getRawNow()) : null), [doseEligible, isDaily, dose.upcoming, reloadKey])
   const evolution = useMemo(() => evolutionRowCopy(dose.ladder, today, timezone), [dose.ladder, today, timezone])
   const evolutionOpen = useMemo(
-    () => evolutionDetail(dose.ladder, nextDay, cadence, timezone, today),
-    [dose.ladder, nextDay, cadence, timezone, today]
+    () => evolutionDetail(dose.ladder, nextDay, cadence, timezone, today, isDaily ? 'daily' : 'weekly'),
+    [dose.ladder, nextDay, cadence, timezone, today, isDaily]
   )
   const nextDoseLabel = protocol ? formatIntakeDose(protocol.dosage_per_intake, protocol.intake_unit, protocol.medicine) || null : null
-  return { doseEligible, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel }
+  return { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel }
 }
 
 /** D13: sobrelinha + nome (19/800) + chip de concentração (mesmo pill do card do remédio), sem ícone. */
@@ -124,7 +164,7 @@ export default function TreatmentWeekModule({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey vira o dia após recarga da Hoje
   const today = useMemo(() => getTodayLocal(timezone), [timezone, reloadKey])
   const yesterday = shiftDay(today, -1)
-  const { doseEligible, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel } = useWeekDoseView({
+  const { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel } = useWeekDoseView({
     protocol, userId, timezone, today, reloadKey,
   })
   const windowSel = windowChoice ?? defaultWeightWindow(series.recent, today)
@@ -162,6 +202,8 @@ export default function TreatmentWeekModule({
           onRetry={dose.retry}
           canRegisterEarly={!!earlyAnchor && !!onRegisterEarly}
           onRegisterEarly={() => earlyAnchor && onRegisterEarly?.(earlyAnchor)}
+          injectable={injectable}
+          daily={daily}
         />
       ) : null}
       <WeightRow

@@ -1,7 +1,7 @@
 // EvolutionRow.tsx — linha Evolução (L3) do módulo "Semana do tratamento" (spec 121 B · FR-034, B-2).
 //
 // Estado da escada da 029. "Em evolução" e "Estável" ABREM no lugar (revisão PO 16/11): doses da etapa
-// vigente (calendário da etapa, D7/D16) + escada completa — no estável, a visão de todo o caminho.
+// vigente (calendário da etapa, D7/D16; diário = "Dia N de M desta etapa", 121 C) + escada completa.
 // "Aguardando" NÃO abre: chevron leva ao detalhe do tratamento, onde moram a explicação e o
 // "Iniciar etapa" (AC-15 — a linha nunca tem ação de etapa). Escada = COMPLETA por `titration_id` (AP-311).
 
@@ -46,6 +46,18 @@ function StageDoses({ d }: { d: NonNullable<EvolutionDetail['stageDoses']> }) {
           )
         })}
         {d.nextText ? <Text style={styles.nextNote} testID="evolution-row-next">{d.nextText}</Text> : null}
+      </View>
+    </View>
+  )
+}
+
+/** 121 C (AC-19): escada diária — calendário da etapa em texto, nunca bolinhas por dose. */
+function StageCalendar({ c }: { c: NonNullable<EvolutionDetail['stageCalendar']> }) {
+  return (
+    <View style={styles.card} testID="evolution-row-stage-calendar">
+      <View style={styles.dosesRow}>
+        <Text style={[styles.currentDose, styles.flex]}>{`Dia ${c.day} de ${c.total} desta etapa`}</Text>
+        {c.nextText ? <Text style={styles.nextNote}>{c.nextText}</Text> : null}
       </View>
     </View>
   )
@@ -111,6 +123,7 @@ export default function EvolutionRow({ copy, detail, open, onToggle, onOpen }: P
       {isOpen && detail ? (
         <View style={styles.body} testID="evolution-row-body">
           {copy.key === 'em_evolucao' && detail.stageDoses ? <StageDoses d={detail.stageDoses} /> : null}
+          {copy.key === 'em_evolucao' && detail.stageCalendar ? <StageCalendar c={detail.stageCalendar} /> : null}
           {copy.key === 'estavel' && detail.currentDose ? <CurrentDose c={detail.currentDose} /> : null}
           <Ladder steps={detail.steps} />
           <Pressable onPress={onOpen} style={styles.link} accessibilityRole="link" testID="evolution-row-open-treatment">
