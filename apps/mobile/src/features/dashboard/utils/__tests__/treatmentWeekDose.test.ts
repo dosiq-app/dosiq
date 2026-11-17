@@ -1,6 +1,6 @@
 // 121 B — copy da L1 (AC-11..AC-13, G-B3) e da L3 (AC-15, PO-14). Pura.
 import { describe, it, expect, afterEach } from '@jest/globals'
-import { doseRowCopy, evolutionDetail, evolutionRowCopy, siteShort, weekdayDate, weeklyCadenceDays } from '../treatmentWeek'
+import { dailyRowCopy, doseCadence, doseRowCopy, evolutionDetail, evolutionRowCopy, firstScheduledTime, siteShort, weekdayDate, weeklyCadenceDays } from '../treatmentWeek'
 
 const TZ = 'America/Sao_Paulo'
 
@@ -133,5 +133,100 @@ describe('evolutionDetail (L3 aberta, B-2)', () => {
   it('sem escada ⇒ null', () => {
     expect(evolutionDetail([], null, 7, TZ, '2026-11-16')).toBeNull()
     expect(evolutionDetail(null, null, 7, TZ, '2026-11-16')).toBeNull()
+  })
+})
+
+// ─── 121 C (PO-16, PO-18, PO-19) ─────────────────────────────────────────────────
+describe('doseCadence (FR-040, PO-18) — cadência decide, forma não', () => {
+  it('diário e intervalo 1 ⇒ daily; semanal e intervalo ≥ 7 ⇒ weekly', () => {
+    expect(doseCadence({ frequency: 'diário' })).toEqual({ kind: 'daily', days: 1 })
+    expect(doseCadence({ frequency: 'intervalo_dias', interval_days: 1 })).toEqual({ kind: 'daily', days: 1 })
+    expect(doseCadence({ frequency: 'semanal' })).toEqual({ kind: 'weekly', days: 7 })
+    expect(doseCadence({ frequency: 'intervalo_dias', interval_days: 14 })).toEqual({ kind: 'weekly', days: 14 })
+  })
+  it('C-A2: intervalo 2..6, alternado, PRN, personalizado, null ⇒ sem L1', () => {
+    expect(doseCadence({ frequency: 'intervalo_dias', interval_days: 3 })).toBeNull()
+    expect(doseCadence({ frequency: 'intervalo_dias', interval_days: null })).toBeNull()
+    expect(doseCadence({ frequency: 'dias_alternados' })).toBeNull()
+    expect(doseCadence({ frequency: 'quando_necessário' })).toBeNull()
+    expect(doseCadence({ frequency: 'personalizado' })).toBeNull()
+    expect(doseCadence(null)).toBeNull()
+  })
+})
+
+describe('doseRowCopy não injetável (AC-18) — verbo neutro', () => {
+  const last = { day: '2026-11-13', time: '08:10', daysSince: 3, siteLabel: null }
+  it('semanal "comprimido" ⇒ Registrada, sem "aplicação"', () => {
+    const c = doseRowCopy({ state: 'on_track', last, next: { day: '2026-11-20', daysUntil: 4 } }, null, false)
+    expect(c.primary).toBe('Registrada há 3 dias · sex, 13/11')
+    expect(c.secondary).toBe('Próxima em 4 dias · sex, 20/11')
+  })
+  it('lacuna e 1ª dose neutras', () => {
+    expect(doseRowCopy({ state: 'gap', last, next: null }, null, false).primary).toBe('Último registro · sex, 13/11')
+    expect(doseRowCopy({ state: 'first_dose', last: null, next: { day: '2026-11-18', daysUntil: 2 } }, null, false).primary).toBe('Primeira dose · qua, 18/11')
+  })
+  it('injetável mantém a copy da B', () => {
+    expect(doseRowCopy({ state: 'gap', last, next: null }, null).primary).toBe('Última aplicação registrada · sex, 13/11')
+  })
+})
+
+describe('dailyRowCopy (AC-16, PO-16) — doses na janela móvel', () => {
+  const week = (taken: number, due: number, todayLast: { time: string } | null, since: string | null = null) => ({ taken, due, todayLast, since })
+  it('registro hoje: oral "Tomado"/doses, injetável "Aplicado"/aplicações', () => {
+    expect(dailyRowCopy(week(11, 13, { time: '08:05' }), { injectable: false, todayTime: '20:00', next: null })).toEqual({
+      primary: 'Tomado hoje · 08:05', secondary: '11 de 13 doses nos últimos 7 dias',
+    })
+    expect(dailyRowCopy(week(6, 7, { time: '21:00' }), { injectable: true, todayTime: null, next: null })).toEqual({
+      primary: 'Aplicado hoje · 21:00', secondary: '6 de 7 aplicações nos últimos 7 dias',
+    })
+  })
+  it('sem registro hoje ⇒ "Hoje às hh:mm"; tratamento novo ⇒ "desde o início"', () => {
+    expect(dailyRowCopy(week(2, 2, null, '2026-11-14'), { injectable: false, todayTime: '08:00', next: null })).toEqual({
+      primary: 'Hoje às 08:00', secondary: '2 de 2 doses desde o início (sáb, 14/11)',
+    })
+  })
+  it('hoje não previsto ⇒ próxima; m = 0 ⇒ sem contagem; m = 1 singular', () => {
+    expect(dailyRowCopy(week(0, 0, null), { injectable: false, todayTime: null, next: { date: '2026-11-19', time: '08:00' } })).toEqual({
+      primary: 'Próxima · qui, 19/11 às 08:00', secondary: null,
+    })
+    expect(dailyRowCopy(week(0, 1, null), { injectable: true, todayTime: '08:00', next: null }).secondary).toBe('0 de 1 aplicação nos últimos 7 dias')
+  })
+  it('FR-046: nenhuma copy com %, "perdeu", "parabéns"', () => {
+    const all = JSON.stringify([
+      dailyRowCopy(week(0, 5, null), { injectable: false, todayTime: '08:00', next: null }),
+      dailyRowCopy(week(5, 5, { time: '08:00' }), { injectable: true, todayTime: '08:00', next: null }),
+    ])
+    expect(all).not.toMatch(/%|perd|parab|protocolo/i)
+  })
+})
+
+describe('firstScheduledTime', () => {
+  it('menor horário válido; vazio ⇒ null', () => {
+    expect(firstScheduledTime({ time_schedule: ['20:00', '08:00'] })).toBe('08:00')
+    expect(firstScheduledTime({ time_schedule: [] })).toBeNull()
+    expect(firstScheduledTime(null)).toBeNull()
+  })
+})
+
+describe('evolutionDetail diário (AC-19, PO-19)', () => {
+  const st = (position: number, status: string, extra: Record<string, unknown> = {}) =>
+    ({ id: `s${position}`, position, status, dose: 1 + position, duration_days: 7, started_at: null, ...extra })
+  // Etapa 2 começou 16/11 12:00 local (15:00Z); hoje 18/11 ⇒ dia 3 de 7.
+  const ladder = [st(0, 'completed'), st(1, 'current', { started_at: '2026-11-16T15:00:00Z' }), st(2, 'pending')]
+
+  it('"Dia N de M desta etapa" + próxima etapa prevista; nunca bolinhas', () => {
+    const d = evolutionDetail(ladder, '2026-11-19', 1, TZ, '2026-11-18', 'daily')!
+    expect(d.stageDoses).toBeNull()
+    expect(d.stageCalendar).toEqual({ day: 3, total: 7, nextText: 'Etapa 3 prevista · seg, 23/11' })
+  })
+  it('hoje além do fim ⇒ clamp em M; sem started_at ⇒ sem calendário; última etapa ⇒ sem próxima', () => {
+    expect(evolutionDetail(ladder, null, 1, TZ, '2026-11-30', 'daily')!.stageCalendar).toMatchObject({ day: 7, total: 7 })
+    const noStart = [st(0, 'current'), st(1, 'pending')]
+    expect(evolutionDetail(noStart, null, 1, TZ, '2026-11-18', 'daily')!.stageCalendar).toBeNull()
+    const last = [st(0, 'completed'), st(1, 'current', { started_at: '2026-11-16T15:00:00Z' })]
+    expect(evolutionDetail(last, null, 1, TZ, '2026-11-18', 'daily')!.stageCalendar).toEqual({ day: 3, total: 7, nextText: null })
+  })
+  it('semanal não ganha stageCalendar', () => {
+    expect(evolutionDetail(ladder, '2026-11-19', 7, TZ, '2026-11-18')!.stageCalendar).toBeNull()
   })
 })

@@ -72,11 +72,12 @@ type DoseSummaryLike = {
   next: { day: string; daysUntil: number } | null
 }
 
-function firstDoseCopy(s: DoseSummaryLike, nextDoseLabel: string | null) {
+function firstDoseCopy(s: DoseSummaryLike, nextDoseLabel: string | null, injectable: boolean) {
   const n = s.next?.daysUntil
   const when = n == null ? null : n === 0 ? 'Hoje' : n === 1 ? 'Amanhã' : `Em ${daysWord(n)}`
+  const first = injectable ? 'Primeira aplicação' : 'Primeira dose'
   return {
-    primary: s.next ? `Primeira aplicação · ${weekdayDate(s.next.day)}` : 'Primeira aplicação',
+    primary: s.next ? `${first} · ${weekdayDate(s.next.day)}` : first,
     secondary: when ? [when, nextDoseLabel].filter(Boolean).join(' · ') : null,
   }
 }
@@ -92,23 +93,75 @@ function nextCopy(next: DoseSummaryLike['next']): string | null {
 /**
  * Duas linhas da L1 fechada. Neutras (sem cor de alerta), nunca sugerem local (INV-2/AC-14).
  * G-B3: lacuna NÃO usa "sem registro" (vocabulário da agenda).
+ * 121 C (FR-043): não injetável (forma cadastrada duvidosa — caneta salva como comprimido) usa o
+ * verbo neutro "Registrada"; a forma muda só o verbo, nunca a elegibilidade.
  */
-export function doseRowCopy(s: DoseSummaryLike, nextDoseLabel: string | null): { primary: string; secondary: string | null } {
+export function doseRowCopy(
+  s: DoseSummaryLike,
+  nextDoseLabel: string | null,
+  injectable = true
+): { primary: string; secondary: string | null } {
   const last = s.last
-  if (s.state === 'first_dose' || !last) return firstDoseCopy(s, nextDoseLabel)
+  if (s.state === 'first_dose' || !last) return firstDoseCopy(s, nextDoseLabel, injectable)
   if (s.state === 'gap') {
     return {
-      primary: `Última aplicação registrada · ${weekdayDate(last.day)}`,
+      primary: `${injectable ? 'Última aplicação registrada' : 'Último registro'} · ${weekdayDate(last.day)}`,
       secondary: s.next ? `Próxima prevista: ${weekdayDate(s.next.day)}` : null,
     }
   }
-  const ago = last.daysSince === 0 ? 'Aplicada hoje' : `Aplicada há ${daysWord(last.daysSince)}`
+  const verb = injectable ? 'Aplicada' : 'Registrada'
+  const ago = last.daysSince === 0 ? `${verb} hoje` : `${verb} há ${daysWord(last.daysSince)}`
   // D15: sem hora para dose de outro dia (relevância clínica nula); hoje mantém a hora.
   const detail = last.siteLabel ? siteShort(last.siteLabel) : last.daysSince === 0 ? last.time : weekdayDate(last.day)
   return { primary: `${ago} · ${detail}`, secondary: nextCopy(s.next) }
 }
 
-/** G-B5: L1 da B só para injetável com cadência ≥ 7 dias; devolve o intervalo ou null. */
+// ─── 121 C · L1 diária (FR-040..FR-043, AC-16) ──────────────────────────────────
+
+export type DoseCadence = { kind: 'daily'; days: 1 } | { kind: 'weekly'; days: number }
+
+/**
+ * FR-040: a L1 vale para wedge com cadência CONHECIDA — a forma não decide (substitui G-B5).
+ * C-A2: `intervalo_dias` 2..6, alternado, PRN e personalizado ficam sem L1 (sem caso nem copy).
+ */
+export function doseCadence(protocol: { frequency?: string | null; interval_days?: number | null } | null | undefined): DoseCadence | null {
+  if (!protocol) return null
+  if (protocol.frequency === 'diário') return { kind: 'daily', days: 1 }
+  if (protocol.frequency === 'intervalo_dias' && protocol.interval_days === 1) return { kind: 'daily', days: 1 }
+  const weekly = weeklyCadenceDays(protocol)
+  return weekly ? { kind: 'weekly', days: weekly } : null
+}
+
+/** Menor horário "HH:mm" do tratamento (dose do dia), ou null. */
+export function firstScheduledTime(protocol: { time_schedule?: string[] | null } | null | undefined): string | null {
+  const times = (protocol?.time_schedule ?? []).filter((t) => typeof t === 'string' && /^\d{2}:\d{2}/.test(t))
+  return times.length ? [...times].sort()[0].slice(0, 5) : null
+}
+
+/**
+ * Duas linhas da L1 diária fechada (AC-16). Contagem neutra em DOSES na janela móvel de 7 d
+ * (decisões PO 17/11): "{n} de {m} doses nos últimos 7 dias" (injetável: "aplicações"); tratamento
+ * mais novo que a janela: "desde o início ({dia})". Fato, não nota — sem %, cor, "perdeu" ou
+ * "parabéns" (FR-046). Sem ação: a dose do dia vive no hero/agenda (FR-042).
+ * @param todayTime - horário de hoje (só quando hoje é dia previsto), ou null
+ * @param next - próxima ocorrência (hoje não previsto), ou null
+ */
+export function dailyRowCopy(
+  week: { taken: number; due: number; since: string | null; todayLast: { time: string } | null },
+  { injectable, todayTime, next }: { injectable: boolean; todayTime: string | null; next: { date: string; time: string } | null }
+): { primary: string; secondary: string | null } {
+  const unit = injectable ? (week.due === 1 ? 'aplicação' : 'aplicações') : week.due === 1 ? 'dose' : 'doses'
+  const period = week.since ? `desde o início (${weekdayDate(week.since)})` : 'nos últimos 7 dias'
+  const count = week.due > 0 ? `${week.taken} de ${week.due} ${unit} ${period}` : null
+  let head: string | null = null
+  if (week.todayLast) head = `${injectable ? 'Aplicado' : 'Tomado'} hoje · ${week.todayLast.time}`
+  else if (todayTime) head = `Hoje às ${todayTime}`
+  else if (next) head = `Próxima · ${weekdayDate(next.date)} às ${next.time}`
+  if (!head) return { primary: count ?? '', secondary: null }
+  return { primary: head, secondary: count }
+}
+
+/** Cadência ≥ 7 dias (semanal ou `intervalo_dias` ≥ 7); devolve o intervalo ou null. Base de `doseCadence`. */
 export function weeklyCadenceDays(protocol: { frequency?: string | null; interval_days?: number | null } | null | undefined): number | null {
   if (!protocol) return null
   if (protocol.frequency === 'semanal') return 7
@@ -169,6 +222,8 @@ export type EvolutionDetail = {
   stageDoses: { total: number; done: number; nextOrdinal: number | null; nextDay: string | null; nextText: string | null } | null
   /** Etapa sem fim definido (estável): "Dose atual" + tempo nela + próxima. Nunca "manutenção" (juízo clínico). */
   currentDose: { dose: string; since: string | null; nextText: string | null } | null
+  /** 121 C (AC-19): escada DIÁRIA — calendário da etapa em texto, nunca bolinhas por dose. */
+  stageCalendar: { day: number; total: number; nextText: string | null } | null
   steps: EvolutionStepItem[]
 }
 
@@ -211,6 +266,16 @@ function stepItem(st: any, currentPos: number, startDay: string | null, endDay: 
 }
 
 /**
+ * 121 C (AC-19): "Dia N de M desta etapa" pelo calendário (início + duração da etapa) — cálculo
+ * próprio, NUNCA o semanal com intervalo 1 (boundary PO-19). Dia além do fim = M (aguardando troca).
+ */
+function dailyStageCalendar(startDay: string | null, endDay: string | null, duration: number, todayLocal: string, nextStepNumber: number | null): EvolutionDetail['stageCalendar'] {
+  if (!startDay || !endDay) return null
+  const day = Math.min(duration, Math.max(1, daysDifference(startDay, todayLocal) + 1))
+  return { day, total: duration, nextText: nextStepNumber ? `Etapa ${nextStepNumber} prevista · ${weekdayDate(endDay)}` : null }
+}
+
+/**
  * L3 aberta (121 B · B-2, revisão PO 16/11): escada COMPLETA (AP-311) + doses da etapa vigente.
  * "Doses desta etapa" segue o CALENDÁRIO da etapa (D7: janela da etapa), a partir da próxima data
  * prevista — não conta registros (adesão não é papel da linha). Etapa sem duração (final) ⇒ sem bloco.
@@ -220,7 +285,8 @@ export function evolutionDetail(
   nextDay: string | null,
   intervalDays: number | null,
   tz: string,
-  todayLocal: string
+  todayLocal: string,
+  cadenceKind: 'daily' | 'weekly' = 'weekly'
 ): EvolutionDetail | null {
   if (!Array.isArray(ladder) || ladder.length === 0) return null
   const current = resolveCurrentStep(ladder as any)
@@ -230,13 +296,16 @@ export function evolutionDetail(
   const duration = Number(current.duration_days)
   const endDay = startDay && Number.isFinite(duration) && duration > 0 ? shiftDay(startDay, duration) : null
   const hasNextStep = sorted.some((st) => st.position === current.position + 1)
-  // RC5: só cadência ≥ 7 d (a L1 da B); escada diária fica para a fatia C — nunca calcular como semanal.
-  const stageDoses = intervalDays
-    ? stageDosesOf(startDay, endDay, duration, normalizeIntervalDays(intervalDays), nextDay, hasNextStep ? current.position + 2 : null)
+  const nextStepNumber = hasNextStep ? current.position + 2 : null
+  const daily = cadenceKind === 'daily'
+  // RC5 da B: bolinhas só na cadência ≥ 7 d; diário ganha calendário em texto (121 C, AC-19).
+  const stageDoses = intervalDays && !daily
+    ? stageDosesOf(startDay, endDay, duration, normalizeIntervalDays(intervalDays), nextDay, nextStepNumber)
     : null
+  const stageCalendar = daily ? dailyStageCalendar(startDay, endDay, duration, todayLocal, nextStepNumber) : null
   const steps = sorted.map((st) => stepItem(st, current.position, startDay, endDay))
   const currentDose = endDay
     ? null
     : { dose: stepDose(current), since: sinceText(startDay, todayLocal), nextText: nextDay ? `próxima:\n${weekdayDate(nextDay)}` : null }
-  return { bar: { done: current.position + 1, total: sorted.length }, stageDoses, currentDose, steps }
+  return { bar: { done: current.position + 1, total: sorted.length }, stageDoses, stageCalendar, currentDose, steps }
 }

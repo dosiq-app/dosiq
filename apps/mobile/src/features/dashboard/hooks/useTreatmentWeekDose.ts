@@ -1,11 +1,14 @@
 // useTreatmentWeekDose.ts — dados da L1 Dose e da L3 Evolução da "Semana do tratamento" (spec 121 B).
 //
 // Três leituras independentes, depois do 1º paint (InteractionManager, como a L2):
-//  1. últimas 4 aplicações do tratamento (core `listRecentApplications`) — ERRO é estado próprio,
+//  1. últimas aplicações do tratamento — 4 no semanal; 20 no diário (121 C: cobre a semana com até
+//     2 registros/dia, teto do core; é LEITURA para a contagem, nada disso vira lista na tela) (core `listRecentApplications`) — ERRO é estado próprio,
 //     nunca "1ª dose" (falso vazio);
 //  2. escada COMPLETA por `titration_id` (`getLadderForProtocol`) — o embed da Hoje é recorte por
 //     `protocol_id` e daria "Estável" falso (AP-311, G-B1). Best-effort: falha ⇒ sem L3/sem contagem;
-//  3. ocorrências do tratamento nos próximos dias (âncora do "Já apliquei", ADR-130). Best-effort:
+//  3. diário (121 C, RC6/R-299): ocorrências GRAVADAS dos últimos 7 d — as doses previstas do passado
+//     saem delas, não do tratamento vivo. Best-effort: falha ⇒ null ⇒ calendário atual;
+//  4. ocorrências do tratamento nos próximos dias (âncora do "Já apliquei", ADR-130). Best-effort:
 //     falha ⇒ sem botão (nunca registro sem ocorrência).
 // Recarrega com `reloadKey` (capturedAt da Hoje): registrar por qualquer via atualiza a linha.
 
@@ -19,6 +22,12 @@ import { getLadderForProtocol } from '@treatments/services/titrationService'
 import { isNetworkError } from '@shared/utils/networkError'
 
 const RECENT_LIMIT = 4
+/** 121 C (PO-20): diário lê a semana na MESMA chamada — 7 d × 2 registros, teto do core (20). */
+export const DAILY_RECENT_LIMIT = 20
+
+export function recentLimitFor(kind: 'daily' | 'weekly' | null | undefined): number {
+  return kind === 'daily' ? DAILY_RECENT_LIMIT : RECENT_LIMIT
+}
 
 export type RecentApplicationRow = {
   id: string
@@ -32,11 +41,29 @@ export type WeekDoseState = {
   loading: boolean
   error: 'network' | 'other' | null
   recent: RecentApplicationRow[]
+  /** Leitura bateu no limite: a semana pode estar cortada no começo (C-A3). */
+  truncated: boolean
   ladder: any[] | null
   upcoming: any[]
+  /** Diário: ocorrências gravadas da janela passada; null = não lidas (fallback no calendário). */
+  pastInstances: any[] | null
 }
 
-const EMPTY: WeekDoseState = { loading: true, error: null, recent: [], ladder: null, upcoming: [] }
+const EMPTY: WeekDoseState = { loading: true, error: null, recent: [], truncated: false, ladder: null, upcoming: [], pastInstances: null }
+
+/** Janela passada do diário: 7 d inteiros para trás (o core recorta pelo dia local). */
+const PAST_WINDOW_MS = 8 * 86_400_000
+
+async function loadPastInstances(userId: string, protocolId: string): Promise<any[] | null> {
+  try {
+    const repo = createDoseInstanceRepository({ client: supabase as any })
+    const now = getRawNow()
+    const rows = await repo.getWindow(userId, parseTimestamp(now.getTime() - PAST_WINDOW_MS), now)
+    return (rows ?? []).filter((r: any) => r?.protocol_id === protocolId)
+  } catch {
+    return null
+  }
+}
 
 async function loadUpcoming(userId: string, protocolId: string, lookaheadDays: number): Promise<any[]> {
   try {
@@ -64,6 +91,7 @@ export function useTreatmentWeekDose({
   enabled,
   doseEnabled = true,
   cadenceDays = null,
+  cadenceKind = 'weekly',
   userId,
   protocolId,
   medicineId,
@@ -74,6 +102,8 @@ export function useTreatmentWeekDose({
   doseEnabled?: boolean
   /** Cadência da L1 — dimensiona a janela de instâncias futuras. */
   cadenceDays?: number | null
+  /** 121 C: diário amplia a leitura e dispensa a janela de âncora ("Já apliquei" é só semanal). */
+  cadenceKind?: 'daily' | 'weekly'
   userId: string | null
   protocolId: string | null
   medicineId: string | null
@@ -91,25 +121,28 @@ export function useTreatmentWeekDose({
     if (!enabled || !userId || !protocolId) return undefined
     let alive = true
     // Recarga mantém o dado anterior na tela (sem piscar); `loading` só é verdadeiro na 1ª carga.
+    const limit = recentLimitFor(cadenceKind)
+    const daily = cadenceKind === 'daily'
     const task = InteractionManager.runAfterInteractions(async () => {
-      const [recentRes, ladder, upcoming] = await Promise.all([
+      const [recentRes, ladder, upcoming, pastInstances] = await Promise.all([
         doseEnabled
-          ? listRecentApplications({ protocolId, medicineId, limit: RECENT_LIMIT }).then(
+          ? listRecentApplications({ protocolId, medicineId, limit }).then(
             (rows) => ({ rows: rows as RecentApplicationRow[], error: null as WeekDoseState['error'] }),
             (err) => ({ rows: [] as RecentApplicationRow[], error: (isNetworkError(err) ? 'network' : 'other') as WeekDoseState['error'] })
           )
           : Promise.resolve({ rows: [] as RecentApplicationRow[], error: null as WeekDoseState['error'] }),
         loadLadder(protocolId),
-        doseEnabled ? loadUpcoming(userId, protocolId, anchorLookaheadDays(cadenceDays)) : Promise.resolve([]),
+        doseEnabled && !daily ? loadUpcoming(userId, protocolId, anchorLookaheadDays(cadenceDays)) : Promise.resolve([]),
+        doseEnabled && daily ? loadPastInstances(userId, protocolId) : Promise.resolve(null),
       ])
       if (!alive) return
-      setStamped({ key: `${protocolId}:${medicineId ?? ''}`, value: { loading: false, error: recentRes.error, recent: recentRes.rows, ladder, upcoming } })
+      setStamped({ key: `${protocolId}:${medicineId ?? ''}`, value: { loading: false, error: recentRes.error, recent: recentRes.rows, truncated: recentRes.rows.length >= limit, ladder, upcoming, pastInstances } })
     })
     return () => {
       alive = false
       task?.cancel?.()
     }
-  }, [enabled, doseEnabled, cadenceDays, userId, protocolId, medicineId, reloadKey, tick])
+  }, [enabled, doseEnabled, cadenceDays, cadenceKind, userId, protocolId, medicineId, reloadKey, tick])
 
   // Handlers
   const retry = useCallback(() => setTick((t) => t + 1), [])
