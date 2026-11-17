@@ -65,19 +65,19 @@ describe('logout (authService.signOut)', () => {
 describe('sign_up (verifyOtpWithEmail)', () => {
   it('OTP de cadastro verificado → sign_up{method:email}', async () => {
     auth.verifyOtp.mockResolvedValue({ data: {}, error: null })
-    await verifyOtpWithEmail('a@b.com', '123456', 'signup')
+    await verifyOtpWithEmail('a@b.com', '12345678', 'signup')
     expect(eventsOf(EVENTS.SIGNUP)).toEqual([{ method: 'email', surface: SURFACES.MOBILE }])
   })
 
   it('OTP de recuperação NÃO é cadastro', async () => {
     auth.verifyOtp.mockResolvedValue({ data: {}, error: null })
-    await verifyOtpWithEmail('a@b.com', '123456', 'recovery')
+    await verifyOtpWithEmail('a@b.com', '12345678', 'recovery')
     expect(eventsOf(EVENTS.SIGNUP)).toEqual([])
   })
 
   it('OTP inválido → nenhum sign_up', async () => {
     auth.verifyOtp.mockResolvedValue({ data: null, error: { message: 'Token has expired' } })
-    await verifyOtpWithEmail('a@b.com', '123456', 'signup')
+    await verifyOtpWithEmail('a@b.com', '12345678', 'signup')
     expect(eventsOf(EVENTS.SIGNUP)).toEqual([])
   })
 })

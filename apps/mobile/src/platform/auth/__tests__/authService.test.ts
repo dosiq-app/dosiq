@@ -7,6 +7,8 @@ jest.mock('@platform/supabase/nativeSupabaseClient', () => ({
       signInWithPassword: jest.fn(),
       signUp: jest.fn(),
       resetPasswordForEmail: jest.fn(),
+      resend: jest.fn(),
+      verifyOtp: jest.fn(),
       signOut: jest.fn(),
     },
   },
@@ -19,7 +21,10 @@ import type {
   AuthResponse,
 } from '@supabase/supabase-js'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
-import { signInWithEmail, signUpWithEmail, sendPasswordReset, signOut } from '../authService'
+import {
+  signInWithEmail, signUpWithEmail, sendPasswordReset, signOut,
+  resendSignupConfirmation, verifyOtpWithEmail, SEND_LIMIT_MESSAGES, OTP_ERROR_MESSAGE,
+} from '../authService'
 
 const mockedAuth = supabase.auth as jest.Mocked<typeof supabase.auth>
 
@@ -196,7 +201,7 @@ describe('authService', () => {
       })
       const result = await sendPasswordReset('test@example.com')
       expect(result.success).toBe(false)
-      expect(result.error).toBe('Muitas tentativas. Tente novamente mais tarde.')
+      expect(result.error).toBe(SEND_LIMIT_MESSAGES.quota)
     })
 
     it('trata erro de rede inesperado com fallback', async () => {
@@ -226,6 +231,58 @@ describe('authService', () => {
       mockedAuth.signOut.mockRejectedValue(new Error('Network error'))
       const result = await signOut()
       expect(result.success).toBe(false)
+    })
+  })
+  // Spec 123 (PO-123-3, PO-SEC-3): recusas do GoTrue por causa — analysis-M.md.
+  describe('resendSignupConfirmation', () => {
+    const cases: Array<[string, Partial<AuthError>, string]> = [
+      ['60 s do mesmo endereço', { code: 'over_email_send_rate_limit', status: 429, message: 'For security purposes, you can only request this after 42 seconds.' }, SEND_LIMIT_MESSAGES.cooldown],
+      ['teto de e-mails do projeto', { code: 'over_email_send_rate_limit', status: 429, message: 'email rate limit exceeded' }, SEND_LIMIT_MESSAGES.quota],
+      ['limite por IP', { code: 'over_request_rate_limit', status: 429, message: 'Request rate limit reached' }, SEND_LIMIT_MESSAGES.network],
+      ['SMTP falhou', { status: 500, message: 'Error sending confirmation email' }, SEND_LIMIT_MESSAGES.quota],
+      ['erro desconhecido', { status: 400, message: 'algo novo' }, SEND_LIMIT_MESSAGES.quota],
+    ]
+
+    it.each(cases)('%s ⇒ mensagem própria', async (_label, error, expected) => {
+      mockedAuth.resend.mockResolvedValue({ data: { user: null, session: null }, error: error as AuthError })
+      const result = await resendSignupConfirmation('fulano@example.com')
+      expect(result).toEqual({ success: false, error: expected })
+    })
+
+    it('sucesso usa o mesmo redirect do cadastro', async () => {
+      const prevDev = (global as unknown as { __DEV__: boolean }).__DEV__;
+      (global as unknown as { __DEV__: boolean }).__DEV__ = false
+      try {
+        mockedAuth.resend.mockResolvedValue({ data: { user: null, session: null }, error: null })
+        const result = await resendSignupConfirmation('fulano@example.com')
+        expect(result).toEqual({ success: true })
+        expect(supabase.auth.resend).toHaveBeenCalledWith({
+          type: 'signup',
+          email: 'fulano@example.com',
+          options: { emailRedirectTo: 'https://dosiq.app/auth/callback' },
+        })
+      } finally {
+        (global as unknown as { __DEV__: boolean }).__DEV__ = prevDev
+      }
+    })
+
+    it('exceção de rede ⇒ mensagem do teto, sem lançar', async () => {
+      mockedAuth.resend.mockRejectedValue(new Error('offline'))
+      expect(await resendSignupConfirmation('fulano@example.com')).toEqual({ success: false, error: SEND_LIMIT_MESSAGES.quota })
+    })
+  })
+
+  describe('verifyOtpWithEmail (E-7: só 8 dígitos)', () => {
+    it.each(['123456', '1234567', '123456789', 'abcdefgh', ''])('%j é recusado sem chamar o servidor', async (code) => {
+      const result = await verifyOtpWithEmail('fulano@example.com', code, 'signup')
+      expect(result.success).toBe(false)
+      expect(supabase.auth.verifyOtp).not.toHaveBeenCalled()
+    })
+
+    it('código errado ou vencido ⇒ mensagem única', async () => {
+      mockedAuth.verifyOtp.mockResolvedValue({ data: { user: null, session: null }, error: { message: 'Token has expired or is invalid', code: 'otp_expired' } as AuthError })
+      const result = await verifyOtpWithEmail('fulano@example.com', '19971511', 'signup')
+      expect(result).toEqual({ success: false, error: OTP_ERROR_MESSAGE })
     })
   })
 })

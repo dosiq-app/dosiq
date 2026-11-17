@@ -25,8 +25,32 @@ const emailSchema = z.object({
   email: z.string().email('Email inválido').trim(),
 })
 
+// Spec 123 §Limites de envio: três recusas, três mensagens. Mapeadas pelo `code` do GoTrue e, como
+// "60 s" e "teto" dividem o mesmo `code`, pela `message` (fonte: supabase/auth `mail.go`,
+// `errors.go`, `middleware.go` — analysis-M.md). Nenhuma varia pela existência da conta (RC-SEC S-3).
+export const SEND_LIMIT_MESSAGES = {
+  cooldown: 'Acabamos de enviar. Aguarde um minuto e peça de novo.',
+  network: 'Muitas tentativas nesta rede agora. Tente de novo em alguns minutos.',
+  quota: 'Não conseguimos enviar o e-mail agora. Tente de novo mais tarde.',
+} as const
+
+export const OTP_ERROR_MESSAGE = 'Código incorreto ou vencido. Confira os dígitos ou peça um novo.'
+
+function translateSendLimit(authError): string | null {
+  const code = authError.code || ''
+  const message = authError.message?.toLowerCase() || ''
+  if (message.includes('only request this after')) return SEND_LIMIT_MESSAGES.cooldown
+  if (code === 'over_request_rate_limit' || message.includes('request rate limit')) return SEND_LIMIT_MESSAGES.network
+  if (code === 'over_email_send_rate_limit' || message.includes('rate limit')) return SEND_LIMIT_MESSAGES.quota
+  if (message.includes('error sending')) return SEND_LIMIT_MESSAGES.quota
+  return null
+}
+
 function translateAuthError(authError, context = 'login') {
   if (!authError) return null
+
+  const sendLimit = translateSendLimit(authError)
+  if (sendLimit) return sendLimit
 
   const message = authError.message?.toLowerCase() || ''
 
@@ -39,7 +63,6 @@ function translateAuthError(authError, context = 'login') {
     { key: 'weak password', value: 'Senha muito fraca. Use no mínimo 8 caracteres.' },
     { key: 'password too long', value: 'Senha muito longa' },
     { key: 'email_not_authenticated', value: 'Email não autenticado' },
-    { key: 'rate limit', value: 'Muitas tentativas. Tente novamente mais tarde.' },
     { key: 'different from the old password', value: 'Nova senha deve ser diferente da senha atual.' },
     { key: 'same password', value: 'Nova senha deve ser diferente da senha atual.' },
   ]
@@ -52,7 +75,8 @@ function translateAuthError(authError, context = 'login') {
     signup: 'Erro ao criar conta',
     reset: 'Erro ao atualizar senha',
     send_reset: 'Erro ao enviar email de recuperação',
-    verify_otp: 'Código inválido ou expirado',
+    verify_otp: OTP_ERROR_MESSAGE,
+    resend: SEND_LIMIT_MESSAGES.quota,
   }
   return fallbacks[context] || authError.message || 'Erro inesperado'
 }
@@ -85,6 +109,17 @@ export async function signInWithEmail(email, password) {
 }
 
 /**
+ * Universal Link / App Link (UL-S2): em produção, https abre o app se instalado (associatedDomains
+ * iOS; Android autoVerify), senão cai no web /auth/callback (detectSessionInUrl auto-completa). Em
+ * dev (__DEV__), mantém o scheme dosiq:// — abre o build de dev direto, sem mandar o usuário pro
+ * web/banco de produção. dosiq:// segue no allow-list. Usado pelo cadastro E pelo reenvio (spec 123
+ * C-3: sem ele o link reenviado cairia no Site URL).
+ */
+function signupRedirectUrl(): string {
+  return __DEV__ ? 'dosiq://auth/callback' : 'https://dosiq.app/auth/callback'
+}
+
+/**
  * Cria nova conta com email e senha
  * Supabase envia email de confirmação após cadastro bem-sucedido
  *
@@ -106,14 +141,7 @@ export async function signUpWithEmail(email, password, confirmPassword) {
       email: validation.data.email,
       password: validation.data.password,
       options: {
-        // Universal Link / App Link (UL-S2): em produção, https abre o app se
-        // instalado (associatedDomains iOS; Android autoVerify), senão cai no web
-        // /auth/callback (detectSessionInUrl auto-completa). Em dev (__DEV__),
-        // mantém o scheme dosiq:// — abre o build de dev direto, sem mandar o
-        // usuário pro web/banco de produção. dosiq:// segue no allow-list.
-        emailRedirectTo: __DEV__
-          ? 'dosiq://auth/callback'
-          : 'https://dosiq.app/auth/callback',
+        emailRedirectTo: signupRedirectUrl(),
       },
     })
 
@@ -245,9 +273,11 @@ export async function signOut() {
  * Valida o código OTP numérico enviado por e-mail
  */
 export async function verifyOtpWithEmail(email, token, type: any = 'signup') {
-  const tokenClean = token.trim()
-  if ((tokenClean.length !== 6 && tokenClean.length !== 8) || isNaN(Number(tokenClean))) {
-    return { success: false, error: 'O código deve conter 6 ou 8 dígitos numéricos' }
+  // Spec 123 E-7: regra única do código, aqui — 8 dígitos (o mesmo tamanho para cadastro e
+  // recuperação: o GoTrue usa `Mailer.OtpLength` em todo e-mail). A tela só habilita o botão.
+  const tokenClean = typeof token === 'string' ? token.trim() : ''
+  if (!/^\d{8}$/.test(tokenClean)) {
+    return { success: false, error: 'O código tem 8 dígitos.' }
   }
 
   try {
@@ -272,4 +302,29 @@ export async function verifyOtpWithEmail(email, token, type: any = 'signup') {
   }
 }
 
-export default { signInWithEmail, signUpWithEmail, sendPasswordReset, updatePassword, verifyOtpWithEmail, signOut }
+/**
+ * Reenvia o e-mail de confirmação do cadastro (spec 123 FR-005). O servidor responde igual para
+ * endereço inexistente, já confirmado ou não confirmado (`resend.go`): a tela não vira oráculo.
+ */
+export async function resendSignupConfirmation(email) {
+  const validation = emailSchema.safeParse({ email })
+  if (!validation.success) {
+    return { success: false, error: validation.error.issues[0]?.message || 'Email inválido' }
+  }
+
+  try {
+    const { error: authError } = await supabase.auth.resend({
+      type: 'signup',
+      email: validation.data.email,
+      options: { emailRedirectTo: signupRedirectUrl() },
+    })
+    if (authError) {
+      return { success: false, error: translateAuthError(authError, 'resend') }
+    }
+    return { success: true }
+  } catch {
+    return { success: false, error: SEND_LIMIT_MESSAGES.quota }
+  }
+}
+
+export default { resendSignupConfirmation, signInWithEmail, signUpWithEmail, sendPasswordReset, updatePassword, verifyOtpWithEmail, signOut }

@@ -7,6 +7,18 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Cadastro: e-mail certo na primeira vez (spec 123, Fatia M)
+
+- **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.29 → **0.34.30**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — fluxo novo na tela de cadastro, 100% JS, nada desligado por flag):
+  - **Sugestão de domínio no e-mail.** Ao sair do campo ou tocar "Continuar", um domínio que parece erro de digitação ganha o aviso "Você quis dizer fulano@gmail.com?" com "Usar este" e "Manter o meu". "Usar este" troca o endereço e mostra "Corrigido para gmail.com · Desfazer"; "Manter o meu" não volta a sugerir para o mesmo endereço. Com o aviso na tela, "Continuar" segue com o que foi digitado — a sugestão nunca bloqueia. O campo oferece o preenchimento automático de e-mail do sistema. A sugestão é calculada no aparelho: o endereço não sai do app por causa dela.
+  - **Confirmação mostra o endereço e deixa pedir de novo.** A tela vira "Confirme seu e-mail", com o endereço usado e "Corrigir" ao lado, e "Toque no link que enviamos ou digite o código de 8 dígitos". O código tem 8 posições desenhadas sobre um campo só: colar (com ou sem espaço, ou a linha inteira do e-mail) e a sugestão do teclado preenchem tudo de uma vez e confirmam sozinhos; digitando, a pessoa toca "Confirmar e entrar". Código errado ou vencido mostra "Código incorreto ou vencido. Confira os dígitos ou peça um novo." sem apagar o que foi digitado. "Reenviar e-mail" fica disponível 60 s depois de cada envio, com o contador à vista, e confirma com "Novo e-mail enviado agora". "Voltar ao Login" vira "Já tem conta? Entrar" no rodapé. O link do e-mail continua confirmando a conta.
+  - **Corrigir o e-mail sem redigitar.** "Corrigir" (ou a seta de voltar) volta ao formulário com e-mail e senha preenchidos. Endereço novo cria o cadastro no endereço certo e a confirmação avisa "E-mail corrigido. A confirmação foi para esse endereço."; o mesmo endereço volta à confirmação sem novo envio e o contador continua de onde estava. Ao voltar, a senha fica travada — "Mostrar" segue funcionando para conferir — porque corrigir o e-mail recadastra com a senha já criada. A senha fica só na memória da tela.
+  - **Recusas de envio com mensagem por causa:** "Acabamos de enviar. Aguarde um minuto e peça de novo." (60 s do mesmo endereço), "Muitas tentativas nesta rede agora. Tente de novo em alguns minutos." (limite por rede) e "Não conseguimos enviar o e-mail agora. Tente de novo mais tarde." (teto de envio) — no lugar do genérico "Muitas tentativas". Nenhuma mensagem muda conforme o e-mail já ter conta.
+  - **Recuperação de senha** usa o mesmo campo do código: colar com espaço deixa de perder dígito. O código passa a ser aceito só com 8 dígitos (o tamanho que o servidor envia), no cadastro e na recuperação.
+- **Core** (`Added`): `suggestEmailDomain`, `KNOWN_EMAIL_DOMAINS`, `EMAIL_DOMAIN_CORRECTIONS` (`emailDomainSuggestion.ts`) — regras na ordem da spec (conhecido, mapa de correções, erro de TLD, até 2 edições de um único conhecido de nome longo).
+- **Web**: sem mudança.
+- **Store-note:** "Cadastro mais fácil: o app avisa quando o e-mail parece ter erro de digitação, mostra para qual endereço a confirmação foi, deixa corrigir e pedir um novo e-mail, e aceita colar o código."
+
 ### A linha Dose chega ao GLP-1 diário e a quem cadastrou a caneta como comprimido (spec 121, Fatia C)
 
 - **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.28 → **0.34.29**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — feature nova na tela inicial):

@@ -376,6 +376,7 @@ export type {
 
 // SemVer utilities (026 — Nudges In-App)
 export { compareSemver, satisfiesSemver } from './semver'
+export { suggestEmailDomain, KNOWN_EMAIL_DOMAINS, EMAIL_DOMAIN_CORRECTIONS } from './emailDomainSuggestion'
 
 // Canais Android do push remoto — fonte única servidor↔app (062 F3)
 export {
