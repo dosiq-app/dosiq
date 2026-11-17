@@ -228,3 +228,44 @@ export function findBodyMapParityGaps(
     duplicated,
   }
 }
+
+/** Região do mapa com o que desenhar nela (121 B, T022). */
+export interface BodyMapMarker {
+  region: BodyMapRegion
+  /** Texto no centroide ("3", "1"…) ou null = região não usada (contorno tracejado). */
+  label: string | null
+  /** `latest` = aplicação mais recente (destaque); `marked` = usada; `none` = não usada. */
+  emphasis: 'latest' | 'marked' | 'none'
+}
+
+/**
+ * Modelo de marcadores por face — fonte ÚNICA do que vai em cada região, para o PDF (contagens)
+ * e para a L1 da Hoje (4 últimas numeradas). Só o PASSADO: não existe ênfase "sugerido/próximo"
+ * (INV-2, AC-14 da 121 — o app nunca indica onde aplicar).
+ *
+ * - `{ counts }`: local → nº de aplicações; label = contagem (relatório, 097 FR-014).
+ * - `{ recentSites }`: locais MAIS RECENTE PRIMEIRO; label = posição (1 = mais recente); local
+ *   repetido fica com o nº mais recente; o nº 1 recebe `latest`.
+ * Local vazio/desconhecido é ignorado (não tem região).
+ */
+export function buildBodyMapMarkers(
+  face: BodyMapFace,
+  input: { counts: Readonly<Record<string, number>> } | { recentSites: readonly (string | null | undefined)[] }
+): BodyMapMarker[] {
+  const labels = new Map<string, { label: string; latest: boolean }>()
+  if ('counts' in input) {
+    for (const [site, n] of Object.entries(input.counts)) {
+      if (n > 0) labels.set(site, { label: String(n), latest: false })
+    }
+  } else {
+    input.recentSites.forEach((site, i) => {
+      if (!site || !REGION_BY_VALUE.has(site) || labels.has(site)) return
+      labels.set(site, { label: String(i + 1), latest: i === 0 })
+    })
+  }
+  return getBodyMapRegionsByFace(face).map((region) => {
+    const hit = labels.get(region.value)
+    if (!hit) return { region, label: null, emphasis: 'none' as const }
+    return { region, label: hit.label, emphasis: hit.latest ? ('latest' as const) : ('marked' as const) }
+  })
+}

@@ -11,7 +11,7 @@ import {
   BODY_MAP_FACES,
   BODY_MAP_SIDE_LETTERS,
   BODY_MAP_SILHOUETTE,
-  getBodyMapRegionsByFace,
+  buildBodyMapMarkers,
   INJECTION_BODY_MAP_VIEWBOX,
   type BodyMapFace,
 } from '../../utils/injectionBodyMap'
@@ -36,15 +36,15 @@ function silhouette(face: BodyMapFace): string {
   )
 }
 
-function face(face: BodyMapFace, counts: ReadonlyMap<string, number>, offsetX: number): string {
+function face(face: BodyMapFace, counts: Readonly<Record<string, number>>, offsetX: number): string {
   const { width } = INJECTION_BODY_MAP_VIEWBOX
-  const regions = getBodyMapRegionsByFace(face)
-    .map((r) => {
-      const n = counts.get(r.value) ?? 0
-      if (n <= 0) return `<path d="${r.path}" fill="none" stroke="#9ca3af" stroke-width=".8" stroke-dasharray="2 1.5"/>`
+  // 121 B (T022): o QUE vai em cada região vem do modelo único do core; aqui só o desenho.
+  const regions = buildBodyMapMarkers(face, { counts })
+    .map(({ region: r, label }) => {
+      if (label === null) return `<path d="${r.path}" fill="none" stroke="#9ca3af" stroke-width=".8" stroke-dasharray="2 1.5"/>`
       return (
         `<path d="${r.path}" fill="#ffffff" stroke="#0f766e" stroke-width="1.4" data-site="${r.value}"/>` +
-        `<text x="${r.centroid.x}" y="${r.centroid.y + 3}" text-anchor="middle" font-size="9" font-weight="700" fill="#1f2937">${n}</text>`
+        `<text x="${r.centroid.x}" y="${r.centroid.y + 3}" text-anchor="middle" font-size="9" font-weight="700" fill="#1f2937">${label}</text>`
       )
     })
     .join('')
@@ -61,8 +61,7 @@ function face(face: BodyMapFace, counts: ReadonlyMap<string, number>, offsetX: n
  */
 export function renderBodyMapSvg(counts: Record<string, number>, label: string): string {
   const { width, height } = INJECTION_BODY_MAP_VIEWBOX
-  const map = new Map(Object.entries(counts))
-  const faces = BODY_MAP_FACES.map((f, i) => face(f, map, i * width)).join('')
+  const faces = BODY_MAP_FACES.map((f, i) => face(f, counts, i * width)).join('')
   return (
     `<svg class="bodymap" viewBox="0 0 ${width * BODY_MAP_FACES.length} ${height + TOP}" role="img" aria-label="${label}">` +
     `${faces}</svg>`

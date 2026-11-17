@@ -94,3 +94,35 @@ describe('injectionBodyMap — geometria', () => {
     expect(getBodyMapRegion('joelho_e')).toBeNull()
   })
 })
+
+describe('buildBodyMapMarkers (121 B, PO-12)', () => {
+  it('recentSites: nº 1 = mais recente (latest); repetido mantém o nº mais recente; desconhecido ignorado', async () => {
+    const { buildBodyMapMarkers } = await import('../injectionBodyMap')
+    const all = BODY_MAP_FACES.flatMap((f) =>
+      buildBodyMapMarkers(f, { recentSites: ['abdomen_d', 'orelha', 'abdomen_d', 'coxa_e'] })
+    )
+    const marked = all.filter((m) => m.label !== null)
+    expect(marked.map((m) => [m.region.value, m.label, m.emphasis])).toEqual(
+      expect.arrayContaining([
+        ['abdomen_d', '1', 'latest'],
+        ['coxa_e', '4', 'marked'],
+      ])
+    )
+    expect(marked).toHaveLength(2)
+  })
+
+  it('INV-2: só existem ênfases do passado — nenhum estado "sugerido/próximo"', async () => {
+    const { buildBodyMapMarkers } = await import('../injectionBodyMap')
+    const emphases = new Set(
+      BODY_MAP_FACES.flatMap((f) => buildBodyMapMarkers(f, { recentSites: [] }).map((m) => m.emphasis))
+    )
+    expect([...emphases]).toEqual(['none'])
+  })
+
+  it('counts: label = contagem; zero = não usada', async () => {
+    const { buildBodyMapMarkers } = await import('../injectionBodyMap')
+    const m = buildBodyMapMarkers('frente', { counts: { abdomen_e: 9, coxa_d: 0 } })
+    expect(m.find((x) => x.region.value === 'abdomen_e')?.label).toBe('9')
+    expect(m.find((x) => x.region.value === 'coxa_d')?.label).toBeNull()
+  })
+})

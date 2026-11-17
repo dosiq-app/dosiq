@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react'
 import { Alert } from 'react-native'
 import { formatIntakeDose, formatDose, formatMedicineFullName, parseLocalDate } from '@dosiq/core'
 import EvolutionSwitchCard from '@dashboard/components/EvolutionSwitchCard'
+import { isCoveredByWeekModule } from '@dashboard/utils/evolutionSwitchCover'
 import EvolutionSwitchOutcomeSheet, {
   type SwitchOutcomeLine,
 } from '@treatments/components/EvolutionSwitchOutcomeSheet'
@@ -52,9 +53,12 @@ function buildRemindersValue(activated: SwitchOutcomeProtocol | undefined): stri
 export default function EvolutionSwitchSection({
   timezone,
   refreshToken,
+  coveredProtocolId = null,
 }: {
   timezone?: string
   refreshToken?: number
+  /** 121 B: tratamento cuja escada a L3 do módulo já mostra. */
+  coveredProtocolId?: string | null
 }) {
   // 1. States
   const [outcome, setOutcome] = useState<{
@@ -163,11 +167,12 @@ export default function EvolutionSwitchSection({
   }, [outcome, openTreatment])
 
   // 4. Render
-  if (!view && !outcome) return null
+  const hideCard = isCoveredByWeekModule(view, coveredProtocolId)
+  if ((!view || hideCard) && !outcome) return null
 
   return (
     <>
-      {!!view && (
+      {!!view && !hideCard && (
         <EvolutionSwitchCard
           stepNumber={view.info.pendingPosition + 1}
           medicineName={formatMedicineFullName(view.pendingStep.medicine)}
