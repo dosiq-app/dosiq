@@ -28,3 +28,15 @@ export function earlyRegisterModal(instance: { id: string; scheduled_for: string
 export function disarmRegisteredAlarms(modal: { cancelAlarmIds?: string[] } | null | undefined, cancel: (id: string) => Promise<unknown>) {
   for (const id of modal?.cancelAlarmIds ?? []) Promise.resolve(cancel(id)).catch(() => {})
 }
+
+/** Piso da janela de instâncias futuras lida pela L1 (semanal: 3,5 d de tolerância + folga). */
+const ANCHOR_LOOKAHEAD_DAYS = 8
+
+/**
+ * RC6: a janela cobre a tolerância da cadência (metade do intervalo) — com 8 d fixos, cadência > ~16 d
+ * perdia o "Já apliquei" e a "próxima" não via a ocorrência registrada adiantada.
+ */
+export function anchorLookaheadDays(cadenceDays: number | null | undefined): number {
+  return Math.max(ANCHOR_LOOKAHEAD_DAYS, Math.ceil((cadenceDays ?? 0) / 2) + 1)
+}
+

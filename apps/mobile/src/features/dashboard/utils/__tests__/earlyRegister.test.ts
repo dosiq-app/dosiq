@@ -1,6 +1,6 @@
 // 121 B · PO-15 (ADR-130): registro adiantado ancora na ocorrência e desarma o alarme local.
 import { describe, it, expect, afterEach } from '@jest/globals'
-import { disarmRegisteredAlarms, earlyRegisterModal } from '../earlyRegister'
+import { anchorLookaheadDays, disarmRegisteredAlarms, earlyRegisterModal } from '../earlyRegister'
 
 afterEach(() => {
   jest.clearAllMocks()
@@ -30,5 +30,13 @@ describe('disarmRegisteredAlarms', () => {
     disarmRegisteredAlarms({}, cancel)
     disarmRegisteredAlarms(null, cancel)
     expect(cancel).not.toHaveBeenCalled()
+  })
+})
+
+describe('anchorLookaheadDays (RC6)', () => {
+  it('semanal mantém o piso de 8 d; cadência longa cobre a tolerância (metade + 1)', () => {
+    expect(anchorLookaheadDays(7)).toBe(8)
+    expect(anchorLookaheadDays(null)).toBe(8)
+    expect(anchorLookaheadDays(30)).toBe(16)
   })
 })

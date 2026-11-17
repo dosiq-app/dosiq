@@ -10,7 +10,7 @@ import {
   formatConcentration,
   formatIntakeDose,
   formatLocalDate,
-  getNow,
+  getRawNow,
   getTodayLocal,
   getUserTime,
   isInjectable,
@@ -62,6 +62,7 @@ function useWeekDoseView({ protocol, userId, timezone, today, reloadKey }: {
   const dose = useTreatmentWeekDose({
     enabled: !!protocol,
     doseEnabled: doseEligible,
+    cadenceDays: cadence,
     userId,
     protocolId: protocol?.id ?? null,
     medicineId: protocol?.medicine_id ?? protocol?.medicine?.id ?? null,
@@ -78,8 +79,9 @@ function useWeekDoseView({ protocol, userId, timezone, today, reloadKey }: {
     return summarizeWeeklyDose({ applications: dose.recent, nextDay, intervalDays: cadence, todayLocal: today, tz: timezone })
   }, [doseEligible, dose.loading, dose.error, dose.recent, nextDay, cadence, today, timezone])
   // ADR-130: só ocorrência FUTURA dentro da tolerância; atrasada fica no hero.
+  // RC6: instante REAL (`getRawNow`) contra `scheduled_for` absoluto — `getNow` é relógio de parede do fuso.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
-  const earlyAnchor = useMemo(() => (doseEligible ? resolveEarlyAnchorInstance(dose.upcoming, getNow()) : null), [doseEligible, dose.upcoming, reloadKey])
+  const earlyAnchor = useMemo(() => (doseEligible ? resolveEarlyAnchorInstance(dose.upcoming, getRawNow()) : null), [doseEligible, dose.upcoming, reloadKey])
   const evolution = useMemo(() => evolutionRowCopy(dose.ladder, today, timezone), [dose.ladder, today, timezone])
   const evolutionOpen = useMemo(
     () => evolutionDetail(dose.ladder, nextDay, cadence, timezone, today),

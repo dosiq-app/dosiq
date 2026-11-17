@@ -11,14 +11,14 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { InteractionManager } from 'react-native'
-import { createDoseInstanceRepository, getNow, parseTimestamp } from '@dosiq/core'
+import { createDoseInstanceRepository, getRawNow, parseTimestamp } from '@dosiq/core'
+import { anchorLookaheadDays } from '@dashboard/utils/earlyRegister'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { listRecentApplications } from '@dose/services/doseService'
 import { getLadderForProtocol } from '@treatments/services/titrationService'
 import { isNetworkError } from '@shared/utils/networkError'
 
 const RECENT_LIMIT = 4
-const ANCHOR_LOOKAHEAD_DAYS = 8
 
 export type RecentApplicationRow = {
   id: string
@@ -38,11 +38,12 @@ export type WeekDoseState = {
 
 const EMPTY: WeekDoseState = { loading: true, error: null, recent: [], ladder: null, upcoming: [] }
 
-async function loadUpcoming(userId: string, protocolId: string): Promise<any[]> {
+async function loadUpcoming(userId: string, protocolId: string, lookaheadDays: number): Promise<any[]> {
   try {
     const repo = createDoseInstanceRepository({ client: supabase as any })
-    const now = getNow()
-    const to = parseTimestamp(now.getTime() + ANCHOR_LOOKAHEAD_DAYS * 86_400_000)
+    // RC6: instante real — `getNow` desloca para o relógio de parede do fuso.
+    const now = getRawNow()
+    const to = parseTimestamp(now.getTime() + lookaheadDays * 86_400_000)
     const rows = await repo.getWindow(userId, now, to)
     return (rows ?? []).filter((r: any) => r?.protocol_id === protocolId)
   } catch {
@@ -62,6 +63,7 @@ async function loadLadder(protocolId: string): Promise<any[] | null> {
 export function useTreatmentWeekDose({
   enabled,
   doseEnabled = true,
+  cadenceDays = null,
   userId,
   protocolId,
   medicineId,
@@ -70,6 +72,8 @@ export function useTreatmentWeekDose({
   enabled: boolean
   /** L1 elegível (G-B5). Sem L1, só a escada é lida — aplicações e janela não servem a ninguém. */
   doseEnabled?: boolean
+  /** Cadência da L1 — dimensiona a janela de instâncias futuras. */
+  cadenceDays?: number | null
   userId: string | null
   protocolId: string | null
   medicineId: string | null
@@ -96,7 +100,7 @@ export function useTreatmentWeekDose({
           )
           : Promise.resolve({ rows: [] as RecentApplicationRow[], error: null as WeekDoseState['error'] }),
         loadLadder(protocolId),
-        doseEnabled ? loadUpcoming(userId, protocolId) : Promise.resolve([]),
+        doseEnabled ? loadUpcoming(userId, protocolId, anchorLookaheadDays(cadenceDays)) : Promise.resolve([]),
       ])
       if (!alive) return
       setStamped({ key: `${protocolId}:${medicineId ?? ''}`, value: { loading: false, error: recentRes.error, recent: recentRes.rows, ladder, upcoming } })
@@ -105,7 +109,7 @@ export function useTreatmentWeekDose({
       alive = false
       task?.cancel?.()
     }
-  }, [enabled, doseEnabled, userId, protocolId, medicineId, reloadKey, tick])
+  }, [enabled, doseEnabled, cadenceDays, userId, protocolId, medicineId, reloadKey, tick])
 
   // Handlers
   const retry = useCallback(() => setTick((t) => t + 1), [])
