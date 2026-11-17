@@ -350,8 +350,25 @@ export {
   getBodyMapRegion,
   getBodyMapRegionsByFace,
   findBodyMapParityGaps,
+  buildBodyMapMarkers,
 } from './injectionBodyMap'
-export type { BodyMapFace, BodyMapRegion, BodyMapPoint, BodyMapBounds } from './injectionBodyMap'
+export type { BodyMapFace, BodyMapRegion, BodyMapPoint, BodyMapBounds, BodyMapMarker } from './injectionBodyMap'
+
+// Semana do tratamento — L1 Dose (121 B) e registro adiantado (ADR-130)
+export {
+  summarizeWeeklyDose,
+  resolveEarlyAnchorInstance,
+  resolveNextOpenDay,
+  normalizeIntervalDays,
+} from './weeklyDoseSummary'
+export type {
+  WeeklyApplication,
+  WeeklyDoseState,
+  WeeklyDoseSummary,
+  WeeklyDoseLast,
+  WeeklyDoseNext,
+  AnchorCandidate,
+} from './weeklyDoseSummary'
 
 // SemVer utilities (026 — Nudges In-App)
 export { compareSemver, satisfiesSemver } from './semver'

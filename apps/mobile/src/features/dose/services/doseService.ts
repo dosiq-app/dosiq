@@ -277,6 +277,15 @@ export async function getLastInjectionSite() {
 }
 
 /**
+ * Últimas aplicações do TRATAMENTO (121 B, T021): `protocol_id` do tratamento OU `medicine_id` do
+ * remédio atual, mais recente primeiro. Regra/select no core (R-231). LANÇA em erro — a L1 mostra
+ * erro, nunca "1ª dose" (falso vazio).
+ */
+export async function listRecentApplications(opts: { protocolId?: string | null; medicineId?: string | null; limit?: number }) {
+  return doseLogCore.listRecentApplications(opts)
+}
+
+/**
  * Exclui um log avulso/PRN devolvendo o estoque ao inventário.
  *
  * @param {string} logId

@@ -46,7 +46,7 @@ import { summarizeNextDose } from '@dashboard/utils/nextDoseSummary'
 import { useAlarmScreenActive } from '@platform/versionGate/useAlarmScreenActive'
 import { useStockTracking } from '@shared/hooks/useStockTracking'
 import { useStock } from '@stock/hooks/useStock'
-import { subscribePendingDose } from '@navigation/navigateToDose'
+import { navigateToTreatmentDetail, subscribePendingDose } from '@navigation/navigateToDose'
 import { deriveStockAlerts, deriveSupplyNotices } from '@dashboard/hooks/_useTodayDerived'
 import { navigateCrossTab } from '@navigation/navigateCrossTab'
 import { useStockUpsell } from '@dashboard/hooks/useStockUpsell'
@@ -54,6 +54,8 @@ import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatte
 import OemBatteryAssistantCard from '@features/oemAssistant/components/OemBatteryAssistantCard'
 import { useTodaySurfaces } from '@dashboard/hooks/useTodaySurfaces'
 import { useLateDoseActions } from '@dashboard/hooks/useLateDoseActions'
+import { disarmRegisteredAlarms, earlyRegisterModal } from '@dashboard/utils/earlyRegister'
+import { cancelAlarm } from '@platform/alarms/alarmService'
 import { useTodaySurfaceSignal } from '@dashboard/hooks/useTodaySurfaceSignal'
 import { groupUnloggedDoses } from '@dashboard/utils/unloggedDoses'
 import { hasRemindableTreatment } from '@dashboard/utils/hasRemindableTreatment'
@@ -263,7 +265,11 @@ function TodayModals({
         entryPoint={bulkModal?.entryPoint ?? null}
         initialTakenAt={bulkModal?.initialTakenAt ?? null}
         onClose={() => setBulkModal(null)}
-        onSuccess={() => { setBulkModal(null); refresh(); refreshTodayMeasures?.() }}
+        onSuccess={() => {
+          // ADR-130/PO-15: registro adiantado desarma o alarme local da ocorrência (best-effort).
+          disarmRegisteredAlarms(bulkModal, cancelAlarm)
+          setBulkModal(null); refresh(); refreshTodayMeasures?.()
+        }}
       />
     </>
   )
@@ -426,13 +432,13 @@ function TodayAlertView({ alert, surfaces, pushReach, remindableProtocols, oemRe
 
 // 120 C (FR-013): bloco de doses — hero (com carry-over; a seção "Doses pendentes" saiu: repetia os
 // mesmos itens, A-6) · troca de etapa · "doses de hoje sem registro" (só sem hero).
-function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evoRefreshTick, unloggedGroups, onSeeAgenda }: any) {
+function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evoRefreshTick, unloggedGroups, onSeeAgenda, weekProtocolId }: any) {
   return (
     <>
       {priorityDoses.length > 0 && (
         <HeroDoseCard doses={priorityDoses} onPress={() => setBulkModal({ mode: 'hero', items: heroItems })} />
       )}
-      <EvolutionSwitchSection timezone={timezone} refreshToken={evoRefreshTick} />
+      <EvolutionSwitchSection timezone={timezone} refreshToken={evoRefreshTick} coveredProtocolId={weekProtocolId} />
       {priorityDoses.length === 0 && (
         <UnloggedDosesCard groups={unloggedGroups} onSeeAgenda={onSeeAgenda} />
       )}
@@ -444,7 +450,7 @@ function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evo
 // só passa dados. Elegibilidade de cada superfície continua nos hooks dela.
 function TodayPrioritySection({
   data, protocols, scheduledProtocols, priorityDoses, heroItems, timeline, setBulkModal,
-  otaIdle, nudgeApi, navigation, evoRefreshTick, onSeeAgenda, afterDoses = null,
+  otaIdle, nudgeApi, navigation, evoRefreshTick, onSeeAgenda, afterDoses = null, weekProtocolId = null,
 }: any) {
   // States
   const [stockSource, setStockSource] = useState(EMPTY_STOCK)
@@ -481,6 +487,7 @@ function TodayPrioritySection({
       evoRefreshTick={evoRefreshTick}
       unloggedGroups={unloggedGroups}
       onSeeAgenda={onSeeAgenda}
+      weekProtocolId={weekProtocolId}
     />
   )
   return (
@@ -517,7 +524,7 @@ function TodayPrioritySection({
 
 // 121 A: perfil (FR-001) → o que a Hoje mostra. `nenhum` ⇒ Hoje de sempre (INV-4). No wedge a Agenda
 // fica enquanto há dose hoje (G-A2/H-4: caminho de correção do dia da 120 C).
-function useTreatmentWeekSlot({ wedge, timeline, protocols, data }: any) {
+function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal }: any) {
   const profile = wedge?.profile ?? 'nenhum'
   const isWedge = profile === 'wedge'
   const hasDoseToday = timeline.some((item: any) => item.kind !== 'measure')
@@ -530,9 +537,14 @@ function useTreatmentWeekSlot({ wedge, timeline, protocols, data }: any) {
       treatmentStart={wedge?.wedgeStart ?? null}
       timezone={data?.timezone || DEFAULT_TZ}
       reloadKey={data?.capturedAt}
+      protocol={wedgeProtocol}
+      onRegisterEarly={(instance: any) => setBulkModal(earlyRegisterModal(instance, wedgeProtocol, data?.timezone || DEFAULT_TZ))}
+      onOpenTreatment={navigateToTreatmentDetail}
     />
   )
-  return { isWedge, showAgenda: !isWedge || hasDoseToday, weekModule }
+  // Smoke 121 B: tratamento cuja escada a L3 já mostra — o card neutro da 029 dele sai da Hoje.
+  const weekProtocolId = profile === 'nenhum' ? null : (wedgeProtocol?.id ?? null)
+  return { isWedge, showAgenda: !isWedge || hasDoseToday, weekModule, weekProtocolId }
 }
 
 function TodayScreenContent({
@@ -590,7 +602,7 @@ function TodayScreenContent({
   const userId = data?.user?.id ?? ''
   const lastTodayMeasure = todayMeasures?.[0] ?? null
 
-  const { isWedge, showAgenda, weekModule } = useTreatmentWeekSlot({ wedge, timeline, protocols, data })
+  const { isWedge, showAgenda, weekModule, weekProtocolId } = useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal })
 
   const late = useLateDoseActions({ setBulkModal, refresh })
   // SEM_REGISTRO na agenda ⇒ registro tardio (lote c/ hora prevista); na janela ⇒ modal de sempre.
@@ -632,7 +644,7 @@ function TodayScreenContent({
           priorityDoses={priorityDoses} heroItems={heroItems} timeline={timeline}
           setBulkModal={setBulkModal} otaIdle={isIdleForOtaBanner} nudgeApi={nudgeApi}
           navigation={navigation} evoRefreshTick={evoRefreshTick} onSeeAgenda={scrollToAgenda}
-          afterDoses={weekModule}
+          afterDoses={weekModule} weekProtocolId={weekProtocolId}
         />
         {/* 121 A (G-A2/H-4): no wedge a Agenda fica enquanto há dose hoje — é o caminho de correção
             do dia da 120 C. Só o dia sem dose troca o vazio "Nenhuma dose hoje" pelo módulo. */}

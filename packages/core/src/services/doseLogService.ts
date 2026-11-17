@@ -272,6 +272,49 @@ async function getLastInjectionSite({ client, getUserId }: Pick<DoseLogDeps, 'cl
   return data?.injection_site ?? null
 }
 
+/** Aplicação registrada, como a L1 da Semana do tratamento lê (121 B). */
+export interface RecentApplication {
+  id: string
+  taken_at: string
+  injection_site: string | null
+  medicine_id: string | null
+  protocol_id: string | null
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Últimas aplicações de um TRATAMENTO, mais recente primeiro (121 B, T021 / G-B4).
+ *
+ * Recorte = `protocol_id` do tratamento OU `medicine_id` do remédio atual — pega também o registro
+ * avulso do mesmo remédio. Cada linha é o FATO (R-299): `medicine_id`/`injection_site` do próprio
+ * log, nunca do protocolo vivo. `taken_at` (não existe `occurred_at` em `medicine_logs`).
+ * R-295: colunas verificadas em `information_schema` + `has_column_privilege(authenticated)` (QA
+ * 2026-11-16). IDs validados como UUID antes de entrar no filtro `or()` (string do PostgREST).
+ *
+ * Lança em erro de rede/banco — o chamador mostra estado de erro, NUNCA "1ª dose".
+ */
+async function listRecentApplications(
+  { client, getUserId }: Pick<DoseLogDeps, 'client' | 'getUserId'>,
+  { protocolId, medicineId, limit = 4 }: { protocolId?: string | null; medicineId?: string | null; limit?: number }
+): Promise<RecentApplication[]> {
+  const clauses = [
+    protocolId && UUID_RE.test(protocolId) ? `protocol_id.eq.${protocolId}` : null,
+    medicineId && UUID_RE.test(medicineId) ? `medicine_id.eq.${medicineId}` : null,
+  ].filter(Boolean)
+  if (clauses.length === 0) return []
+  const userId = await getUserId()
+  const { data, error } = await client
+    .from('medicine_logs')
+    .select('id, taken_at, injection_site, medicine_id, protocol_id')
+    .eq('user_id', userId)
+    .or(clauses.join(','))
+    .order('taken_at', { ascending: false, nullsFirst: false })
+    .limit(Math.max(1, Math.min(limit, 20)))
+  if (error) throw error
+  return (data ?? []) as RecentApplication[]
+}
+
 /**
  * Factory do serviço de registro e controle de doses.
  * Retorno anotado explicitamente (TS2742 — declaration emit não nomeia o tipo
@@ -292,6 +335,7 @@ export function createDoseLogService({
   deleteOrphanLog(logId: string): Promise<{ success: boolean }>
   registerDoseMany(logsData: Record<string, unknown>[]): Promise<any[]>
   getLastInjectionSite(): Promise<string | null>
+  listRecentApplications(opts: { protocolId?: string | null; medicineId?: string | null; limit?: number }): Promise<RecentApplication[]>
 } {
   if (!client) throw new Error('createDoseLogService: client é obrigatório')
   if (typeof getUserId !== 'function') {
@@ -329,5 +373,7 @@ export function createDoseLogService({
       return results
     },
     getLastInjectionSite: () => getLastInjectionSite(deps),
+    listRecentApplications: (opts: { protocolId?: string | null; medicineId?: string | null; limit?: number }) =>
+      listRecentApplications(deps, opts),
   }
 }
