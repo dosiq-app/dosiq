@@ -17,6 +17,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Mail } from 'lucide-react-native'
 import { sendPasswordReset, verifyOtpWithEmail } from '../platform/auth/authService'
+import { OtpCodeField } from '@shared/components/form'
+import { OTP_LENGTH } from '@shared/components/form/OtpCodeField'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { colors, spacing, typography } from '@shared/styles/tokens'
 
@@ -46,9 +48,10 @@ export default function ForgotPasswordScreen({ navigation }) {
   }
 
   async function handleVerifyOtp() {
-    const tokenClean = otpCode.trim()
-    if ((tokenClean.length !== 6 && tokenClean.length !== 8) || isNaN(Number(tokenClean))) {
-      setOtpError('O código deve conter 6 ou 8 dígitos numéricos')
+    // Spec 123 E-7: a regra do código (8 dígitos) mora só no serviço.
+    const tokenClean = otpCode
+    if (tokenClean.length !== OTP_LENGTH) {
+      setOtpError('O código tem 8 dígitos.')
       return
     }
     setVerifying(true)
@@ -92,17 +95,7 @@ export default function ForgotPasswordScreen({ navigation }) {
             <Text style={styles.otpLabel}>
               Digite o código de confirmação enviado:
             </Text>
-            <TextInput
-              style={[styles.input, styles.otpInput]}
-              placeholder="Código"
-              placeholderTextColor={colors.text.muted}
-              value={otpCode}
-              onChangeText={(text) => setOtpCode(text.replace(/\D/g, ''))}
-              keyboardType="number-pad"
-              maxLength={8}
-              textContentType="oneTimeCode"
-              editable={!verifying}
-            />
+            <OtpCodeField value={otpCode} onChange={setOtpCode} editable={!verifying} hasError={Boolean(otpError)} />
             {otpError ? <Text style={styles.error}>{otpError}</Text> : null}
           </View>
 
@@ -295,13 +288,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: colors.text.secondary,
     textAlign: 'center',
-  },
-  otpInput: {
-    textAlign: 'center',
-    fontSize: 22,
-    letterSpacing: 6,
-    fontFamily: typography.fontFamily.bold || 'System',
-    marginBottom: 0,
   },
   verifyButton: {
     alignSelf: 'stretch',
