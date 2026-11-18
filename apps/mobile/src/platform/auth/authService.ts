@@ -46,13 +46,21 @@ function translateSendLimit(authError): string | null {
   return null
 }
 
+const SEND_CONTEXTS = new Set(['signup', 'send_reset', 'resend'])
+
 function translateAuthError(authError, context = 'login') {
   if (!authError) return null
 
-  const sendLimit = translateSendLimit(authError)
-  if (sendLimit) return sendLimit
-
   const message = authError.message?.toLowerCase() || ''
+
+  // Recusas de envio só fazem sentido onde há envio de e-mail; nos demais fluxos (login, troca de
+  // senha, verificação do código) um 429 segue com a mensagem genérica de tentativas (RC6 #965).
+  if (SEND_CONTEXTS.has(context)) {
+    const sendLimit = translateSendLimit(authError)
+    if (sendLimit) return sendLimit
+  } else if (message.includes('rate limit')) {
+    return 'Muitas tentativas. Tente novamente mais tarde.'
+  }
 
   const errorMappings = [
     { key: 'invalid login credentials', value: 'Email ou senha inválidos' },

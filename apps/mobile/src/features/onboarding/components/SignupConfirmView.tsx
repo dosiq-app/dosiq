@@ -3,7 +3,9 @@
 // envio depois de 60 s. Todo estado vive na SignupScreen (senha só em memória — INV-3); esta view
 // só desenha e repassa toques. Nenhuma mensagem varia pela existência da conta (RC-SEC S-3).
 
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from 'react-native'
+import {
+  View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView, KeyboardAvoidingView, Platform,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Mail, ArrowLeft, Pencil, Check, Clock } from 'lucide-react-native'
 import { OtpCodeField } from '@shared/components/form'
@@ -63,7 +65,14 @@ export default function SignupConfirmView({
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      {/* AP-288/R-303: edge-to-edge no Android não redimensiona a janela — sem isto o teclado do
+          código cobre "Confirmar e entrar" e o reenvio (RC6 #965). */}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+      <ScrollView style={styles.flex} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.iconWrapper}>
           <Mail size={30} color={colors.brand.primary} strokeWidth={2.2} />
         </View>
@@ -143,6 +152,7 @@ export default function SignupConfirmView({
           {resendError ? <Text style={styles.error}>{resendError}</Text> : null}
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Pressable style={styles.footer} onPress={onGoToLogin} accessibilityRole="link">
         <Text style={styles.footerText}>
@@ -161,6 +171,7 @@ function formatCountdown(seconds: number): string {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg.screen },
+  flex: { flex: 1 },
   header: { paddingHorizontal: spacing[4], paddingTop: spacing[2], height: 40, justifyContent: 'center' },
   container: { flexGrow: 1, paddingHorizontal: spacing[6], paddingBottom: spacing[6] },
   iconWrapper: {

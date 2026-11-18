@@ -75,6 +75,16 @@ describe('authService', () => {
       expect(result.success).toBe(false)
       expect(result.error).toBe('Erro inesperado ao fazer login')
     })
+
+    it.each([
+      ['request rate limit', { code: 'over_request_rate_limit', status: 429, message: 'Request rate limit reached' }],
+      ['email rate limit', { code: 'over_email_send_rate_limit', status: 429, message: 'email rate limit exceeded' }],
+    ])('login com 429 (%s) não fala em envio de e-mail (RC6 #965)', async (_label, authError) => {
+      mockedAuth.signInWithPassword.mockResolvedValue({ data: { user: null, session: null }, error: authError } as any)
+      const result = await signInWithEmail('test@example.com', 'Senha123!')
+      expect(result.error).toBe('Muitas tentativas. Tente novamente mais tarde.')
+      expect(Object.values(SEND_LIMIT_MESSAGES)).not.toContain(result.error)
+    })
   })
 
   describe('signUpWithEmail', () => {
