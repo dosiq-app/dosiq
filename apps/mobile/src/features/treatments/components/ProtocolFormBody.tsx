@@ -81,6 +81,7 @@ function buildFrequencyOptions(currentFrequency, intervalAvailable = false, mont
 function injectableIntakeUnits(medicine): string[] {
   if (medicine?.presentation !== 'injetavel') return []
   const units = setupDefaults('injetavel', medicine?.dosage_unit).intakeUnits
+  // unit-label-gate: ok — 'ml' é VALOR do enum INTAKE_UNITS (opção gravada), não rótulo; o rótulo sai de INTAKE_UNIT_LABELS
   return isLiquidDosageUnit(medicine?.dosage_unit) && units.length > 0 ? [...units, 'ml'] : units
 }
 
