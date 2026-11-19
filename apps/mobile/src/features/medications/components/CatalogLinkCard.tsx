@@ -7,18 +7,32 @@
 // identidade oficial (`catalogLinkPayload`: nome, princípio, laboratório, classe, categoria, registro;
 // dose/unidade/forma só vazias; outra força não vincula — INV-6, R-231, R-299).
 // "Não é", ou vínculo feito, dispensa para aquele id (AsyncStorage, PO-119-9).
+// Smoke 1c (PO 19/11): só convida o que dá para aplicar — depois da tela abrir, confere no índice CMED
+// quais itens têm caixa vinculável (`linkableCatalogMatches`) e guarda o veredito por remédio + força.
+// Sem veredito (calculando, offline, índice com falha) o cartão não aparece.
 // Nada é gravado sem o toque na caixa (INV-1). Caixa sem código ⇒ nada gravado, o convite fica.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Pressable, StyleSheet } from 'react-native'
+import { View, Text, Pressable, StyleSheet, InteractionManager } from 'react-native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 (ver TreatmentsScreen.tsx)
 import * as LucideIcons from 'lucide-react-native'
 import { useMedicineDatabase } from '@shared/hooks/useMedicineDatabase'
+import { useCmedIndex } from '@shared/hooks/useCmedIndex'
 import { useToast } from '@shared/components/feedback/Toast'
 import { MedicineAnvisaSheet } from '@medications/components/MedicineAnvisaSheet'
 import { useMedicineMutation } from '@medications/hooks/useMedicineMutation'
-import { dismissCatalogLink, isCatalogLinkDismissed } from '@medications/services/catalogLinkStore'
-import { catalogLinkPayload, catalogMatchesFor } from '@medications/utils/catalogMatch'
+import {
+  dismissCatalogLink,
+  isCatalogLinkDismissed,
+  readCatalogLinkVerdict,
+  saveCatalogLinkVerdict,
+} from '@medications/services/catalogLinkStore'
+import {
+  catalogLinkPayload,
+  catalogLinkSignature,
+  catalogMatchesFor,
+  linkableCatalogMatches,
+} from '@medications/utils/catalogMatch'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 
 const { ShieldCheck } = LucideIcons as any
@@ -40,16 +54,19 @@ export function CatalogLinkCard({ medicine, onLinked }: CatalogLinkCardProps) {
   const { show } = useToast()
 
   // Memos
-  const matches = useMemo(
-    () => catalogMatchesFor(items, medicine.name, medicine.active_ingredient),
+  // O cartão decide com 5; o sheet ("Escolher o meu") lista como a busca, até 40 (PO 2026-11-15).
+  const candidates = useMemo(
+    () => catalogMatchesFor(items, medicine.name, medicine.active_ingredient, 40),
     [items, medicine.name, medicine.active_ingredient]
   )
-  const single = matches.length === 1 ? matches[0] : null
-  // O cartão decide com 5; o sheet ("Escolher o meu") lista como a busca, até 40 (PO 2026-11-15).
+  const eligible = !medicine.therapeutic_class_code && dismissed === false && candidates.length > 0
+  const linkableNames = useLinkableNames(medicine, candidates, eligible)
   const sheetMatches = useMemo(
-    () => (sheetOpen && !single ? catalogMatchesFor(items, medicine.name, medicine.active_ingredient, 40) : matches),
-    [sheetOpen, single, items, medicine.name, medicine.active_ingredient, matches]
+    () => (linkableNames ? candidates.filter((item) => linkableNames.includes(String(item?.name))) : []),
+    [candidates, linkableNames]
   )
+  const matches = sheetMatches.slice(0, 5)
+  const single = matches.length === 1 ? matches[0] : null
 
   // Effects
   useEffect(() => {
@@ -106,7 +123,7 @@ export function CatalogLinkCard({ medicine, onLinked }: CatalogLinkCardProps) {
     }
   }
 
-  if (medicine.therapeutic_class_code || dismissed !== false || matches.length === 0) return null
+  if (!eligible || matches.length === 0) return null
 
   // Copy para a "dona Maria" (PO 2026-11-15): uma pergunta, o nome em destaque, benefício genérico;
   // a assinatura da base oficial fica no rodapé, como credencial da sugestão.
@@ -163,6 +180,50 @@ export function CatalogLinkCard({ medicine, onLinked }: CatalogLinkCardProps) {
       />
     </View>
   )
+}
+
+/**
+ * Smoke 1c (PO 19/11): nomes dos itens com caixa vinculável; null = sem veredito (calculando, offline,
+ * índice com falha). Veredito guardado por remédio + assinatura da força; sem ele, carrega o índice CMED
+ * depois da tela abrir (C-C5) e guarda o resultado.
+ */
+function useLinkableNames(medicine: CatalogLinkCardProps['medicine'], candidates: any[], eligible: boolean): string[] | null {
+  // Veredito guardado e a assinatura que pediu o índice — chaveados pela assinatura: trocar a força
+  // invalida sem resetar estado num effect.
+  const [stored, setStored] = useState<{ sig: string; names: string[] } | null>(null)
+  const [indexFor, setIndexFor] = useState<string | null>(null)
+  const signature = catalogLinkSignature(medicine)
+  const cmed = useCmedIndex({ enabled: indexFor === signature })
+  const strength = useMemo(
+    () => ({ presentation: medicine.presentation, dosage_per_pill: medicine.dosage_per_pill, dosage_unit: medicine.dosage_unit }),
+    [medicine.presentation, medicine.dosage_per_pill, medicine.dosage_unit]
+  )
+  // Offline/falha do índice: sem veredito; tenta de novo na próxima abertura (não guarda).
+  const computed = useMemo(() => {
+    if (indexFor !== signature || cmed.status !== 'ready' || !cmed.index) return null
+    return linkableCatalogMatches(cmed.index, candidates, strength).map((item) => String(item?.name))
+  }, [indexFor, signature, cmed.status, cmed.index, candidates, strength])
+
+  // Veredito guardado para esta força ⇒ usa; senão carrega o índice depois da tela abrir (C-C5: nunca
+  // competir com a 1ª pintura nem com digitação).
+  useEffect(() => {
+    if (!eligible) return undefined
+    let canceled = false
+    readCatalogLinkVerdict(medicine.id, signature).then((names) => {
+      if (canceled) return
+      if (names) setStored({ sig: signature, names })
+      else InteractionManager.runAfterInteractions(() => !canceled && setIndexFor(signature))
+    })
+    return () => {
+      canceled = true
+    }
+  }, [eligible, medicine.id, signature])
+
+  useEffect(() => {
+    if (computed) saveCatalogLinkVerdict(medicine.id, signature, computed)
+  }, [computed, medicine.id, signature])
+
+  return stored?.sig === signature ? stored.names : computed
 }
 
 export default CatalogLinkCard

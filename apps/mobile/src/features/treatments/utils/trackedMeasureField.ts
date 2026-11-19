@@ -1,4 +1,4 @@
-// trackedMeasureField — "Acompanhar nas doses" no form do tratamento (spec 100 B · FR-004/FR-005).
+// trackedMeasureField — "Acompanhar medidas" no form do tratamento (spec 100 B · FR-004/FR-005).
 //
 // Puro. O form guarda `tracked_measure: null` enquanto o usuário não toca no campo: a pré-seleção
 // é a inferência (matriz da classe CMED × frequência, `inferMeasure` do core) e acompanha a troca de

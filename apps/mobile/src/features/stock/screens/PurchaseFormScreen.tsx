@@ -32,7 +32,12 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 // apps/mobile/tsconfig.json — ver nota em TreatmentsScreen.tsx
 import * as LucideIcons from 'lucide-react-native'
 const { ChevronLeft, Package, ScanBarcode } = LucideIcons as any
-import { stockCreateSchema, getTodayLocal, parseLocalDate, formatLocalDate, getNow, formatActiveIngredientShort, INJECTION_CONTAINERS, INJECTION_CONTAINER_LABELS, formatDose, brandDiffers } from '@dosiq/core'
+import { stockCreateSchema, getTodayLocal, parseLocalDate, formatLocalDate, getNow, formatActiveIngredientShort, brandDiffers } from '@dosiq/core'
+import CollapsibleSection from '@shared/components/form/CollapsibleSection'
+import { ChoiceChips } from '@medications/components/FormFirstStrength'
+import { protocolService } from '@treatments/services/protocolService'
+import { CONTAINER_OPTIONS, containerWords, mlPerApplication, purchaseTotalText, volumePlaceholder, countPlaceholder } from '@stock/utils/purchaseContainer'
+import { purchaseDetailsSummary } from '@stock/utils/purchaseDetailsSummary'
 import { useFormState } from '@shared/hooks/useFormState'
 import FormInput from '@shared/components/form/FormInput'
 import FormSelect from '@shared/components/form/FormSelect'
@@ -288,14 +293,20 @@ function usePurchaseScanResult({ isEdit, scanDraft, scanEan, scanConfirmed, medi
 // Custom hook para encapsular o estado e lógica da tela
 // ──────────────────────────────────────────────────────────────────────────────
 function usePurchaseForm(route, navigation) {
-  const [labLocked, setLabLocked] = useState(false)
-  const [medicine, setMedicine] = useState(null)
+  // Smoke 1c (PO 19/11): a aba Estoque já tem o remédio ao resolver a caixa lida — vem nos params e a caixa
+  // entra no 1º render (antes: esperava o `getById` e os dados da caixa chegavam por último).
+  const paramMedicine = route.params?.medicine ?? null
+  const paramLab = paramMedicine?.laboratory && shouldPrefillLab(paramMedicine.regulatory_category) ? paramMedicine.laboratory : null
+  const [labLocked, setLabLocked] = useState(() => !!paramLab && shouldLockLab(paramMedicine.regulatory_category))
+  const [medicine, setMedicine] = useState(paramMedicine)
   const [numBottles, setNumBottles] = useState('')
   const [volumePerBottle, setVolumePerBottle] = useState('')
   const [totalPrice, setTotalPrice] = useState('')
   const [injectionContainer, setInjectionContainer] = useState(
     () => route.params?.purchase?.injection_container || ''
   )
+  // 125 1c (AC7.8): tratamentos do remédio — só para o "≈ N aplicações" do total (best-effort).
+  const [protocols, setProtocols] = useState<any[]>([])
 
   const {
     mode = 'create',
@@ -315,7 +326,10 @@ function usePurchaseForm(route, navigation) {
   const needsContainer = isInjectable
 
   const todayIso = useMemo(() => getTodayLocal(), [])
-  const initialValues = useMemo(() => getInitialValues(isEdit, purchase, todayIso), [isEdit, purchase, todayIso])
+  const initialValues = useMemo(() => {
+    const base = getInitialValues(isEdit, purchase, todayIso)
+    return !isEdit && paramLab ? { ...base, laboratory: paramLab } : base
+  }, [isEdit, purchase, todayIso, paramLab])
 
   const form = useFormState(stockCreateSchema, { initialValues })
   const { createPurchase, createLiquidPurchase, updatePurchase, isLoading } = useStockMutation()
@@ -327,6 +341,9 @@ function usePurchaseForm(route, navigation) {
     () => getQuantityHelperText(isEdit, form.values.quantity, medicine),
     [isEdit, form.values.quantity, medicine]
   )
+
+  // 125 1c (AC7.8): mL por aplicação do tratamento ativo, para o "≈ N aplicações" do total.
+  const perApp = useMemo(() => (isInjectable ? mlPerApplication(medicine, protocols) : null), [isInjectable, medicine, protocols])
 
   // Campos do form + os de remédio `/ml` (frascos, volume e embalagem vivem fora do form). Desfaz a
   // leitura anterior e aplica a nova (C-12); devolve o registro desta para a próxima.
@@ -359,6 +376,8 @@ function usePurchaseForm(route, navigation) {
       .then((med: any) => {
         if (cancelled || !med) return
         setMedicine(med)
+        // Remédio veio nos params: o laboratório já entrou no 1º render — não sobrescreve a caixa lida.
+        if (paramMedicine) return
         if (med.laboratory && shouldPrefillLab(med.regulatory_category)) {
           handleChange('laboratory', med.laboratory)
           setLabLocked(shouldLockLab(med.regulatory_category))
@@ -366,7 +385,23 @@ function usePurchaseForm(route, navigation) {
       })
       .catch(() => {})
     return () => { cancelled = true }
-  }, [medicineId, handleChange])
+  }, [medicineId, handleChange, paramMedicine])
+
+  useEffect(() => {
+    if (!medicineId || !isInjectable) return
+    let cancelled = false
+    Promise.resolve()
+      .then(() => protocolService.getByMedicineId(medicineId))
+      .then((rows) => {
+        if (!cancelled && Array.isArray(rows)) setProtocols(rows)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [medicineId, isInjectable])
+
+  const words = containerWords(isInjectable, injectionContainer)
+  // Toque no chip ativo desmarca (o recipiente é opcional).
+  const toggleContainer = useCallback((v) => setInjectionContainer((cur) => (cur === v ? '' : v)), [])
 
   const handleQuantityChange = useCallback((_name, raw) => form.handleChange('quantity', parseDecimalPtBR(raw)), [form])
   const handlePriceChange = useCallback((_name, raw) => form.handleChange('unit_price', parseDecimalPtBR(raw)), [form])
@@ -461,6 +496,11 @@ function usePurchaseForm(route, navigation) {
     setTotalPrice,
     injectionContainer,
     setInjectionContainer,
+    toggleContainer,
+    words,
+    volumeExample: volumePlaceholder(isInjectable, injectionContainer),
+    countExample: countPlaceholder(injectionContainer, words),
+    perApp,
     labLocked,
     handleQuantityChange,
     handlePriceChange,
@@ -493,9 +533,9 @@ function renderLiquidInputs(state) {
         <View style={styles.rowHalf}>
           <FormInput
             name="num_bottles"
-            label="Nº de frascos"
+            label={`Nº de ${state.words.plural}`}
             required
-            placeholder="1"
+            placeholder={state.countExample}
             keyboardType="decimal-pad"
             maxLength={6}
             value={state.numBottles}
@@ -505,9 +545,9 @@ function renderLiquidInputs(state) {
         <View style={styles.rowHalf}>
           <FormInput
             name="volume_per_bottle"
-            label="Volume/frasco (mL)"
+            label={`mL por ${state.words.singular}`}
             required
-            placeholder="100"
+            placeholder={state.volumeExample}
             keyboardType="decimal-pad"
             maxLength={10}
             value={state.volumePerBottle}
@@ -523,7 +563,7 @@ function renderLiquidInputs(state) {
         maxLength={12}
         helperText={
           coerceDecimal(state.numBottles) > 0 && coerceDecimal(state.volumePerBottle) > 0
-            ? `💧 Total: ${formatDose(coerceDecimal(state.numBottles) * coerceDecimal(state.volumePerBottle), 'ml')}`
+            ? `💧 Total: ${purchaseTotalText(coerceDecimal(state.numBottles), coerceDecimal(state.volumePerBottle), state.words, state.perApp)}`
             : 'R$ — opcional'
         }
         value={state.totalPrice}
@@ -576,9 +616,31 @@ function renderStandardInputs(state) {
   )
 }
 
+// 125 1c (AC7.7/AC7.9): "Mais detalhes" fechado — validade, farmácia, laboratório, código de barras,
+// observações. O que a caixa lida preenche (laboratório, EAN) chega aqui dentro.
+const MORE_DETAIL_FIELDS = ['expiration_date', 'pharmacy', 'laboratory', 'ean', 'notes']
+
 function renderDetailsSection(state) {
+  const forceOpen = MORE_DETAIL_FIELDS.some((k) => state.form.touched[k] && state.form.errors[k])
   return (
-    <FormSection title="Detalhes">
+    <CollapsibleSection
+      title="Mais detalhes"
+      summary={purchaseDetailsSummary(state.form.values)}
+      forceOpen={forceOpen}
+      testID="purchase-more-details"
+    >
+      <View style={styles.details}>
+      <FormDatePicker
+        name="expiration_date"
+        label="Validade"
+        placeholder="MM/AAAA"
+        helperText="Opcional"
+        value={state.expirationDateObj}
+        error={state.form.touched.expiration_date ? state.form.errors.expiration_date : undefined}
+        onChange={state.handleExpirationDateChange}
+        onBlur={state.form.handleBlur}
+        minimumDate={state.purchaseDateObj || undefined}
+      />
       <FormInput
         name="pharmacy"
         label="Farmácia"
@@ -620,7 +682,8 @@ function renderDetailsSection(state) {
         maxLength={500}
         {...formProps(state.form, 'notes')}
       />
-    </FormSection>
+      </View>
+    </CollapsibleSection>
   )
 }
 
@@ -723,62 +786,36 @@ export default function PurchaseFormScreen() {
             />
           ) : null}
 
-          {/* Quantidade e preço */}
-          {state.useLiquidInputs ? renderLiquidInputs(state) : renderStandardInputs(state)}
-
-          {/* Apresentação do injetável */}
+          {/* 125 1c (AC7.7): "Como vem" em chips logo após o medicamento — opcional; toque de novo desmarca. */}
           {state.needsContainer && (
-            <FormSection title="Apresentação">
-              <FormSelect
-                name="injection_container"
-                label="Como vem embalado"
-                value={state.injectionContainer}
-                options={[
-                  { value: '', label: 'Selecione (opcional)' },
-                  ...INJECTION_CONTAINERS.map((c) => ({ value: c, label: INJECTION_CONTAINER_LABELS[c] })),
-                ]}
-                onChange={(_n, v) => state.setInjectionContainer(v)}
-                helperText="Ex.: caneta, ampola — usado para mostrar quantas aplicações restam."
+            <FormSection title="Como vem">
+              <ChoiceChips
+                options={CONTAINER_OPTIONS}
+                value={state.injectionContainer || null}
+                onChange={state.toggleContainer}
+                accessibilityLabel="Como vem"
+                testIDPrefix="container"
               />
+              <Text style={styles.helper}>Opcional. Usado para mostrar quantas aplicações restam.</Text>
             </FormSection>
           )}
 
-          {/* Datas */}
-          <FormSection title="Datas">
-            <View style={styles.row}>
-              <View style={styles.rowHalf}>
-                <FormDatePicker
-                  name="purchase_date"
-                  label="Data da compra"
-                  required
-                  placeholder="Selecionar data"
-                  value={state.purchaseDateObj}
-                  error={
-                    state.form.touched.purchase_date ? state.form.errors.purchase_date : undefined
-                  }
-                  onChange={state.handlePurchaseDateChange}
-                  onBlur={state.form.handleBlur}
-                  maximumDate={getNow()}
-                />
-              </View>
-              <View style={styles.rowHalf}>
-                <FormDatePicker
-                  name="expiration_date"
-                  label="Validade"
-                  placeholder="MM/AAAA"
-                  helperText="Opcional"
-                  value={state.expirationDateObj}
-                  error={
-                    state.form.touched.expiration_date
-                      ? state.form.errors.expiration_date
-                      : undefined
-                  }
-                  onChange={state.handleExpirationDateChange}
-                  onBlur={state.form.handleBlur}
-                  minimumDate={state.purchaseDateObj || undefined}
-                />
-              </View>
-            </View>
+          {/* Quantidade e preço */}
+          {state.useLiquidInputs ? renderLiquidInputs(state) : renderStandardInputs(state)}
+
+          {/* AC7.7: data da compra visível (default hoje); a validade desce para "Mais detalhes". */}
+          <FormSection title="Data da compra">
+            <FormDatePicker
+              name="purchase_date"
+              label="Data da compra"
+              required
+              placeholder="Selecionar data"
+              value={state.purchaseDateObj}
+              error={state.form.touched.purchase_date ? state.form.errors.purchase_date : undefined}
+              onChange={state.handlePurchaseDateChange}
+              onBlur={state.form.handleBlur}
+              maximumDate={getNow()}
+            />
           </FormSection>
 
           {/* Detalhes */}
@@ -923,4 +960,6 @@ const styles = StyleSheet.create({
   rowHalf: {
     flex: 1,
   },
+  helper: { fontSize: 12, color: colors.text.muted },
+  details: { gap: spacing[3], marginBottom: spacing[4] },
 })

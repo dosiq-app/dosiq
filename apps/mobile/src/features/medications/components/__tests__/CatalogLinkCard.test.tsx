@@ -23,12 +23,25 @@ jest.mock('@medications/components/MedicineAnvisaSheet', () => ({
     return null
   },
 }))
+// Smoke 1c: veredito de vinculáveis. Padrão = todos os itens da base vinculam (os casos do 119 seguem
+// iguais); `undefined` = sem veredito guardado ⇒ o cartão carrega o índice CMED (mock abaixo).
+const mockVerdict: { names: string[] | null | undefined } = { names: undefined }
+const mockSaveVerdict = jest.fn()
+const mockCmed: { status: string; index: any } = { status: 'ready', index: { rows: [] } }
+const mockLinkable = jest.fn()
 jest.mock('@medications/services/catalogLinkStore', () => ({
   isCatalogLinkDismissed: async (id: string) => !!mockDismissed[id],
   dismissCatalogLink: async (id: string) => {
     mockDismissed[id] = true
   },
+  readCatalogLinkVerdict: async () => (mockVerdict.names === undefined ? (mockDb.items ?? []).map((i: any) => i.name) : mockVerdict.names),
+  saveCatalogLinkVerdict: (...args: any[]) => mockSaveVerdict(...args),
 }))
+jest.mock('@shared/hooks/useCmedIndex', () => ({ useCmedIndex: ({ enabled }: any) => (enabled ? mockCmed : { status: 'idle', index: null }) }))
+jest.mock('@medications/utils/catalogMatch', () => {
+  const actual = jest.requireActual('@medications/utils/catalogMatch')
+  return { ...actual, linkableCatalogMatches: (...args: any[]) => mockLinkable(...args) }
+})
 
 const MED = { id: 'med-1', name: 'tizerpatida', active_ingredient: null, therapeutic_class_code: null }
 const draft = (over = {}) => ({
@@ -63,6 +76,8 @@ async function renderCard(medicine: any = MED) {
 
 beforeEach(() => {
   mockDb.items = [MOUNJARO]
+  mockVerdict.names = undefined
+  mockCmed.status = 'ready'
   mockUpdate.mockResolvedValue({ id: 'med-1' })
   for (const k of Object.keys(mockDismissed)) delete mockDismissed[k]
 })
@@ -168,8 +183,9 @@ describe('CatalogLinkCard (119 US4)', () => {
     jest.useRealTimers()
   })
 
-  it('unidade diferente ⇒ também é outra concentração', async () => {
-    await renderCard({ ...MED, dosage_unit: 'mcg' })
+  // Smoke 1c: a unidade só conta junto do número (unidade sozinha = caixa decide, ver catalogMatch.test).
+  it('unidade diferente com número ⇒ também é outra concentração', async () => {
+    await renderCard({ ...MED, dosage_per_pill: 5, dosage_unit: 'mcg' })
     await act(async () => mockSheet.props.onSelect({ anvisaItem: MOUNJARO, cmedDraft: draft() }))
     expect(mockUpdate).not.toHaveBeenCalled()
   })
@@ -211,5 +227,31 @@ describe('CatalogLinkCard (119 US4)', () => {
   it('catalogMatchesFor: cai no princípio ativo quando o nome não casa', () => {
     expect(catalogMatchesFor([MOUNJARO], 'minha caneta', 'tirzepatida').map((i) => i.name)).toEqual(['Mounjaro'])
     expect(catalogMatchesFor(null, 'mounjaro')).toEqual([])
+  })
+})
+
+describe('CatalogLinkCard — só convida o que dá para aplicar (smoke 1c, PO 19/11)', () => {
+  it('veredito guardado sem vinculáveis ⇒ sem cartão e sem carregar o índice', async () => {
+    mockVerdict.names = []
+    const { queryByTestId } = await renderCard()
+    expect(queryByTestId('catalog-link-card')).toBeNull()
+    expect(mockLinkable).not.toHaveBeenCalled()
+  })
+
+  it('sem veredito: confere no índice, mostra só os vinculáveis e guarda', async () => {
+    mockVerdict.names = null
+    mockLinkable.mockReturnValue([MOUNJARO])
+    const { findByTestId } = await renderCard()
+    expect(await findByTestId('catalog-link-card')).toBeTruthy()
+    expect(mockSaveVerdict).toHaveBeenCalledWith('med-1', expect.any(String), ['Mounjaro'])
+  })
+
+  it('índice offline ⇒ sem cartão e nada guardado (tenta na próxima)', async () => {
+    mockVerdict.names = null
+    mockCmed.status = 'offline'
+    const { queryByTestId } = await renderCard()
+    await act(async () => {})
+    expect(queryByTestId('catalog-link-card')).toBeNull()
+    expect(mockSaveVerdict).not.toHaveBeenCalled()
   })
 })

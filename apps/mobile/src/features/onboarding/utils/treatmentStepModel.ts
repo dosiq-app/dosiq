@@ -7,7 +7,8 @@ import type { SetupDefaults } from '@dosiq/core'
 
 export { doseWarnings, confirmDoseLabel } from '@treatments/utils/dosePlausibility'
 
-// 125 (AC2.5/FR-021): chips na ordem da forma; Mensal em toda forma (emenda PO 18/11), sempre sob a trava 086.
+// 125 (AC2.5/FR-021): chips na ordem da forma; Mensal em toda forma (emenda PO 18/11). 1c (PO 19/11): sem a
+// trava 086 também no form completo — o kill switch da v0.35 tira de circulação o app que não entende a cadência.
 const SEGMENT_LABEL: Record<string, string> = {
   diário: 'Todo dia',
   dias_alternados: 'Dias alternados',
@@ -20,6 +21,26 @@ export function frequencySegments(defaults: SetupDefaults): { choice: string; la
   return defaults.frequencyOrder
     .filter((c) => c in SEGMENT_LABEL)
     .map((choice) => ({ choice, label: SEGMENT_LABEL[choice] }))
+}
+
+/**
+ * 1c (AC7.1): chips de frequência do form completo — as escolhas de sempre (`cadenceChoicesFor`, inclui a
+ * frequência legada do tratamento), na ordem da forma; o que a forma não ordena vai ao fim, nunca some.
+ */
+export function orderedCadenceChips(
+  choices: string[],
+  presentation: string | null | undefined,
+  fallbackLabel: (choice: string) => string,
+): { value: string; label: string }[] {
+  const order = setupDefaults(presentation).frequencyOrder as string[]
+  const rank = (c: string) => {
+    const i = order.indexOf(c)
+    return i === -1 ? order.length : i
+  }
+  return [...choices]
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i)
+    .map(({ c }) => ({ value: c, label: SEGMENT_LABEL[c] ?? fallbackLabel(c) }))
 }
 
 export function treatmentDefaults(medicine: any): SetupDefaults {

@@ -137,17 +137,22 @@ export function useProtocolFormState({ editId, todayIso, presetPlanId }) {
       const current = String(form.values.dosage_per_intake ?? '')
       const untouched = current === '' || current === autoDose.current
       const sameKind = !!prev && prev.presentation === med?.presentation && prev.dosage_unit === med?.dosage_unit
+      // 125 1c (AC7.2): o nome desce para "Mais opções" e nasce com o nome do remédio. Só troca o nome
+      // que o próprio default pôs (vazio ou igual ao do remédio anterior) — nunca o digitado.
+      const currentName = String(form.values.name ?? '').trim()
+      const nameIsDefault = currentName === '' || currentName === String(prev?.name ?? '').trim()
+      const name = nameIsDefault && med?.name ? med.name : form.values.name
       // Vale também na edição (smoke iOS 19/11): trocar o remédio por outra forma/unidade num tratamento
       // salvo carregava "15" (gotas) para o comprimido. Mesma forma+unidade ⇒ edição mantém a dose salva.
       if (sameKind && (editId || !untouched)) {
-        form.handleChange('medicine_id', med.id)
+        form.setValues({ ...form.values, medicine_id: med.id, name })
         return
       }
       const dose = setupDefaults(med?.presentation, med?.dosage_unit).defaultDose
       autoDose.current = dose
       // A unidade da tomada e a densidade são da forma anterior: herdá-las gravava comprimido com
       // `intake_unit='gotas'` (smoke iOS 19/11). Zera; o efeito do form repõe o default do líquido.
-      form.setValues({ ...form.values, medicine_id: med.id, dosage_per_intake: dose, intake_unit: null, units_per_ml: '' })
+      form.setValues({ ...form.values, medicine_id: med.id, name, dosage_per_intake: dose, intake_unit: null, units_per_ml: '' })
     },
     [form, editId, medicine]
   )

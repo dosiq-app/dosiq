@@ -3,9 +3,19 @@
 // trocar de item (C-C4) e usa `forms` para pré-preencher/filtrar a apresentação.
 
 import React from 'react'
-import { render, fireEvent, act } from '@testing-library/react-native'
+import { render as rtlRender, fireEvent, act } from '@testing-library/react-native'
+
 import { Alert } from 'react-native'
 import MedicineFormScreen from '../MedicineFormScreen'
+
+// 125 1c (AC7.3/AC7.7): campos que este teste lê moram em "Mais detalhes", fechado por padrão — o
+// bloco é aberto logo após o render. O "nasce fechado" tem teste próprio (formsOrder1c.test.tsx).
+function render(ui) {
+  const utils = rtlRender(ui)
+  const more = utils.queryByTestId('more-details')
+  if (more) fireEvent.press(more)
+  return utils
+}
 
 const mockCreate = jest.fn()
 const mockUpdate = jest.fn()
@@ -14,7 +24,11 @@ const mockMedicines: { current: { data: any[] | null; loading: boolean } } = { c
 const mockRoute: { params: any } = { params: {} }
 const mockDb: { items: any[] | null } = { items: null }
 
+// Smoke 1c: a saída do form usa navigateCrossTab (navigationRef) — fora do escopo destes testes.
+jest.mock('@navigation/navigateCrossTab', () => ({ navigateCrossTab: jest.fn() }))
 jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: jest.fn(),
+  useIsFocused: () => true,
   useNavigation: () => ({ goBack: jest.fn() }),
   useRoute: () => mockRoute,
 }))
@@ -74,7 +88,7 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     select({ anvisaItem: ITEM, cmedDraft: draft() })
     expect(getByDisplayValue('5')).toBeTruthy()
     expect(getByText('Na embalagem: 5 mg + 10 mg')).toBeTruthy()
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     const payload = mockCreate.mock.calls[0][0]
     expect(payload.anvisa_registration).toBe('100890321')
     expect(payload.dosage_per_pill).toBe(5)
@@ -89,7 +103,7 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     fireEvent.changeText(getByLabelText('Concentração'), '5')
     fireEvent.press(getByTestId('presentation-chip-comprimido'))
     fireEvent.press(getByTestId('unit-chip-mg'))
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     expect(mockCreate.mock.calls[0][1]).toMatchObject({ source: 'manual' })
   })
 
@@ -109,7 +123,7 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     expect(getByDisplayValue('5000')).toBeTruthy()
     expect(queryByText('Este remédio junta mais de uma substância')).toBeNull()
     expect(getByText('Na embalagem: 5000 mcg + 100 mg + 100 mg')).toBeTruthy()
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     expect(mockCreate.mock.calls[0][0]).toMatchObject({ dosage_per_pill: 5000, dosage_unit: 'mcg' })
   })
 
@@ -118,14 +132,15 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     const { getByText, queryByText, getByLabelText } = render(<MedicineFormScreen />)
     select({ anvisaItem: ITEM, cmedDraft: draft({ dosage_per_pill: null, doseAmbiguous: true, strengthChoices: [{ dose: 5, unit: 'mg' }, { dose: 10, unit: 'mg' }] }) })
     expect(queryByText('Preencha a dose para salvar')).toBeNull()
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     expect(mockCreate).not.toHaveBeenCalled()
-    expect(alert).toHaveBeenCalled()
+    // Smoke 1c: erro no campo, sem pop-up.
+    expect(alert).not.toHaveBeenCalled()
     expect(getByText('Escolha a concentração abaixo')).toBeTruthy()
 
     fireEvent.changeText(getByLabelText('Concentração'), '10')
     expect(queryByText('Escolha a concentração abaixo')).toBeNull()
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     expect(mockCreate).toHaveBeenCalledTimes(1)
     alert.mockRestore()
   })
@@ -145,7 +160,7 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
       anvisaItem: { ...ITEM, laboratory: null, regulatoryCategory: 'Genérico' },
       cmedDraft: draft({ laboratory: null, anvisa_registration: null, isGeneric: true, regulatory_category: 'Genérico' }),
     })
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     const payload = mockCreate.mock.calls[0][0]
     expect(payload.laboratory).toBeFalsy()
     expect(payload.anvisa_registration).toBeNull()
@@ -155,7 +170,7 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     const { getByText } = render(<MedicineFormScreen />)
     select({ anvisaItem: ITEM, cmedDraft: draft() })
     select({ anvisaItem: { ...ITEM, name: 'Outro' } })
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     expect(mockCreate.mock.calls[0][0].anvisa_registration).toBeNull()
   })
 
@@ -165,7 +180,7 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     expect(getByTestId('presentation-chip-injetavel').props.accessibilityState).toMatchObject({ checked: true })
     fireEvent.changeText(getByLabelText('Concentração'), '5')
     fireEvent.press(getByTestId('unit-chip-mg/ml'))
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     expect(mockCreate.mock.calls[0][0].presentation).toBe('injetavel')
   })
 
@@ -177,8 +192,9 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     for (const p of ['comprimido', 'capsula', 'liquido', 'injetavel', 'pomada', 'spray', 'outro']) {
       expect(getByTestId(`presentation-chip-${p}`).props.accessibilityState).toMatchObject({ checked: false })
     }
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
-    expect(alert).toHaveBeenCalledWith('Verifique o formulário', 'Escolha como é o remédio.')
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
+    expect(alert).not.toHaveBeenCalled()
+    expect(getByText('Escolha como é o remédio')).toBeTruthy()
     expect(mockCreate).not.toHaveBeenCalled()
     alert.mockRestore()
   })
@@ -188,7 +204,7 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
     fireEvent.press(getByTestId('presentation-chip-pomada'))
     select({ anvisaItem: { ...ITEM, forms: ['comprimido'] } })
     fireEvent.changeText(getByLabelText('Concentração'), '5')
-    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(getByText('Salvar remédio')))
     // C-3: pomada grava unidade 'un'
     expect(mockCreate.mock.calls[0][0]).toMatchObject({ presentation: 'pomada', dosage_unit: 'un' })
   })
@@ -230,7 +246,7 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
 
   it('Princípio Ativo também sugere; "Ver todos" abre a busca com o texto', () => {
     const utils = render(<MedicineFormScreen />)
-    typeAndSettle(utils, 'Princípio Ativo', 'semaglu')
+    typeAndSettle(utils, 'Princípio ativo', 'semaglu')
     expect(utils.getByRole('button', { name: 'Ozempic, Semaglutida, Novo' })).toBeTruthy()
     fireEvent.press(utils.getByRole('button', { name: 'Ver todos na lista ANVISA' }))
     expect(mockSheet.props).toMatchObject({ open: true, initialItem: null, initialQuery: 'semaglu' })
@@ -239,7 +255,7 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
   it('aceitar a caixa ⇒ código de classe e registro gravados (PO-119-6)', async () => {
     const utils = render(<MedicineFormScreen />)
     select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
-    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(utils.getByText('Salvar remédio')))
     expect(mockCreate.mock.calls[0][0]).toMatchObject({ therapeutic_class_code: 'A10S', anvisa_registration: '112600202' })
   })
 
@@ -249,7 +265,7 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
     fireEvent.changeText(utils.getByLabelText('Concentração'), '5')
     fireEvent.press(utils.getByTestId('presentation-chip-injetavel'))
     fireEvent.press(utils.getByTestId('unit-chip-mg/ml'))
-    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(utils.getByText('Salvar remédio')))
     const payload = mockCreate.mock.calls[0][0]
     expect(payload.name).toBe('tizerpatida')
     expect(payload.therapeutic_class_code ?? null).toBeNull()
@@ -265,7 +281,7 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
     fireEvent.changeText(utils.getByLabelText('Concentração'), '5')
     fireEvent.press(utils.getByTestId('presentation-chip-injetavel'))
     fireEvent.press(utils.getByTestId('unit-chip-mg/ml'))
-    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(utils.getByText('Salvar remédio')))
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })
 
@@ -281,7 +297,7 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
     const utils = render(<MedicineFormScreen />)
     select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
     expect(utils.queryByText('É este que você já tem?')).toBeNull()
-    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(utils.getByText('Salvar remédio')))
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })
 
@@ -290,7 +306,7 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
     const alert = jest.spyOn(Alert, 'alert')
     const utils = render(<MedicineFormScreen />)
     select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
-    await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
+    await act(async () => fireEvent.press(utils.getByText('Salvar remédio')))
     expect(mockCreate).not.toHaveBeenCalled()
     expect(alert).toHaveBeenCalledWith('Um momento', expect.any(String))
   })
@@ -310,8 +326,8 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
     expect(utils.getByTestId('catalog-suggestions')).toBeTruthy()
     select({ anvisaItem: MOUNJARO, cmedDraft: mounjaroDraft(5) })
     expect(utils.queryByText('É este que você já tem?')).toBeNull()
-    await act(async () => fireEvent.press(utils.getByText('Salvar')))
-    expect(mockUpdate).toHaveBeenCalledWith('m1', expect.objectContaining({ therapeutic_class_code: 'A10S' }), expect.anything())
+    await act(async () => fireEvent.press(utils.getByText('Salvar remédio')))
+    expect(mockUpdate).toHaveBeenCalledWith('m1', expect.objectContaining({ therapeutic_class_code: 'A10S' }))
     expect(mockCreate).not.toHaveBeenCalled()
   })
 })

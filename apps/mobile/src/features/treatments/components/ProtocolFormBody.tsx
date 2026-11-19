@@ -44,11 +44,14 @@ import WeekdaySelector from '@treatments/components/WeekdaySelector'
 import SchedulePresetSection from '@treatments/components/SchedulePresetSection'
 import NextDoseField from '@treatments/components/NextDoseField'
 import PlanSelectField from '@treatments/components/PlanSelectField'
-import { useIntervalCadenceAvailability } from '@treatments/hooks/useIntervalCadenceAvailability'
+import CollapsibleSection from '@shared/components/form/CollapsibleSection'
+import { ChoiceChips } from '@medications/components/FormFirstStrength'
+import { orderedCadenceChips, treatmentDefaults } from '@features/onboarding/utils/treatmentStepModel'
 import { colors, spacing } from '@shared/styles/tokens'
 import CriticalAlarmCard from '@treatments/components/CriticalAlarmCard'
 import TrackedMeasureField from '@treatments/components/TrackedMeasureField'
 import { displayedTrackedMeasure } from '@treatments/utils/trackedMeasureField'
+import { moreOptionsFilled, MORE_OPTIONS_EMPTY_SUMMARY } from '@treatments/utils/moreOptionsSummary'
 import CriticalAlertPrimerSheet from '@treatments/components/CriticalAlertPrimerSheet'
 import { useCriticalAlarmToggle } from '@treatments/hooks/useCriticalAlarmToggle'
 import {
@@ -61,17 +64,18 @@ import { getFullScreenGuide, guideToPlainText } from '@features/oemAssistant/oem
 /** Teto de bolas renderizadas — acima disso vira "+N" (escada longa não pode estourar a linha). */
 const EVO_DOTS_MAX = 8
 
-// 085 (F-2): a lista de oferta vem do core. Antes era hardcoded aqui e o mobile não
-// enxergava mudança nenhuma de vocabulário — só o smoke perceberia.
-// Depende da frequência ATUAL do form: um tratamento legado precisa continuar exibindo a
-// sua própria frequência, mesmo depreciada (FR-004) — ver `frequencyOptionsFor`.
-// 086: as opções são ESCOLHAS de cadência — frequências + "Mensal (a cada 30 dias)", que grava
-// `intervalo_dias`/30 (`cadenceChoicesFor`/`applyCadenceChoice` do core; FR-012…FR-014).
-function buildFrequencyOptions(currentFrequency, intervalAvailable = false, monthlyAtLoad = false) {
-  return cadenceChoicesFor(currentFrequency, { intervalAvailable, monthlyAtLoad }).map((value) => ({
-    value,
-    label: cadenceChoiceLabel(value, FREQUENCY_LABELS),
-  }))
+/** Campos que moram em "Mais opções" (AC7.2) — erro visível em qualquer um abre o bloco. */
+const MORE_OPTION_FIELDS = ['name', 'start_date', 'end_date', 'treatment_plan_id', 'notes', 'tracked_measure']
+
+// 085 (F-2): a lista de oferta vem do core. Depende da frequência ATUAL do form: um tratamento legado
+// continua exibindo a sua própria frequência, mesmo depreciada (FR-004).
+// 086: as opções são ESCOLHAS de cadência — frequências + "Mensal", que grava `intervalo_dias`/30
+// (`cadenceChoicesFor`/`applyCadenceChoice` do core; FR-012…FR-014).
+// 125 1c (AC7.1, PO 19/11): chips na ordem da forma, como no onboarding; sem a trava 086 — a cadência em
+// dias é sempre oferecida (o kill switch da v0.35 tira de circulação o app que não a entende).
+function buildFrequencyOptions(currentFrequency, presentation, monthlyAtLoad = false) {
+  const choices = cadenceChoicesFor(currentFrequency, { intervalAvailable: true, monthlyAtLoad })
+  return orderedCadenceChips(choices, presentation, (c) => cadenceChoiceLabel(c, FREQUENCY_LABELS))
 }
 
 // 125 1b (AC5.2b): injetável segue a regra da forma do core — mg/mL ⇒ mg ou mL; UI/mL ⇒ UI ou mL;
@@ -197,6 +201,7 @@ function useProtocolFormDerived(form, medicine) {
 }
 
 function DoseSection({
+  label = 'Dose por tomada',
   isLiquid,
   doseDisplay,
   intakeOptions,
@@ -216,7 +221,7 @@ function DoseSection({
           <View style={styles.doseField}>
             <FormInput
               name="dosage_per_intake"
-              label="Dose por tomada"
+              label={label}
               value={doseDisplay}
               error={form.touched.dosage_per_intake ? form.errors.dosage_per_intake : null}
               onChange={onDoseChange}
@@ -224,7 +229,6 @@ function DoseSection({
               placeholder="0"
               keyboardType="decimal-pad"
               maxLength={10}
-              required
             />
           </View>
           <View style={styles.unitField}>
@@ -236,7 +240,6 @@ function DoseSection({
               onChange={form.handleChange}
               onBlur={form.handleBlur}
               error={form.touched.intake_unit ? form.errors.intake_unit : null}
-              required
             />
           </View>
         </View>
@@ -261,7 +264,7 @@ function DoseSection({
   return (
     <FormInput
       name="dosage_per_intake"
-      label="Dose por tomada"
+      label={label}
       value={doseDisplay}
       error={form.touched.dosage_per_intake ? form.errors.dosage_per_intake : null}
       onChange={onDoseChange}
@@ -270,7 +273,6 @@ function DoseSection({
       keyboardType="decimal-pad"
       maxLength={10}
       helperText={helperText}
-      required
     />
   )
 }
@@ -286,8 +288,25 @@ function toIntervalDays(raw) {
 
 const PRESET_FREQUENCIES = new Set(['diário', 'dias_alternados'])
 
+// 125 1c (AC7.1): frequência em chips, como no onboarding (hi-fi T-1/T-2).
+function FrequencyChipsField({ options, value, onChange, error }) {
+  return (
+    <>
+      <Text style={styles.fieldLabel}>De quanto em quanto tempo?</Text>
+      <ChoiceChips
+        options={options}
+        value={value}
+        onChange={onChange}
+        accessibilityLabel="De quanto em quanto tempo?"
+        testIDPrefix="frequency-segment"
+      />
+      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+    </>
+  )
+}
+
 // 125 1b (AC5.3): `applicationDay` (useApplicationDay) troca dias da semana/próxima dose pelo dia da aplicação.
-function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onStartDateChange, applicationDay }) {
+function FrequencySection({ form, presentation, showWeekdays, isEditMode, startDateAsDate, onStartDateChange, applicationDay }) {
   const asksDay = applicationDay.asks
   // States — FR-014: até a usuária escolher uma opção, "Mensal" é DERIVADO dos valores carregados;
   // depois vale a escolha dela (digitar 30 em "A cada X dias" não troca a opção). Não derivar UMA vez
@@ -295,7 +314,6 @@ function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onS
   // (useProtocolFormState) — congelado ali, Mensal reabriria como "A cada X dias" (RC5).
   // Não entra em form.values (não é coluna nem grupo de change_kind).
   const [chosen, setChosen] = useState(null)
-  const { available: intervalAvailable } = useIntervalCadenceAvailability()
   const monthlyChosen =
     chosen === null ? isMonthlyCadence(form.values.frequency, form.values.interval_days) : chosen === MONTHLY_CHOICE
   // Memos
@@ -305,7 +323,7 @@ function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onS
   const selectedChoice = monthlyChosen && isDayCadence ? MONTHLY_CHOICE : form.values.frequency
   // Handlers
   const handleFrequencyChange = useCallback(
-    (_name, choice) => {
+    (choice) => {
       // Patch atômico {frequency, interval_days}: sair da cadência em dias leva o N junto (FM-8,
       // CHECK de coerência); Mensal grava 30; "A cada X dias" conserva o N corrente.
       const patch = applyCadenceChoice(choice, form.values.interval_days ?? null)
@@ -316,15 +334,11 @@ function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onS
     [form, applicationDay]
   )
   return (
-    <Section title="Frequência e Horários" required>
-      <FormSelect
-        name="frequency"
-        sheetTitle="Selecionar Frequência"
-        accessibilityLabel="Frequência"
+    <Section title="Quando" required>
+      <FrequencyChipsField
+        options={buildFrequencyOptions(form.values.frequency, presentation, monthlyChosen)}
         value={selectedChoice}
-        options={buildFrequencyOptions(form.values.frequency, intervalAvailable, monthlyChosen)}
         onChange={handleFrequencyChange}
-        onBlur={form.handleBlur}
         error={form.touched.frequency ? form.errors.frequency : null}
       />
       {isDayCadence && selectedChoice !== MONTHLY_CHOICE ? (
@@ -390,7 +404,7 @@ function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onS
 // cadência (NextDoseField) — um campo, um dono por vez: aqui ele some.
 function PrescriptionSection({ startDateAsDate, endDateAsDate, onStartDateChange, onEndDateChange, form, hideStartDate = false }) {
   return (
-    <Section title="Prescrição">
+    <Section title="Receita médica">
       <View style={styles.dateRow}>
         {hideStartDate ? null : (
           <View style={styles.flex}>
@@ -562,6 +576,95 @@ function DoseWarningsField({ medicine, dose, intakeUnit }) {
 }
 
 
+// 125 1c (AC7.2): "Mais opções" nasce fechado e guarda Acompanhar, Evolução, Receita médica (ex-"Prescrição"),
+// Plano, Nome e Notas — os campos descem sem mudar de comportamento. Erro visível num deles abre o bloco.
+function MoreOptionsSection({
+  form,
+  medicine,
+  onTrackedMeasureChange,
+  onOpenTitration,
+  titrationStepCount,
+  titrationSteps,
+  isEditMode,
+  startDateAsDate,
+  endDateAsDate,
+  onStartDateChange,
+  onEndDateChange,
+  hideStartDate,
+  plans,
+  planField,
+  onPlanFieldChange,
+}) {
+  const forceOpen = MORE_OPTION_FIELDS.some((k) => form.touched[k] && form.errors[k])
+  const filled = moreOptionsFilled({ values: form.values, medicine, titrationStepCount, plans, planField })
+  return (
+    <CollapsibleSection
+      title="Mais opções"
+      summary={filled.length ? filled.join(' · ') : MORE_OPTIONS_EMPTY_SUMMARY}
+      forceOpen={forceOpen}
+      // Na edição, algo preenchido abre o bloco ao carregar (smoke 1c); na criação nasce fechado.
+      defaultOpen={isEditMode && filled.length > 0}
+      testID="more-options"
+    >
+      <Section title="Acompanhar medidas">
+        <TrackedMeasureField value={displayedTrackedMeasure(form.values, medicine)} onChange={onTrackedMeasureChange} />
+      </Section>
+
+      {onOpenTitration ? (
+        <TitrationSection
+          onOpenTitration={onOpenTitration}
+          titrationStepCount={titrationStepCount}
+          titrationSteps={titrationSteps}
+          isEditMode={isEditMode}
+        />
+      ) : null}
+
+      <PrescriptionSection
+        startDateAsDate={startDateAsDate}
+        endDateAsDate={endDateAsDate}
+        onStartDateChange={onStartDateChange}
+        onEndDateChange={onEndDateChange}
+        form={form}
+        hideStartDate={hideStartDate}
+      />
+
+      <Section title="Organização">
+        {/* AC7.2: default = nome do remédio (useProtocolFormState.selectMedicine). */}
+        <FormInput
+          name="name"
+          label="Nome do tratamento"
+          value={form.values.name}
+          error={form.touched.name ? form.errors.name : null}
+          onChange={form.handleChange}
+          onBlur={form.handleBlur}
+          placeholder="Ex: Hipertensão"
+          maxLength={200}
+          required
+        />
+        <PlanSelectField
+          plans={plans}
+          value={planField}
+          onChange={onPlanFieldChange}
+          error={form.touched.treatment_plan_id ? form.errors.treatment_plan_id : null}
+        />
+        <FormInput
+          name="notes"
+          label="Notas"
+          value={form.values.notes}
+          error={form.touched.notes ? form.errors.notes : null}
+          onChange={form.handleChange}
+          onBlur={form.handleBlur}
+          placeholder="Notas sobre este tratamento…"
+          multiline
+          numberOfLines={4}
+          maxLength={1000}
+          helperText="Opcional"
+        />
+      </Section>
+    </CollapsibleSection>
+  )
+}
+
 export default function ProtocolFormBody({
   form,
   medicine,
@@ -606,9 +709,11 @@ export default function ProtocolFormBody({
   // 054 FR-008b: fluxo do toggle por plataforma/estado de permissão vive no hook.
   const criticalToggle = useCriticalAlarmToggle({ setCritical, onEnabledAndroid: showFullScreenGuide })
   const showWeekdays = frequencyRequiresWeekdays(form.values.frequency)
+  // 125 1c (AC7.1): a pergunta da dose é a da forma, como no onboarding (FR-021).
+  const doseQuestion = medicine ? treatmentDefaults(medicine).doseQuestion : null
   return (
     <>
-      <Section title="Medicamento">
+      <Section title="Remédio">
         <MedicineSelectorRow
           medicine={medicine}
           onPress={onOpenMedicineSheet}
@@ -616,19 +721,9 @@ export default function ProtocolFormBody({
         />
       </Section>
 
-      <Section title="Informações do tratamento">
-        <FormInput
-          name="name"
-          label="Nome do tratamento"
-          value={form.values.name}
-          error={form.touched.name ? form.errors.name : null}
-          onChange={form.handleChange}
-          onBlur={form.handleBlur}
-          placeholder="Ex: Hipertensão"
-          maxLength={200}
-          required
-        />
+      <Section title="Dose" required>
         <DoseSection
+          label={doseQuestion ?? undefined}
           isLiquid={isLiquid}
           doseDisplay={doseDisplay}
           intakeOptions={intakeOptions}
@@ -646,17 +741,25 @@ export default function ProtocolFormBody({
 
       <FrequencySection
         form={form}
+        presentation={medicine?.presentation ?? null}
         showWeekdays={showWeekdays}
         isEditMode={isEditMode}
         startDateAsDate={startDateAsDate}
         onStartDateChange={onStartDateChange} applicationDay={applicationDay}
       />
 
-      <CriticalAlarmCard
-        criticalAlarm={!!form.values.critical_alarm}
-        onToggle={criticalToggle.onToggle}
-        onRequestPermission={criticalToggle.requestCritical}
-      />
+      {/* 125 1c (AC7.1): a frase de conferência ao vivo, ao criar E ao editar. */}
+      <Section title="Confira o seu tratamento" spaced>
+        <TreatmentSentenceCard medicine={medicine} values={form.values} />
+      </Section>
+
+      <Section title="Lembrete">
+        <CriticalAlarmCard
+          criticalAlarm={!!form.values.critical_alarm}
+          onToggle={criticalToggle.onToggle}
+          onRequestPermission={criticalToggle.requestCritical}
+        />
+      </Section>
       <CriticalAlertPrimerSheet
         visible={criticalToggle.primerVisible}
         pushDenied={criticalToggle.pushDenied}
@@ -664,55 +767,23 @@ export default function ProtocolFormBody({
         onDismiss={criticalToggle.onPrimerDismiss}
       />
 
-      <Section title="Acompanhar nas doses">
-        <TrackedMeasureField value={displayedTrackedMeasure(form.values, medicine)} onChange={setTrackedMeasure} />
-      </Section>
-
-      {onOpenTitration ? (
-        <TitrationSection
-          onOpenTitration={onOpenTitration}
-          titrationStepCount={titrationStepCount}
-          titrationSteps={titrationSteps}
-          isEditMode={isEditMode}
-        />
-      ) : null}
-
-      <PrescriptionSection
+      <MoreOptionsSection
+        form={form}
+        medicine={medicine}
+        onTrackedMeasureChange={setTrackedMeasure}
+        onOpenTitration={onOpenTitration}
+        titrationStepCount={titrationStepCount}
+        titrationSteps={titrationSteps}
+        isEditMode={isEditMode}
         startDateAsDate={startDateAsDate}
         endDateAsDate={endDateAsDate}
         onStartDateChange={onStartDateChange}
         onEndDateChange={onEndDateChange}
-        form={form}
         hideStartDate={!isEditMode && (form.values.frequency === 'intervalo_dias' || applicationDay.asks)}
+        plans={plans}
+        planField={planField}
+        onPlanFieldChange={onPlanFieldChange}
       />
-
-      <Section title="Organização">
-        <PlanSelectField
-          plans={plans}
-          value={planField}
-          onChange={onPlanFieldChange}
-          error={form.touched.treatment_plan_id ? form.errors.treatment_plan_id : null}
-        />
-      </Section>
-
-      <Section title="Observações">
-        <FormInput
-          name="notes"
-          label="Notas"
-          value={form.values.notes}
-          error={form.touched.notes ? form.errors.notes : null}
-          onChange={form.handleChange}
-          onBlur={form.handleBlur}
-          placeholder="Notas sobre este tratamento…"
-          multiline
-          numberOfLines={4}
-          maxLength={1000}
-          helperText="Opcional"
-        />
-      </Section>
-
-      {/* 125 (AC4.1): a frase de conferência antes do "Salvar" (só na criação). */}
-      {isEditMode ? null : <TreatmentSentenceCard medicine={medicine} values={form.values} />}
 
       {/* 054 (emenda FR-008): o guia de tela cheia do Android é a variante do mesmo sheet. */}
       <CriticalAlertPrimerSheet
@@ -729,9 +800,9 @@ export default function ProtocolFormBody({
 
 // `required`: asterisco vermelho no título — a seção inteira é obrigatória (ex.: horários), mesmo
 // quando o campo dentro dela não tem rótulo próprio (086, smoke).
-function Section({ title, children, required = false }) {
+function Section({ title, children, required = false, spaced = false }) {
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, spaced && styles.sectionSpaced]}>
       <Text style={styles.sectionTitle}>
         {title}
         {required ? <Text style={styles.sectionAsterisk}> *</Text> : null}
@@ -746,6 +817,8 @@ const styles = StyleSheet.create({
   section: {
     gap: spacing[2],
   },
+  // Respiro antes da conferência: os blocos acima (chips, dose) pesam visualmente.
+  sectionSpaced: { marginTop: spacing[4] },
   sectionAsterisk: {
     color: colors.status.error,
   },
@@ -783,6 +856,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text.primary,
   },
+  fieldError: { fontSize: 12, color: colors.status.error },
   dateRow: {
     flexDirection: 'row',
     gap: spacing[3],

@@ -4,9 +4,6 @@ import React from 'react'
 import { render, fireEvent } from '@testing-library/react-native'
 import ProtocolFormBody from '../ProtocolFormBody'
 
-jest.mock('@treatments/hooks/useIntervalCadenceAvailability', () => ({
-  useIntervalCadenceAvailability: () => ({ available: true, settled: true }),
-}))
 
 function makeForm(values = {}) {
   return {

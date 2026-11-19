@@ -4,9 +4,6 @@ import React from 'react'
 import { render, fireEvent } from '@testing-library/react-native'
 import ProtocolFormBody from '../ProtocolFormBody'
 
-jest.mock('@treatments/hooks/useIntervalCadenceAvailability', () => ({
-  useIntervalCadenceAvailability: () => ({ available: true, settled: true }),
-}))
 
 function makeForm(values = {}) {
   return {
@@ -46,9 +43,10 @@ describe('ProtocolFormBody — 125 T015', () => {
     expect(getByTestId('treatment-sentence').props.children).toBe('Losartana · 1 comprimido de 50 mg · todo dia às 08:00')
   })
 
-  it('edição: sem a frase', () => {
-    const { queryByTestId } = render(<ProtocolFormBody {...baseProps} isEditMode form={makeForm()} />)
-    expect(queryByTestId('treatment-sentence-card')).toBeNull()
+  // 125 1c (AC7.1): o "4 · Confere" vale ao criar E ao editar (antes, 1a: só na criação).
+  it('edição: com a frase (1c)', () => {
+    const { getByTestId } = render(<ProtocolFormBody {...baseProps} isEditMode form={makeForm()} />)
+    expect(getByTestId('treatment-sentence-card')).toBeTruthy()
   })
 
   it('caneta de dose única em mg/mL: 0,6 mg avisa "parece mL" e "usar mesmo assim" esconde (não bloqueia)', () => {

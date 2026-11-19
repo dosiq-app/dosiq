@@ -95,7 +95,7 @@ export function useOnboardingSetupWrites() {
 
     // Campos `_` são do wizard (intenção, medição — spec 125 T017), nunca colunas (R-295).
     const { _remind, _application_date, _dose_typed, _dose_source, _dose_plausible, ...rawProtocolData } = treatment
-    // 100 B · D-11 (PO 2026-10-30): o passo mínimo do onboarding não mostra "Acompanhar nas doses";
+    // 100 B · D-11 (PO 2026-10-30): o passo mínimo do onboarding não mostra "Acompanhar medidas";
     // a medida nasce da inferência (classe da caixa × frequência) e a pessoa troca/desliga depois, na
     // edição do tratamento. Gravar aqui é decisão do PO, não exceção ao FR-005 (que vale para legado).
     const protocolData = {

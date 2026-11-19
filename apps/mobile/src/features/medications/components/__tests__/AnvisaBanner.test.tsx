@@ -15,7 +15,7 @@ describe('AnvisaBanner', () => {
     const onPress = jest.fn()
     const { getByText, getByLabelText } = render(<AnvisaBanner onPress={onPress} />)
     expect(getByText('Lista oficial da ANVISA')).toBeTruthy()
-    expect(getByText('Preenche nome, concentração e apresentação com os dados oficiais.')).toBeTruthy()
+    expect(getByText('Preenche nome, como é e dosagem com os dados oficiais.')).toBeTruthy()
     expect(getByText('ou preencha à mão')).toBeTruthy()
     fireEvent.press(getByLabelText('Buscar remédio pelo nome'))
     expect(onPress).toHaveBeenCalled()
