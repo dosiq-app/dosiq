@@ -26,7 +26,7 @@ const VALUES = {
   dosage_per_intake: 1, treatment_plan_id: null,
 }
 
-function setup({ editId = null }: { editId?: string | null } = {}) {
+function setup({ editId = null, medicine = MEDICINE, values = VALUES }: { editId?: string | null; medicine?: any; values?: any } = {}) {
   const mutation = {
     create: jest.fn(async () => {
       order.push('create')
@@ -34,9 +34,9 @@ function setup({ editId = null }: { editId?: string | null } = {}) {
     }),
     update: jest.fn(async () => ({ id: 'p1' })),
   }
-  const form = { values: VALUES, validate: () => true, handleChange: jest.fn() }
+  const form = { values, validate: () => true, handleChange: jest.fn() }
   const { result } = renderHook(() =>
-    useProtocolFormSubmit({ editId, form, medicine: MEDICINE, planField: { mode: 'existing' }, mutation, show: jest.fn(), onValidateFail: jest.fn() } as any)
+    useProtocolFormSubmit({ editId, form, medicine, planField: { mode: 'existing' }, mutation, show: jest.fn(), onValidateFail: jest.fn() } as any)
   )
   return { result, mutation }
 }
@@ -118,5 +118,15 @@ describe('useProtocolFormSubmit × preparo (PO-120-3)', () => {
     expect(mutation.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ goBack: false }))
     expect(mockOpen).not.toHaveBeenCalled()
     expect(onSaved).toHaveBeenCalledWith({ id: 'p1' }, { pushPrimer: expect.objectContaining({ entryPoint: 'treatment_form' }) })
+  })
+})
+
+describe('125 1b — dose_source no form completo (FR-020)', () => {
+  it('sem pré-montagem no form: mesmo com a dose da caixa ⇒ manual', async () => {
+    mockStatus.mockResolvedValue({ status: 'granted', granted: true })
+    const saved = { id: 'm1', anvisa_registration: '112600202', name: 'Mounjaro', presentation: 'injetavel', dosage_per_pill: 5, dosage_unit: 'mg/ml', concentration_volume_ml: 0.5 }
+    const a = setup({ medicine: saved, values: { ...VALUES, dosage_per_intake: 2.5, intake_unit: 'mg' } })
+    await act(async () => { await a.result.current.submit() })
+    expect(a.mutation.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ doseSource: 'manual' }))
   })
 })

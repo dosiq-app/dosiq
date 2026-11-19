@@ -152,13 +152,27 @@ describe('ProtocolFormBody — "Mensal (a cada 30 dias)" e próxima dose (086 T0
   })
 
   it('criação em dias: pergunta "Quando é a próxima dose?" e NÃO há "Data do início" duplicado (PO-7)', () => {
+    // 125 1b: injetável não diário pergunta o dia da aplicação (AC5.3) — o PO-7 vale para as demais formas.
+    const utils = render(
+      <ProtocolFormBody
+        {...baseProps}
+        medicine={{ id: 'm2', name: 'Vitamina D', dosage_unit: 'ui', presentation: 'comprimido' }}
+        form={makeForm({ frequency: 'intervalo_dias', interval_days: 30, start_date: '2026-10-10' })}
+      />
+    )
+    expect(utils.getByLabelText('Quando é a próxima dose?')).toBeTruthy()
+    expect(utils.queryByLabelText('Data do início')).toBeNull()
+  })
+
+  it('125 1b (AC5.3): injetável em dias, na criação, pergunta o dia da aplicação — sem "Data do início" duplicado', () => {
     const utils = render(
       <ProtocolFormBody
         {...baseProps}
         form={makeForm({ frequency: 'intervalo_dias', interval_days: 30, start_date: '2026-10-10' })}
       />
     )
-    expect(utils.getByLabelText('Quando é a próxima dose?')).toBeTruthy()
+    expect(utils.getByLabelText('Quando foi (ou será) a aplicação?')).toBeTruthy()
+    expect(utils.queryByLabelText('Quando é a próxima dose?')).toBeNull()
     expect(utils.queryByLabelText('Data do início')).toBeNull()
   })
 

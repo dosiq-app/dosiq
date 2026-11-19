@@ -13,6 +13,7 @@ import { normalizeClassCode } from '../trackedMeasure'
 import type { CmedRow } from './cmedIndex'
 import { packageFromText, presentationFromRow, type InjectionContainer } from './cmedPackage'
 import { intakeUnitFromPresentation } from './cmedIntakeUnit'
+import { dialDosesFromText } from '../treatmentSetup'
 
 export interface CmedMedicineDraft {
   name: string
@@ -47,7 +48,10 @@ export interface CmedMedicineDraft {
   isGeneric: boolean
   /** 066 E (C-7): unidade da tomada deduzida do texto da caixa (gotas/ml/UI/mg); null em não líquido. */
   intake_unit: string | null
+  /** 125 1b (AC5.2): doses do mostrador escritas na caixa ("DOSES 0,25MG E 0,5 MG"); [] sem o trecho. */
+  dialDoses: number[]
 }
+
 
 export interface CmedStrengthChoice {
   dose: number
@@ -106,5 +110,24 @@ export function medicineDraftFromRow(row: CmedRow): CmedMedicineDraft {
     strengthChoices: row.amb ? strengthChoicesFromDs(row.ds) : [],
     isGeneric,
     intake_unit: intakeUnitFromPresentation(row.a, unit, presentation),
+    dialDoses: presentation === 'injetavel' ? dialDosesFromText(row.a) : [],
   }
+}
+
+function sameKey(a: CmedRow, b: CmedRow): boolean {
+  return a.ds === b.ds && a.d === b.d && a.u === b.u && a.f === b.f && a.lv === b.lv
+}
+
+/**
+ * 125 1b (smoke 19/11): pela BUSCA a escolha é da concentração, que junta canetas diferentes (Ozempic 1,5 mL marca
+ * 0,25/0,5 mg; 3 mL marca 1 mg). Os atalhos são a UNIÃO das doses escritas nas embalagens dessa concentração —
+ * dado da caixa, só para digitar; a dose é da receita.
+ */
+export function dialDosesForChoice(rows: CmedRow[], chosen: CmedRow): number[] {
+  const doses = new Set<number>()
+  for (const r of rows.filter((row) => sameKey(row, chosen)).concat(chosen)) {
+    if (presentationFromRow(r.f, r.a) !== 'injetavel') continue
+    for (const d of dialDosesFromText(r.a)) doses.add(d)
+  }
+  return [...doses].sort((a, b) => a - b)
 }

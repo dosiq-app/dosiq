@@ -7,6 +7,19 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Cadastro do injetável pela caixa (spec 125, Fatia 1b)
+
+- **Mobile** (`Added`/`Fixed`, **patch** `APP_VERSION` 0.34.31 → **0.34.32**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — comportamento novo no onboarding e no form de tratamento, 100% JS, nada desligado por flag):
+  - **Dose da caneta de dose única pela caixa.** Escolhida na busca ou no leitor uma caixa cujo rótulo diz o conteúdo de uma aplicação (Mounjaro "2,5 mg / 0,5 mL"), a dose já chega preenchida ("Da embalagem: 2,5 mg por aplicação."), editável.
+  - **A dose é a da receita.** A tela "Quanto aplica de cada vez?" passa a dizer "O número escrito na sua receita médica." (antes: "O número escrito no rótulo da embalagem", que levava a digitar a concentração da caneta multidose, como 1,34, no lugar da dose), e o campo não traz mais número sugerido.
+  - **Atalhos de dose da caixa:** quando a caixa escreve as doses da caneta (Ozempic: "DOSES 0,25MG E 0,5 MG"), elas viram atalhos de um toque — pela busca, as de todas as canetas daquela concentração (0,25 · 0,5 · 1 mg).
+  - **"Confira o seu remédio":** o "Na caixa" do Mounjaro mostrava 1,25 mg / 0,5 mL em vez de 2,5 mg / 0,5 mL.
+  - **Form de tratamento:** injetável não oferece mais "gotas" como unidade da dose (em mg/mL: mg ou mL, padrão mg; em UI/mL: UI ou mL) — um Ozempic cadastrado ali nascia "em gotas". Tratamento antigo salvo em gotas continua mostrando o valor. Na criação, injetável semanal, em dias alternados ou mensal pergunta "Quando foi (ou será) a aplicação?" no lugar dos dias da semana, como no onboarding.
+  - Telemetria: no onboarding, `treatment_created.dose_source` passa a ser `embalagem` pelo valor gravado (dose da caixa ou atalho), mesmo que a pessoa tenha digitado e voltado ao número da caixa.
+- **Core** (`Added`): `derivePenDose` e `dialDosesFromText` (`treatmentSetup.ts`), `dialDosesForChoice` (`cmedMedicine.ts`); o rascunho da caixa ganha `dialDoses`; o aviso "dose maior que o rótulo" limpa a dízima do conteúdo reconstruído (`cleanFloat`) antes de comparar e exibir.
+- **Web**: sem mudança visível.
+- **Store-note:** "A caixa escolhida já preenche a dose da caneta de dose única, e a caneta mostra as doses que marca como atalho."
+
 ### Cadastro do primeiro remédio: não perder e não errar (spec 125, Fatia 1a)
 
 - **Mobile** (`Added`/`Changed`/`Fixed`, **patch** `APP_VERSION` 0.34.30 → **0.34.31**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — fluxo novo no onboarding e no form de tratamento, 100% JS, nada desligado por flag):

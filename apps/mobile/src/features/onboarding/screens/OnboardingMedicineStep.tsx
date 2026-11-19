@@ -33,6 +33,7 @@ import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggesti
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
 import { PresentationChips, StrengthFields } from '@medications/components/FormFirstStrength'
 import { manualIntakeUnit } from '@features/onboarding/utils/manualMedicine'
+import { boxFromDraft, medicineAmounts } from '@treatments/utils/penDose'
 import { ConcentrationVolumeField } from '@medications/components/ConcentrationVolumeField'
 import { valuesFromDraft, draftExtras, baseFromScan, scanDoseEdited } from '@medications/utils/medicineDraftValues'
 import { ROUTES } from '@navigation/routes'
@@ -137,7 +138,10 @@ function ConfiraStrength({ form, boxStrength, doseError, onDecimalChange, onUnit
 // Concentração da caixa escolhida (AC3.5), na notação do rótulo; null = editável (manual ou sem dose).
 function boxStrengthLabel(filledLabel: string | null, values): string | null {
   if (!filledLabel || !values.dosage_unit || String(values.dosage_per_pill ?? '').trim() === '') return null
-  return formatConcentration(values.dosage_per_pill, values.dosage_unit, values.concentration_volume_ml || null)
+  // O form guarda o valor da CAIXA ("2,5 mg / 0,5 mL" ⇒ 2,5); `formatConcentration` quer POR mL e multiplica
+  // pelo volume — passar o valor da caixa mostrava 1,25 (smoke 1b #1).
+  const { perMl, volumeMl } = medicineAmounts(values)
+  return formatConcentration(perMl, values.dosage_unit, volumeMl)
 }
 
 // "Verifique os campos destacados" só ajuda se houver campo destacado. Erro em campo que esta tela não
@@ -157,7 +161,7 @@ export default function OnboardingMedicineStep() {
   // sobra faixa e o rodapé sobe. Ligado só com teclado aberto: fechado, vira View e a altura reseta.
   const keyboardVisible = useKeyboardVisible()
   const route = useRoute<any>()
-  const { medicine, setMedicine, setMedicineSource, setMedicineIntakeUnit, skip, finishLater } = useOnboarding()
+  const { medicine, setMedicine, setMedicineSource, setMedicineIntakeUnit, setMedicineBox, skip, finishLater } = useOnboarding()
   const { show } = useToast()
   // 066 E: o que veio da caixa (busca 2C ou código de barras) — mesmo estado do cadastro completo.
   const [filledLabel, setFilledLabel] = useState<string | null>(null)
@@ -170,6 +174,8 @@ export default function OnboardingMedicineStep() {
   const [appliedSelection, setAppliedSelection] = useState<any>(null)
   // 066 E (C-7): unidade da tomada que a caixa indica, e para qual concentração ela vale.
   const [draftIntake, setDraftIntake] = useState<{ unit: string | null; dosageUnit: string | null } | null>(null)
+  // 125 1b: embalagem da caixa aplicada (vai ao contexto no "Continuar").
+  const [draftBox, setDraftBox] = useState<any>(null)
   // `scan_confirmed` sai 1× por caixa lida: voltar do tratamento e continuar de novo não recontaria.
   const confirmedScanRef = useRef<any>(null)
 
@@ -187,6 +193,7 @@ export default function OnboardingMedicineStep() {
     setFilledLabel([draft.name, draft.strengthLabel].filter(Boolean).join(' '))
     setFilledSource(source)
     setDraftIntake({ unit: draft.intake_unit ?? null, dosageUnit: draft.dosage_unit ?? null })
+    setDraftBox(boxFromDraft(draft))
   }
 
   // US7 cen. 5: a busca devolve { anvisaItem, cmedDraft? }. Com caixa escolhida no passo 2, o rascunho
@@ -206,6 +213,7 @@ export default function OnboardingMedicineStep() {
     setFilledLabel(item.name ?? null)
     setFilledSource('search')
     setDraftIntake(null)
+    setDraftBox(null)
   }
 
   // Aplicados durante o render, uma vez por objeto. 066 E (T050): `scanDraft` vem do leitor; `scanEan`
@@ -293,8 +301,10 @@ export default function OnboardingMedicineStep() {
         ? draftIntake.unit
         : manualIntakeUnit(form.values.presentation as string, dosageUnit),
     )
+    // 125 1b: a embalagem só vale se a concentração ainda é a da caixa (mesma regra do C-7).
+    setMedicineBox(source !== 'manual' && draftBox && draftBox.dosageUnit === dosageUnit ? draftBox : null)
     return true
-  }, [form, show, setMedicine, setMedicineSource, setMedicineIntakeUnit, doseCheckRequired, filledLabel, filledSource, appliedScanDraft, draftIntake])
+  }, [form, show, setMedicine, setMedicineSource, setMedicineIntakeUnit, setMedicineBox, doseCheckRequired, filledLabel, filledSource, appliedScanDraft, draftIntake, draftBox])
 
   const handleContinue = useCallback(() => commitMedicine() && (navigation.navigate as any)(ROUTES.ONBOARDING_TREATMENT), [commitMedicine, navigation])
   // 125 (AC1.0/C-1): com a caixa conferida, "Terminar depois" grava só o remédio.

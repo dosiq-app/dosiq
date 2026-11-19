@@ -7,6 +7,8 @@ import {
   denominatorLooksLikePackage,
   describeTreatment,
   nextDoseDate,
+  derivePenDose,
+  dialDosesFromText,
 } from '../treatmentSetup'
 
 // 2026-11-17 é terça-feira.
@@ -37,7 +39,7 @@ describe('setupDefaults — FR-021 / FR-008 (PO-125-4, PO-125-5)', () => {
     expect(d.frequencyOrder).toContain('mensal_30')
   })
 
-  it('injetável UI/mL ⇒ UI; sem unidade decidida ⇒ mg e UI', () => {
+  it('injetável UI/mL ⇒ UI; sem unidade decidida ⇒ mg e UI (RC5 1b: mL só no form completo)', () => {
     expect(setupDefaults('injetavel', 'ui/ml').intakeUnits).toEqual(['UI'])
     expect(setupDefaults('injetavel', null).intakeUnits).toEqual(['mg', 'UI'])
   })
@@ -259,5 +261,63 @@ describe('anchorFromApplication — AC2.5b', () => {
 describe('Mensal em toda forma (emenda FR-021, PO 2026-11-18)', () => {
   it.each(['comprimido', 'capsula', 'liquido', 'injetavel', 'pomada', 'spray', 'outro'])('%s oferece mensal_30', (p) => {
     expect(setupDefaults(p).frequencyOrder).toContain('mensal_30')
+  })
+})
+
+// ── 1b: dose pela embalagem (simplificada no smoke 19/11 — só rótulo curado `lv`) ────────────
+
+describe('derivePenDose — AC5.1 (PO-125-9)', () => {
+  const mounjaro = { presentation: 'injetavel', dosageUnit: 'mg/ml', perMl: 5, volumeMl: 0.5 }
+
+  it('Mounjaro 5 mg/mL × 0,5 mL (lv) ⇒ 2,5 mg', () => {
+    expect(derivePenDose(mounjaro)).toEqual({ dose: 2.5, intakeUnit: 'mg' })
+  })
+  it('UI/mL ⇒ dose em UI', () => {
+    expect(derivePenDose({ ...mounjaro, dosageUnit: 'ui/ml', perMl: 100, volumeMl: 0.4 })).toEqual({ dose: 40, intakeUnit: 'UI' })
+  })
+  it('degenerados ⇒ null (R-270)', () => {
+    expect(derivePenDose({ ...mounjaro, volumeMl: null })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, volumeMl: 0 })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, volumeMl: -0.5 })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, volumeMl: '' })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, perMl: null })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, perMl: 0 })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, perMl: 'abc' })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, presentation: 'liquido' })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, dosageUnit: 'mg' })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, dosageUnit: null })).toBeNull()
+  })
+  it('volume de uma unidade acima de 1 mL não é dose única de injeção ⇒ null', () => {
+    expect(derivePenDose({ ...mounjaro, volumeMl: 3 })).toBeNull()
+  })
+  it('teto do schema (1000) ⇒ null; vírgula aceita; sem dízima (R-277)', () => {
+    expect(derivePenDose({ ...mounjaro, perMl: 5000, volumeMl: 0.5 })).toBeNull()
+    expect(derivePenDose({ ...mounjaro, perMl: '5', volumeMl: '0,5' })).toEqual({ dose: 2.5, intakeUnit: 'mg' })
+    expect(derivePenDose({ ...mounjaro, perMl: 4.17, volumeMl: 0.6 })?.dose).toBe(2.502)
+  })
+})
+
+describe('dialDosesFromText — AC5.2 (doses do mostrador escritas na embalagem)', () => {
+  it('Ozempic "(DOSES 0,25MG E 0,5 MG)" ⇒ [0.25, 0.5]; "(DOSES 1 MG)" ⇒ [1]', () => {
+    expect(dialDosesFromText('1,34 MG/ML SOL INJ CT X 1 CAR VD TRANS X 1,5 ML + 1 SIST APLIC PLAS (DOSES 0,25MG E 0,5 MG) + 6 AGULHAS NOVOFINE')).toEqual([0.25, 0.5])
+    expect(dialDosesFromText('1,34 MG/ML SOL INJ CT X 1 CAR VD TRANS X 3 ML + 1 SIST APLIC PLAS (DOSES 1 MG)')).toEqual([1])
+  })
+  it('sem "DOSES" ⇒ []; nulo ⇒ []; nunca lê a concentração', () => {
+    expect(dialDosesFromText('5 MG/ML SOL INJ SC CT 4 SER PREENC VD TRANS X 0,5 ML')).toEqual([])
+    expect(dialDosesFromText(null)).toEqual([])
+    expect(dialDosesFromText('')).toEqual([])
+  })
+})
+
+describe('checkDosePlausibility — rótulo reconstruído com ponto flutuante (smoke 1b C-1b-S6)', () => {
+  // Lipoless salvo: 5 mg / 0,6 mL ⇒ o banco guarda 8,333333333333 mg/mL; × 0,6 = 4,9999999999998.
+  const pen = 8.333333333333 * 0.6
+  it('dose igual ao rótulo não avisa "maior que o rótulo"', () => {
+    const w = checkDosePlausibility({ dose: 5, doseUnit: 'mg', presentation: 'injetavel', penContent: pen, denominatorMl: 0.6 })
+    expect(w.map((x) => x.kind)).not.toContain('exceeds_pen')
+  })
+  it('dose acima do rótulo avisa com o número do rótulo arredondado (5, não 4,999…)', () => {
+    const w = checkDosePlausibility({ dose: 7.5, doseUnit: 'mg', presentation: 'injetavel', penContent: pen, denominatorMl: 0.6 })
+    expect(w.find((x) => x.kind === 'exceeds_pen')?.message).toBe('O rótulo diz 5 mg. Confirma 7,5 mg?')
   })
 })

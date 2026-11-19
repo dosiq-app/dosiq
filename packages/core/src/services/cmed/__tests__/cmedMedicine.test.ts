@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import fixture from './fixtures/cmed-fixture.json'
 import { decodeCmedIndex, findRowsByProductName } from '../cmedIndex'
 import type { CmedIndex, CmedRow } from '../cmedIndex'
-import { medicineDraftFromRow, strengthChoicesFromDs } from '../cmedMedicine'
+import { medicineDraftFromRow, strengthChoicesFromDs, dialDosesForChoice } from '../cmedMedicine'
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -182,5 +182,26 @@ describe('volume do rótulo no rascunho (spec 113, FR-003 · INV-1/INV-2)', () =
     expect(draft.dosage_per_pill).toBe(5)
     expect(draft.concentration_volume_ml).toBeNull()
     expect(draft.strengthLabel).toBe('5 mg')
+  })
+})
+
+describe('dialDosesForChoice — atalhos de dose da concentração escolhida na busca (125 1b, smoke 19/11)', () => {
+  const base = (over: Partial<CmedRow> = {}): CmedRow => ({
+    ...rowByName('Clopidogrel'), f: 'injetavel', u: 'mg/ml', amb: false, ...over,
+  })
+  const oz15 = base({ p: 'Ozempic', d: 1.34, ds: '1.34 mg/ml', lv: null, a: '1,34 MG/ML SOL INJ CT X 1 CAR VD TRANS X 1,5 ML + 1 SIST APLIC PLAS (DOSES 0,25MG E 0,5 MG)' })
+  const oz3 = base({ p: 'Ozempic', d: 1.34, ds: '1.34 mg/ml', lv: null, a: '1,34 MG/ML SOL INJ CT X 1 CAR VD TRANS X 3 ML + 1 SIST APLIC PLAS (DOSES 1 MG)' })
+  const wegovy = base({ p: 'Wegovy', d: 3.2, ds: '3.2 mg/ml', lv: null, a: '3,2 MG/ML SOL INJ SC CT 1 CAR VD TRANS X 3 ML + 1 SIST APLIC PLAS + 4 AGULHAS NOVOFINE PLUS' })
+
+  it('Ozempic 1,5 + 3 mL ⇒ união ordenada 0,25 · 0,5 · 1', () => {
+    expect(dialDosesForChoice([oz15, oz3], oz15)).toEqual([0.25, 0.5, 1])
+  })
+  it('outra concentração do mesmo produto não entra; sem "DOSES" ⇒ []', () => {
+    expect(dialDosesForChoice([oz15, wegovy], oz15)).toEqual([0.25, 0.5])
+    expect(dialDosesForChoice([wegovy], wegovy)).toEqual([])
+  })
+  it('linha escolhida fora da lista ainda conta; não injetável ⇒ []', () => {
+    expect(dialDosesForChoice([], oz3)).toEqual([1])
+    expect(dialDosesForChoice([], base({ f: 'comprimido', a: '3 MG COM OR (DOSES 3 MG)' }))).toEqual([])
   })
 })

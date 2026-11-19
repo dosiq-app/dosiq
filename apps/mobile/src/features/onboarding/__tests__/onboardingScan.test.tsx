@@ -109,6 +109,7 @@ function withCtx(node) {
     setMedicine: jest.fn(),
     setMedicineSource: jest.fn(),
     setMedicineIntakeUnit: jest.fn(),
+    setMedicineBox: jest.fn(),
     skip: jest.fn(),
     treatment: null,
     setTreatment: jest.fn(),
@@ -188,6 +189,14 @@ describe('Busca 2C em tela cheia (US7 cen. 5)', () => {
 })
 
 describe('"Confira" com a caixa lida (US7 cen. 2 · INV-1)', () => {
+  it('smoke 1b #1: Mounjaro com volume do rótulo mostra "Na caixa" 2,5 mg / 0,5 mL (não 1,25)', () => {
+    const { getByText, queryByText } = renderStep({
+      scanDraft: draft({ name: 'Mounjaro', dosage_per_pill: 5, dosage_unit: 'mg/ml', concentration_volume_ml: 0.5, presentation: 'injetavel', strengthLabel: '2,5 mg/0,5 mL' }),
+    })
+    expect(getByText(/^2,5 mg ?\/ ?0,5 mL$/)).toBeTruthy()
+    expect(queryByText(/1,25/)).toBeNull()
+  })
+
   it('preenche nome/dose/unidade com o selo de origem e não grava nada', () => {
     const { getByDisplayValue, getByText, getByTestId, queryByText } = renderStep({ scanDraft: draft(), scanEan: '7896004778402' })
     expect(getByDisplayValue('Losartana Potássica')).toBeTruthy()
@@ -329,6 +338,14 @@ describe('unidade da tomada levada ao Tratamento (066 E, C-7)', () => {
     })
     fireEvent.press(getByText('Continuar'))
     expect(ctx.setMedicineIntakeUnit).toHaveBeenLastCalledWith('mg')
+  })
+
+  it('125 1b: a caixa (unidade + atalhos de dose) vai ao contexto', () => {
+    const { getByText, ctx } = renderStep({
+      scanDraft: draft({ dosage_per_pill: 5, dosage_unit: 'mg/ml', presentation: 'injetavel', intake_unit: 'mg', boxContainer: 'seringa_preenchida', boxVolumeMl: 0.5, dialDoses: [] }),
+    })
+    fireEvent.press(getByText('Continuar'))
+    expect(ctx.setMedicineBox).toHaveBeenLastCalledWith({ dosageUnit: 'mg/ml', dialDoses: [] })
   })
 
   it('comprimido: sem unidade (null)', () => {
