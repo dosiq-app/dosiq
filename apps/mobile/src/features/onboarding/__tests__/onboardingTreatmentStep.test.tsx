@@ -171,6 +171,20 @@ describe('injetável (AC2.2, AC2.5, AC2.5b, AC3.3)', () => {
     expect(queryByText('De quanto em quanto tempo?')).toBeNull()
   })
 
+  it('RC6 #966: dose inválida não avança para o "quando" (o campo some lá)', () => {
+    mockMedicine = { name: 'Ozempic', presentation: 'injetavel', dosage_per_pill: '2.5', dosage_unit: 'mg/ml', concentration_volume_ml: '0.5' }
+    mockIntakeUnit = 'mg'
+    const { getByText, getByLabelText, queryByText } = render(<OnboardingTreatmentStep />)
+    fireEvent.changeText(getByLabelText('Dose por aplicação'), '0')
+    fireEvent.press(getByText('Continuar'))
+    expect(mockShow).toHaveBeenLastCalledWith('A dose deve ser maior que zero.', { variant: 'error' })
+    expect(queryByText('De quanto em quanto tempo?')).toBeNull()
+    fireEvent.changeText(getByLabelText('Dose por aplicação'), '5000')
+    fireEvent.press(getByText('Continuar'))
+    expect(mockShow).toHaveBeenLastCalledWith('Dose muito alta. Verifique o valor.', { variant: 'error' })
+    expect(queryByText('De quanto em quanto tempo?')).toBeNull()
+  })
+
   it('no "quando", o voltar do SO volta à dose (beforeRemove), não sai do passo', () => {
     mockMedicine = { name: 'Ozempic', presentation: 'injetavel', dosage_per_pill: '2.5', dosage_unit: 'mg/ml', concentration_volume_ml: '0.5' }
     mockIntakeUnit = 'mg'

@@ -504,7 +504,9 @@ function TitrationSection({
 // 125 (AC3.2/AC3.3): avisos suaves da dose; "usar mesmo assim" só esconde o aviso daquela dose.
 function DoseWarningsField({ medicine, dose, intakeUnit }) {
   const [confirmedDose, setConfirmedDose] = useState<string | null>(null)
-  const doseKey = String(dose ?? '')
+  const doseValue = String(dose ?? '')
+  // RC6 #966: a confirmação vale para ESTA dose, nesta unidade e neste remédio — trocar qualquer um reavalia.
+  const doseKey = `${medicine?.id ?? ''}|${intakeUnit ?? ''}|${doseValue}`
   const warnings = useMemo(
     () => (confirmedDose === doseKey ? [] : doseWarnings(medicine, dose, intakeUnit)),
     [confirmedDose, doseKey, medicine, dose, intakeUnit],
@@ -512,7 +514,7 @@ function DoseWarningsField({ medicine, dose, intakeUnit }) {
   return (
     <DoseWarnings
       warnings={warnings}
-      confirmLabel={confirmDoseLabel(warnings, doseKey, intakeUnit)}
+      confirmLabel={confirmDoseLabel(warnings, doseValue, intakeUnit)}
       onConfirm={() => setConfirmedDose(doseKey)}
     />
   )

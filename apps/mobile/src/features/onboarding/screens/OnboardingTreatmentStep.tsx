@@ -236,7 +236,9 @@ export default function OnboardingTreatmentStep() {
     () => doseWarnings(medicine, form.values.dosage_per_intake, (form.values.intake_unit as string) ?? null),
     [medicine, form.values.dosage_per_intake, form.values.intake_unit],
   )
-  const shownWarnings = confirmedDose === doseValue ? [] : warnings
+  // RC6 #966: a confirmação vale para esta dose NESTA unidade (gotas↔mL reavalia).
+  const confirmKey = `${form.values.intake_unit ?? ''}|${doseValue}`
+  const shownWarnings = confirmedDose === confirmKey ? [] : warnings
   const doseFirst = medicine?.presentation === 'injetavel' && !!label
   // Smoke 18/11: sugestão em cinza = o número da caneta (valor da CAIXA, mesma unidade da dose). Só
   // placeholder — não preenche; os avisos (AC3.2/3.3) seguem pegando o valor digitado fora do esperado.
@@ -328,8 +330,20 @@ export default function OnboardingTreatmentStep() {
 
   // O-3 › O-4: a dose (obrigatória, sem default) antes do "quando".
   const handleDoseNext = useCallback(() => {
-    if (String(form.values.dosage_per_intake ?? '').trim() === '') {
+    const raw = String(form.values.dosage_per_intake ?? '').trim()
+    if (raw === '') {
       show('Digite quanto usa de cada vez.', { variant: 'error' })
+      return
+    }
+    // RC6 #966: a dose some da tela no "quando" — inválida tem que parar AQUI, onde o campo está à vista.
+    // Mesmos limites do `protocolSchema.dosage_per_intake` (positivo, ≤ 1000), coerção igual ao Continuar (AP-167).
+    const dose = Number(raw.replace(',', '.'))
+    if (!Number.isFinite(dose) || dose <= 0) {
+      show('A dose deve ser maior que zero.', { variant: 'error' })
+      return
+    }
+    if (dose > 1000) {
+      show('Dose muito alta. Verifique o valor.', { variant: 'error' })
       return
     }
     setPhase('when')
@@ -393,7 +407,7 @@ export default function OnboardingTreatmentStep() {
               warnings={shownWarnings}
               intakeUnits={defaults.intakeUnits}
               onChange={handleDoseChange}
-              onConfirm={() => setConfirmedDose(doseValue)}
+              onConfirm={() => setConfirmedDose(confirmKey)}
             />
             </>
           ) : (
@@ -430,7 +444,7 @@ export default function OnboardingTreatmentStep() {
               warnings={shownWarnings}
               intakeUnits={defaults.intakeUnits}
               onChange={handleDoseChange}
-              onConfirm={() => setConfirmedDose(doseValue)}
+              onConfirm={() => setConfirmedDose(confirmKey)}
             />}
               <ScheduleBlock form={form} asksDay={asksDay} />
             </>
