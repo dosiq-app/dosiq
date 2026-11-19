@@ -88,6 +88,22 @@ export async function resolveTarget({ url, key, prod, confirm }) {
   return { ref, url: url.trim(), key, env: ref === PROD_REF ? 'prod' : 'qa' }
 }
 
+/**
+ * Sidecar de forças (spec 127 · `cmedStrengths.json` v1): paralelo 1:1 a `medicineDatabase.json`.
+ * O app acha a entrada pela POSIÇÃO do item da base ANVISA — sidecar de outra versão ou com outro
+ * tamanho desalinha tudo em silêncio. Por isso: `v` conhecido, `version` = manifest, e
+ * `medCount` = `items.length` = count do manifest (= tamanho da base, conferido em loadAndValidate).
+ */
+export const CMED_STRENGTHS_VERSION = 1
+export function validateStrengths(json, meta, version, file) {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) throw new PublishError(`${file}: não é objeto`)
+  if (json.v !== CMED_STRENGTHS_VERSION) throw new PublishError(`${file}: v=${json.v} desconhecido (esperado ${CMED_STRENGTHS_VERSION})`)
+  if (json.version !== version) throw new PublishError(`${file}: version ${json.version} ≠ manifest ${version}`)
+  if (!Array.isArray(json.items) || !json.dict || typeof json.dict !== 'object') throw new PublishError(`${file}: sem items/dict`)
+  if (json.medCount !== json.items.length) throw new PublishError(`${file}: medCount ${json.medCount} ≠ ${json.items.length} items`)
+  if (json.items.length !== meta.count) throw new PublishError(`${file}: ${json.items.length} items, manifest diz ${meta.count}`)
+}
+
 /** Lê e valida manifest + arquivos; devolve o derivado pronto para carga. */
 export function loadAndValidate(dir, read = readFileSync) {
   let manifest
@@ -115,10 +131,20 @@ export function loadAndValidate(dir, read = readFileSync) {
       throw new PublishError(`${file}: JSON inválido`)
     }
     if (name === 'cmedIndex') cmedRaw = json
-    else if (Array.isArray(json) && typeof meta.count === 'number' && json.length !== meta.count) {
-      throw new PublishError(`${file}: ${json.length} itens, manifest diz ${meta.count}`)
+    else if (name === 'cmedStrengths') validateStrengths(json, meta, version, file)
+    else if (Array.isArray(json)) {
+      if (typeof meta.count === 'number' && json.length !== meta.count) {
+        throw new PublishError(`${file}: ${json.length} itens, manifest diz ${meta.count}`)
+      }
+    } else {
+      // Formato que o script não conhece não sobe: o app baixaria algo que ninguém validou.
+      throw new PublishError(`${file}: formato desconhecido para ${name} (esperado array)`)
     }
     uploads.push({ path: meta.path, body: buf })
+  }
+  // 127 G34: o sidecar é posicional — mesmo tamanho da base ANVISA que vai junto.
+  if (files.cmedStrengths && files.medicineDatabase && files.cmedStrengths.count !== files.medicineDatabase.count) {
+    throw new PublishError(`cmedStrengths: ${files.cmedStrengths.count} items, medicineDatabase tem ${files.medicineDatabase.count}`)
   }
   const decoded = decodeCmedIndex(cmedRaw)
   if (decoded.ok === false) throw new PublishError(`cmedIndex recusado pelo decodificador do core (${decoded.reason})`)

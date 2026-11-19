@@ -1,7 +1,7 @@
 ---
-title: "Upload da Base ANVISA para Supabase"
-description: "Guia prático para processamento, atualização e upload da base de medicamentos ANVISA para o Supabase Storage."
-version: "1.0.0"
+title: "Publicação da Base ANVISA/CMED (Storage + banco)"
+description: "Como publicar a base ANVISA/CMED com `npm run cmed:publish`: o que o script faz, requisitos, guardas, arquivos do manifest e rollback."
+version: "2.0.0"
 status: active
 category: operation
 audience:
@@ -10,223 +10,184 @@ audience:
 tags:
   - supabase
   - anvisa
+  - cmed
   - database
 created_at: "2026-07-08"
-updated_at: "2026-07-08"
+updated_at: "2026-11-19"
 ---
 
-# Guia — Upload da Base ANVISA para Supabase Storage
->**Atualização 037 (web também consome on-demand):** a **web** passou a baixar a base
-> do mesmo bucket on-demand (antes embutia os JSONs no build PWA). Os services web
-> (`medicineDatabaseService` / `laboratoryDatabaseService`) consomem o núcleo
-> `createAnvisaDatabase` de `@dosiq/core` com cache na Cache Storage API (TTL 7d).
-> Consequências operacionais:
-> - Os JSONs do repo agora vivem em **`data/anvisa/`** (raiz) — são a **fonte de upload**
->   ao bucket e **não são mais empacotados** no build da web.
-> - Atualizar a base em `anvisa/v1/` (substituir arquivos + bump `manifest.version`)
->   reflete em **web E mobile** sem redeploy (web revalida via manifest+TTL na Cache Storage).
+# Guia — Publicação da Base ANVISA/CMED
+
+> **Desde a spec 119 (2026-11-15) a publicação é um comando só: `npm run cmed:publish`.** Ele sobe
+> os arquivos do manifest para o bucket **e** carrega no banco o catálogo derivado
+> (`cmed_class_keys`) usado pelo painel admin. Não suba arquivo à mão pelo dashboard: o banco
+> ficaria numa versão e o bucket em outra (ADR-123, CON-045).
 
 ---
 
-## 0. Fonte de dados
+## 1. O que é publicado
 
-- A URL da Anvisa que possui todos os dados abertos é o `https://dados.anvisa.gov.br/dados/`, nela você pode encontrar diversas bases de dados para download
-- A base não processada dos medicamentos está disponível especificamente em `https://dados.anvisa.gov.br/dados/DADOS_ABERTOS_MEDICAMENTOS.csv`
-- É necessário processar o arquivo para que ele fique no formato correto para ser utilizado no app mobile, incluindo a limpeza de registros de testes, a remoção de colunas desnecessárias e de categorias não utilizadas no autocompletar, como 'Baixo Risco', 'Dinamizado', entre outros.
-- A última atualização da base processada foi em **14/06/2024** e o caminho do arquivo fisico está em `scripts/medicamentos-ativos-anvisa-jun26.xlsx`
-- Existe um script em Node.js que realiza o processamento do arquivo e transformação dele em JSON. Ele está disponível em `scripts/process-anvisa.js`, porém é recomendado rever o script antes de executá-lo, pois ele pode ter sido atualizado.
+### Arquivos (bucket público `dosiq-assets`, pasta `anvisa/v1/`)
 
-## 1. Pré-requisitos
+| Arquivo | Conteúdo | Quem consome | Guarda no script |
+|---|---|---|---|
+| `manifest.json` | versão, `generatedAt`, `path`/`size`/`count` de cada arquivo | web + mobile (invalida cache por versão/TTL 7d) | sobe **por último** |
+| `medicineDatabase.json` | base ANVISA (passo 1 da busca), array | web + mobile | tamanho e count = manifest |
+| `laboratoryDatabase.json` | laboratórios, array | web + mobile | tamanho e count = manifest |
+| `cmedIndex.json` | índice CMED colunar v1 (~26 mil apresentações; passo 2) | mobile (`useCmedIndex`) | tamanho = manifest; `decodeCmedIndex` do core aceita; linhas = count |
+| `cmedStrengths.json` | sidecar de forças **1:1 com `medicineDatabase`** (spec 127, v1) | mobile (vínculo/setup, 125 2a) | ver §4 |
 
-- Acesso ao projeto Supabase **`[SEU-ID-PROJETO]`** (dashboard web)
-- Permissão de admin no projeto
-- Arquivos locais disponíveis em:
-  - `data/anvisa/medicineDatabase.json` (≈ 1.34 MB)
-  - `data/anvisa/laboratoryDatabase.json` (≈ 14 KB)
+URLs públicas: `https://<project_ref>.supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/<arquivo>`.
 
----
+> ⚠️ Bucket público = leitura anônima de **tudo** dentro dele. Nunca coloque arquivo sensível ali.
 
-## 2. Estrutura final esperada no bucket
+### Banco (só servidor)
 
-```
-dosiq-assets/                 ← bucket (público, leitura anônima)
-└── anvisa/
-    └── v1/                   ← versão do dataset
-        ├── manifest.json     ← metadados (versão + timestamps + tamanhos)
-        ├── medicineDatabase.json
-        └── laboratoryDatabase.json
-```
-
-URLs públicas resultantes:
-
-```
-https://[SEU-ID-PROJETO].supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/manifest.json
-https://[SEU-ID-PROJETO].supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/medicineDatabase.json
-https://[SEU-ID-PROJETO].supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/laboratoryDatabase.json
-```
+`public.cmed_class_keys (token → class_codes[], catalog_version)` — palavra normalizada das chaves de
+produto e substância do `cmedIndex` → códigos de classe. É o que a RPC do painel usa para achar o
+"provável GLP-1 pelo nome" (spec 119). Tabela fechada (só `service_role`), troca atômica pela RPC
+`admin_load_cmed_class_keys`. O app **não** lê a tabela; continua no JSON (funciona offline).
 
 ---
 
-## 3. Passo a passo (Dashboard Supabase)
+## 2. Origem dos arquivos
 
-### 3.1 — Criar o bucket `dosiq-assets`
+- Os arquivos vivem em **`~/git/dosiq-moat/data/anvisa/`** (repo privado) — é o diretório padrão do
+  script (`--dir` troca).
+- São gerados pelo pipeline de dados `clean-anvisa-med-db` (`cmed/run.py`), que também escreve o
+  `manifest.json` com `size`/`count` reais e faz o bump de versão (`--bump minor` quando entra
+  arquivo novo, `--bump patch` nas atualizações mensais). **Nunca edite o manifest à mão**: o script
+  confere cada número contra o arquivo e aborta se divergir.
+- Fonte bruta: dados abertos da ANVISA (`https://dados.anvisa.gov.br/dados/`) e a tabela CMED.
 
-1. Abra https://supabase.com/dashboard/project/[SEU-ID-PROJETO]/storage/buckets
-2. Clique em **"New bucket"**
-3. Configure:
-   - **Name**: `dosiq-assets`
-   - **Public bucket**: ✅ ATIVADO (leitura anônima — clientes mobile precisam baixar sem auth)
-   - **File size limit**: deixe em branco (default 50 MB cobre nossos arquivos)
-   - **Allowed MIME types**: deixe em branco
-4. Clique em **"Save"**
+---
 
-> ⚠️ **Atenção**: Bucket público permite leitura anônima de TUDO dentro dele. Não suba arquivos sensíveis aqui.
+## 3. Como publicar
 
-### 3.2 — Criar a estrutura de pastas
+### Requisitos
 
-1. Entre no bucket `dosiq-assets` recém-criado
-2. Clique em **"Create folder"** → digite `anvisa` → Save
-3. Entre em `anvisa/`, clique em **"Create folder"** → digite `v1` → Save
-4. Você deve estar agora em `dosiq-assets/anvisa/v1/`
+| Item | Detalhe |
+|---|---|
+| Node + deps do monorepo | `npm install` na raiz; o script roda via `tsx` (importa o core TS) |
+| Arquivos | `manifest.json` + todos os arquivos que ele lista, no `--dir` |
+| QA (padrão) | `.env.local` da raiz → URL do `dosiq-qa` (`ikcvwxyohmntncanclze`) + `SUPABASE_SERVICE_ROLE_KEY` (ou `VITE_SUPABASE_SERVICE_KEY`) |
+| Prod | `.env` da raiz → URL de prod (`kwqjtdsqkkbebfiaxubb`) + `SUPABASE_SERVICE_ROLE_KEY` |
+| Banco | migração `20261115_119_cmed_class_keys.sql` aplicada no projeto-alvo (senão a carga falha depois do upload) |
 
-### 3.3 — Gerar o `manifest.json` localmente
+Variáveis lidas, em ordem: `CMED_SUPABASE_URL`/`CMED_SUPABASE_SERVICE_KEY` › `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` › `VITE_SUPABASE_URL`/`VITE_SUPABASE_SERVICE_KEY`.
+🔴 A chave `service_role` nunca vem de arquivo versionado e nunca é impressa (mensagens de erro passam por redação).
 
-No teu Mac, no diretório do projeto:
+### Comandos
 
 ```bash
-cd "~/git/dosiq/data/anvisa"
+cd ~/git/dosiq
 
-cat > manifest.json <<EOF
-{
-  "version": "1.0.0",
-  "generatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "files": {
-    "medicineDatabase": {
-      "path": "anvisa/v1/medicineDatabase.json",
-      "size": $(wc -c < medicineDatabase.json),
-      "count": $(node -e "console.log(JSON.parse(require('fs').readFileSync('medicineDatabase.json','utf8')).length)")
-    },
-    "laboratoryDatabase": {
-      "path": "anvisa/v1/laboratoryDatabase.json",
-      "size": $(wc -c < laboratoryDatabase.json),
-      "count": $(node -e "console.log(JSON.parse(require('fs').readFileSync('laboratoryDatabase.json','utf8')).length)")
-    }
-  },
-  "source": "ANVISA · base interna Dosiq",
-  "ttlDays": 7
-}
-EOF
+# 1. Ensaio: valida tudo e mostra o alvo, sem escrever nada
+npm run cmed:publish -- --dry-run
 
-cat manifest.json
+# 2. QA primeiro (CON-044)
+npm run cmed:publish
+
+# 3. Prod — pede para DIGITAR o project_ref de prod antes de escrever
+npm run cmed:publish -- --prod
 ```
 
-Resultado esperado (exemplo):
+Opções: `--dir <pasta>` (padrão `../dosiq-moat/data/anvisa`) · `--dry-run` · `--prod`. Qualquer outra opção aborta.
 
-```json
-{
-  "version": "1.0.0",
-  "generatedAt": "2026-05-14T20:55:00Z",
-  "files": {
-    "medicineDatabase": {
-      "path": "anvisa/v1/medicineDatabase.json",
-      "size": 1340397,
-      "count": 4521
-    },
-    "laboratoryDatabase": {
-      "path": "anvisa/v1/laboratoryDatabase.json",
-      "size": 14378,
-      "count": 213
-    }
-  },
-  "source": "ANVISA · base interna Dosiq",
-  "ttlDays": 7
-}
-```
-
-### 3.4 — Upload dos 3 arquivos
-
-Ainda dentro de `dosiq-assets/anvisa/v1/` no dashboard:
-
-1. Clique em **"Upload file"** (botão no canto superior direito)
-2. Selecione os 3 arquivos:
-   - `manifest.json` (recém-gerado)
-   - `medicineDatabase.json`
-   - `laboratoryDatabase.json`
-3. Aguarde upload (≈ 5-10s para o `medicineDatabase.json`)
-4. Confirme que aparecem na listagem
-
-### 3.5 — Validar leitura anônima
-
-Abra cada URL no browser (sem estar logado no Supabase):
+Saída esperada (exemplo, base 1.3.0 no QA):
 
 ```
-https://[SEU-ID-PROJETO].supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/manifest.json
+cmed:publish → qa (ikcvwxyohmntncanclze) · versão 1.3.0 · 26642 linhas CMED → 6777 tokens
+  ✓ dosiq-assets/anvisa/v1/medicineDatabase.json
+  ✓ dosiq-assets/anvisa/v1/laboratoryDatabase.json
+  ✓ dosiq-assets/anvisa/v1/cmedIndex.json
+  ✓ dosiq-assets/anvisa/v1/cmedStrengths.json
+  ✓ dosiq-assets/anvisa/v1/manifest.json
+  ✓ cmed_class_keys = 6777 tokens · versão 1.3.0
 ```
 
-Deve retornar o JSON do manifest. Se voltar `403` ou `not found`, o bucket não está público — volte ao 3.1.
+### O que o script faz, na ordem
 
-```
-https://[SEU-ID-PROJETO].supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/medicineDatabase.json
-```
+1. **Valida os arquivos** (antes de qualquer rede): manifest legível com `version` e `files.cmedIndex`;
+   para cada arquivo listado — caminho dentro de `anvisa/v1/`, tamanho em bytes = `size`, JSON válido
+   e a guarda do tipo (tabela da §1). Formato que o script não conhece **não sobe**.
+2. **Resolve o alvo e confere a chave:** o `project_ref` da URL tem de ser QA ou prod (outro ⇒ aborta).
+   URL de prod sem `--prod` ⇒ aborta; `--prod` com URL de QA ⇒ aborta. Chave JWT de outro projeto,
+   ou que não seja `service_role` ⇒ aborta. Com `--prod`, pede o project_ref digitado.
+3. **Monta o derivado** `palavra → classes` com `buildClassTokenMap` (core).
+4. **Sobe os arquivos** com `upsert`, **manifest por último** — o app só enxerga a versão nova
+   depois que todos os dados já estão no bucket.
+5. **Carrega o catálogo** numa transação (`admin_load_cmed_class_keys`): valida versão, contagem e
+   formato dos códigos, troca tudo e confere o inserido. Falha ⇒ rollback, catálogo anterior intacto.
 
-Deve baixar/renderizar 1.34 MB de JSON.
+### Se a carga do banco falhar (passo 5)
 
-```
-https://[SEU-ID-PROJETO].supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/laboratoryDatabase.json
-```
-
-Deve baixar/renderizar 14 KB de JSON.
-
-### 3.6 — (Opcional) Configurar cache CDN
-
-No dashboard do bucket → **"Configuration"** → **"Cache control"**:
-
-- `manifest.json`: cache `max-age=3600` (1h — manifest muda raramente, mas controla invalidação)
-- `medicineDatabase.json` / `laboratoryDatabase.json`: cache `max-age=604800, immutable` (7 dias — dados versionados via path `/v1/`, novas versões ficarão em `/v2/`)
-
-> Se preferir não configurar, o default Supabase já é razoável (60s).
+O bucket **já** está na versão nova e o banco segue na anterior — o script diz isso e sai com código
+≠ 0. Corrija a causa e **rode de novo**: o comando é idempotente. O rodapé do painel admin mostra a
+versão do catálogo no banco ("catálogo CMED x.y.z"); ela tem de bater com o manifest.
 
 ---
 
-## 4. Atualizações futuras (versionamento)
+## 4. `cmedStrengths.json` (spec 127)
 
-Quando atualizar a base ANVISA:
+O sidecar é **posicional**: a entrada `items[i]` descreve o item `i` do `medicineDatabase.json`. Um
+sidecar de outra versão ou de outro tamanho desalinha as forças em silêncio, então o script exige:
 
-1. Substitua os arquivos em `anvisa/v1/` (mesma versão) → app mobile detecta via `manifest.generatedAt` e re-baixa em background
-2. **OU** crie nova pasta `anvisa/v2/` para mudança breaking → bump da constante `ANVISA_VERSION` no código mobile (`useMedicineDatabase.ts`) → app mobile reseta cache e baixa do zero
+- `v === 1` (formato conhecido);
+- `version` do sidecar = `manifest.version`;
+- `medCount` = `items.length` = `count` do manifest;
+- `count` do sidecar = `count` do `medicineDatabase` no mesmo manifest (G34).
+
+Orçamento (G36, gate do pipeline): `< 150 KB` gzip e `< 650 KB` bruto — base 1.3.0: 485 KB bruto, 89 KB gzip.
+App que ainda não lê o sidecar simplesmente o ignora; publicar antes do consumidor é seguro.
 
 ---
 
-## 5. Validação no app mobile (após Sprint P.2 implementada)
+## 5. Validação depois de publicar
 
-Quando o hook `useMedicineDatabase` estiver pronto e a tela `AnvisaSearchScreen` integrada ao `FormAutocomplete`:
+```bash
+# Leitura anônima (deve dar 200 e a versão nova)
+curl -s https://<project_ref>.supabase.co/storage/v1/object/public/dosiq-assets/anvisa/v1/manifest.json | head -c 200
+```
 
-1. Build dev client mobile com a Sprint P.2 mergeada
-2. No app, ir para tela de cadastro de medicamento → digitar 3+ caracteres no autocomplete
-3. Resultados ANVISA devem aparecer
-4. Verificar logs no Metro: `[useMedicineDatabase] manifest fetched` + `[useMedicineDatabase] data cached (1.34 MB)`
-5. Force-quit + reopen → resultados aparecem instantaneamente (cache local AsyncStorage)
+```sql
+-- Catálogo no banco (MCP execute_sql, só leitura)
+select count(*), max(catalog_version), count(distinct catalog_version) from public.cmed_class_keys;
+-- esperado: count = tokens do log, max = manifest.version, 1 versão
+```
+
+No app: busca ANVISA no cadastro com 3+ caracteres traz resultados; o cache local revalida pelo
+manifest (TTL 7 dias).
 
 ---
 
 ## 6. Rollback
 
-Se algo der errado:
-
-- **Bucket criado errado**: Storage → `dosiq-assets` → Delete bucket (perde tudo dentro)
-- **Arquivo errado**: Storage → bucket → arquivo → Delete file
-- **App mobile cacheou versão errada**: bump `ANVISA_VERSION` no código → próximo build invalida cache
+- **Versão errada publicada:** volte os arquivos da versão anterior para o `--dir` (histórico do
+  `dosiq-moat`, `git checkout <commit> -- data/anvisa`) e rode o `cmed:publish` de novo — bucket e
+  banco voltam juntos.
+- **App cacheou versão errada:** o manifest com `version` nova força o re-download; em último caso,
+  bump de `ANVISA_VERSION` no mobile (`useMedicineDatabase.ts`) invalida o cache no próximo build.
+- **Mudança de formato incompatível** (ex.: `cmedIndex` v2): exige pasta nova (`anvisa/v2/`) e
+  consumidor atualizado antes — o script recusa `v` desconhecido.
 
 ---
 
-## 7. Checklist final
+## 7. Setup único (só se o bucket não existir — projeto novo)
 
-- [x] Bucket `dosiq-assets` criado como **public**
-- [x] Pasta `anvisa/v1/` criada
-- [x] `manifest.json` gerado localmente e uploaded
-- [x] `medicineDatabase.json` (1.34 MB) uploaded
-- [x] `laboratoryDatabase.json` (14 KB) uploaded
-- [x] 3 URLs públicas retornam conteúdo correto em browser anônimo
-- [ ] (Opcional) Cache CDN configurado
+1. Supabase → Storage → **New bucket**: nome `dosiq-assets`, **Public** ✅, sem limite de MIME.
+2. Não é preciso criar pastas: o upload do script cria `anvisa/v1/`.
+3. Aplicar a migração `docs/migrations/20261115_119_cmed_class_keys.sql` (QA antes de prod).
+4. (Opcional) Cache CDN: `manifest.json` curto (≤ 1 h); demais arquivos mais longos — a invalidação
+   é pelo manifest, não pelo path.
 
-Quando todos os ✅ estiverem marcados, avise o time/agente para destravar P2.8 (smoke test E2E).
+---
+
+## 8. Checklist de uma publicação
+
+- [ ] Pipeline gerou arquivos + manifest com versão nova em `dosiq-moat/data/anvisa/` (commit no moat)
+- [ ] `npm run cmed:publish -- --dry-run` passa
+- [ ] `npm run cmed:publish` (QA) ⇒ todos os ✓ e `cmed_class_keys = N tokens · versão X`
+- [ ] Smoke no app de QA (busca ANVISA + passo 2)
+- [ ] `npm run cmed:publish -- --prod` ⇒ mesmos números
+- [ ] Rodapé do painel admin mostra a versão nova
