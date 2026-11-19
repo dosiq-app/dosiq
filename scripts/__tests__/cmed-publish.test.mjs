@@ -100,3 +100,63 @@ test('falha na carga: erro explícito, avisa divergência e não vaza a chave', 
   )
   assert.ok(lines.every((l) => !l.includes(QA_KEY)))
 })
+
+// Spec 127 · sidecar posicional `cmedStrengths.json` (1:1 com medicineDatabase).
+function fixture127({ strengths = {}, medLen = 2, strengthsCount = 2, medCount = 2, version = '9.9.9' } = {}) {
+  const index = Buffer.from(JSON.stringify({ v: 1, n: 2, cols, dict }))
+  const med = Buffer.from(JSON.stringify(Array.from({ length: medLen }, (_, i) => ({ name: `m${i}` }))))
+  const sc = Buffer.from(JSON.stringify({ v: 1, version, medCount: 2, dict: { u: [] }, items: [[], []], ...strengths }))
+  const manifest = Buffer.from(JSON.stringify({ version: '9.9.9', files: {
+    medicineDatabase: { path: 'anvisa/v1/medicineDatabase.json', size: med.length, count: medCount },
+    cmedIndex: { path: 'anvisa/v1/cmedIndex.json', size: index.length, count: 2 },
+    cmedStrengths: { path: 'anvisa/v1/cmedStrengths.json', size: sc.length, count: strengthsCount },
+  } }))
+  const files = {
+    [path.join(DIR, 'cmedIndex.json')]: index, [path.join(DIR, 'medicineDatabase.json')]: med,
+    [path.join(DIR, 'cmedStrengths.json')]: sc, [path.join(DIR, 'manifest.json')]: manifest,
+  }
+  return (p, enc) => {
+    if (!(p in files)) throw new Error(`ENOENT ${p}`)
+    return enc ? files[p].toString(enc) : files[p]
+  }
+}
+
+test('127: sidecar válido sobe junto, antes do manifest', async () => {
+  const { calls, makeClient } = fakeClient()
+  await run(['--dir', DIR], { env: qaEnv, read: fixture127(), makeClient, log: silent })
+  const uploads = calls.filter((c) => c[0] === 'upload').map((c) => c[2])
+  assert.ok(uploads.includes('anvisa/v1/cmedStrengths.json'))
+  assert.equal(uploads.at(-1), 'anvisa/v1/manifest.json')
+})
+
+const aborts127 = [
+  ['version do sidecar ≠ manifest', { version: '9.9.8' }, /version 9\.9\.8 ≠ manifest 9\.9\.9/],
+  ['v desconhecido', { strengths: { v: 2 } }, /v=2 desconhecido/],
+  ['medCount ≠ items', { strengths: { medCount: 3 } }, /medCount 3 ≠ 2 items/],
+  ['items ≠ count do manifest', { strengthsCount: 3, medCount: 3, medLen: 3 }, /2 items, manifest diz 3/],
+  ['sidecar e base ANVISA de tamanhos diferentes', { strengthsCount: 2, medCount: 3, medLen: 3 }, /medicineDatabase tem 3/],
+  ['sem items', { strengths: { items: null } }, /sem items\/dict/],
+]
+for (const [name, opts, re] of aborts127) {
+  test(`127: aborta sem escrever — ${name}`, async () => {
+    const { calls, makeClient } = fakeClient()
+    await assert.rejects(run(['--dir', DIR], { env: qaEnv, read: fixture127(opts), makeClient, log: silent }), re)
+    assert.equal(calls.length, 0)
+  })
+}
+
+test('arquivo de formato desconhecido no manifest não sobe', async () => {
+  const { calls, makeClient } = fakeClient()
+  const base = fixture127()
+  const odd = Buffer.from(JSON.stringify({ qualquer: true }))
+  const manifest = JSON.parse(base(path.join(DIR, 'manifest.json'), 'utf8'))
+  manifest.files.novo = { path: 'anvisa/v1/novo.json', size: odd.length, count: 1 }
+  const mbuf = Buffer.from(JSON.stringify(manifest))
+  const read = (p, enc) => {
+    if (p === path.join(DIR, 'novo.json')) return enc ? odd.toString(enc) : odd
+    if (p === path.join(DIR, 'manifest.json')) return enc ? mbuf.toString(enc) : mbuf
+    return base(p, enc)
+  }
+  await assert.rejects(run(['--dir', DIR], { env: qaEnv, read, makeClient, log: silent }), /formato desconhecido para novo/)
+  assert.equal(calls.length, 0)
+})
