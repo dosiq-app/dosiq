@@ -19,8 +19,13 @@ const mockProtocols: { rows: any[] } = { rows: [] }
 const mockFocus: { cb: (() => void) | null } = { cb: null }
 
 jest.mock('@react-navigation/native', () => ({
+  // Como o real: com a tela focada, callback novo roda de novo (RC6 #968 — era assim que o último item
+  // da fila fechava o form recém-aberto).
   useFocusEffect: (cb: () => void) => {
     mockFocus.cb = cb
+    require('react').useEffect(() => {
+      cb()
+    }, [cb])
   },
   useIsFocused: () => true,
   useNavigation: () => mockNav,
@@ -145,6 +150,9 @@ describe('PO-125-20 — troca de forma com tratamento (AC7.5)', () => {
     await switchToInjectableAndSave(utils)
     await waitFor(() => expect(utils.getByTestId('form-change-sheet')).toBeTruthy())
     fireEvent.press(utils.getByTestId('form-change-review'))
+    // Ainda na ida para o form do tratamento: nada de fechar (RC6 #968).
+    expect(mockNav.push).toHaveBeenCalledTimes(1)
+    expect(mockNav.goBack).not.toHaveBeenCalled()
     act(() => mockFocus.cb?.())
     expect(mockNav.goBack).toHaveBeenCalledTimes(1)
   })

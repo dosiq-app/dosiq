@@ -5,7 +5,7 @@
 // Ao terminar a fila, volta a quem abriu a edição (goBack). O form do tratamento não abre a edição do
 // remédio (smoke 1c: remédio errado = "Trocar").
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFocusEffect, useIsFocused } from '@react-navigation/native'
 import { ROUTES } from '@navigation/routes'
 import { protocolService } from '@treatments/services/protocolService'
@@ -21,6 +21,10 @@ export function useFormChangeReview({ navigation, before }: Options) {
   const [items, setItems] = useState<FormChangeReviewItem[]>([])
   // Foi revisar e ainda não voltou.
   const awaitingReturn = useRef(false)
+  // RC6 #968: a fila restante via ref — com `items` nas deps, o `setItems(rest)` do "Revisar" recriava o
+  // callback do foco ainda com a tela focada (antes do push tirar o foco) e o último item fechava o form
+  // recém-aberto (finish → goBack).
+  const remaining = useRef(0)
   const isFocused = useIsFocused()
 
   // Handlers
@@ -59,13 +63,17 @@ export function useFormChangeReview({ navigation, before }: Options) {
     if (rest.length === 0) finish()
   }, [items, finish])
 
+  useEffect(() => {
+    remaining.current = items.length
+  }, [items])
+
   // Voltou de revisar o último da fila ⇒ termina a edição.
   useFocusEffect(
     useCallback(() => {
       if (!awaitingReturn.current) return
       awaitingReturn.current = false
-      if (items.length === 0) finish()
-    }, [items, finish]),
+      if (remaining.current === 0) finish()
+    }, [finish]),
   )
 
   // Só com a tela em foco — nunca por cima do form do tratamento aberto pelo "Revisar".

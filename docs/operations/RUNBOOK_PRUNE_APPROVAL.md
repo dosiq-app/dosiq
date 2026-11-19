@@ -13,7 +13,7 @@ tags:
   - prune
   - cron
 created_at: "2026-10-20"
-updated_at: "2026-10-20"
+updated_at: "2026-11-19"
 epic: "107"
 ---
 
@@ -113,6 +113,27 @@ o controlador (razão social e CNPJ). Nenhuma traz dado de saúde. Na onda 2 o p
 | 1 | merge + loja 0.34 | servidor, admin, trava nova no app | — |
 | 2 | 0.34 **publicada nas duas lojas** | Medir a frota (abaixo); na seção **Onda 2** da tela: Copiar e-mail → enviar → **Marcar enviado** | o enqueue só abre a linha 7 dias após a marcação |
 | 3 | antes da 1ª aprovação `legacy_no_consent` (≈ D+80 do e-mail) | Ativar o kill switch 0.34 nas duas plataformas ([`GUIA_KILL_SWITCH_VERSAO_MINIMA.md`](GUIA_KILL_SWITCH_VERSAO_MINIMA.md), cerimônia `acknowledge_affected_devices`) | aprovar e executar legado é **recusado** pelo servidor sem gate ≥ 0.34 ativo nas duas plataformas **e** sem o e-mail da onda 2 no rastro |
+
+**Intervalo D+7 da onda 2 (conta invisível na tela, por desenho):** depois de **Marcar enviado**, a
+conta sai da lista da onda 2 (`wave2Candidates` exclui quem tem marcação `wave2`), mas a linha em
+`prune_queue` só abre quando `daysBetween(marcação, hoje) ≥ 7` (`WAVE2_GRACE_DAYS`, regra em
+`unconsentedClock`). Nesses 7 dias a conta **não aparece em nenhuma seção** — nem Onda 2, nem
+🕒 Em contagem (que lê só a `prune_queue`). Não é perda: a marcação está na auditoria. O enqueue das
+21:20 abre a linha no 1º ciclo após `marcação + 7 dias` (marcou 16/11 20:31 ⇒ abre em 23/11), com
+`scheduled_at = marcação + 7 dias` e prazo de exclusão 90 dias depois. Para conferir quem está no
+intervalo:
+
+```sql
+SELECT a.user_id, min(a.created_at) AS marcada_em, min(a.created_at) + interval '7 days' AS abre_em
+  FROM public.prune_queue_audit a
+ WHERE a.action = 'mark_notice' AND a.detail->>'milestone' = 'wave2'
+   AND NOT EXISTS (SELECT 1 FROM public.prune_queue q WHERE q.user_id = a.user_id)
+   AND EXISTS (SELECT 1 FROM auth.users u WHERE u.id = a.user_id)
+ GROUP BY a.user_id ORDER BY 2;
+```
+
+Se passar de `abre_em` e a linha não existir: conferir o ping `prune_enqueue` no cron-job.org
+(`200`?) e `CONSENT_PRUNE_ENABLED`. Pendência de UX conhecida: não há seção "aguardando D+7".
 
 Medição da frota do legado (FR-012), antes da onda 2:
 
