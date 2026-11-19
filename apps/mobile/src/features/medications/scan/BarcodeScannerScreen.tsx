@@ -176,13 +176,18 @@ function useScanReturn(navigation, route) {
   const purchase = returnTo === ROUTES.PURCHASE_FORM || returnTo === ROUTES.STOCK_MAIN
   const scannedEanRef = useRef<string | null>(null)
   const close = useCallback(() => navigation.goBack(), [navigation])
-  // 066 E: no onboarding, a saída manual abre o "Confira" em branco — fallback de scan que não
-  // funcionou —, mesmo sem ele estar na pilha (popTo empilha).
+  // 066 E: sem `manualTo`, a saída manual volta ao `returnTo` (popTo empilha se não estiver na pilha).
+  // 125-1a (smoke 18/11): a origem pode mandar a saída manual para OUTRA rota (`manualTo`) — o onboarding usa
+  // o wizard do "Não achei" (forma › nome › dosagem) em vez do "Confira" em branco. `replace`: o voltar de lá
+  // cai na escolha (caixa | busca), não de novo na câmera.
+  const manualTo = route.params?.manualTo ?? null
   const goManual = useCallback(
     () =>
-      // Na compra o form ignora `manualEntry` (volta como estava); na aba Estoque ele abre o seletor do FAB.
-      navigation.popTo(returnTo, { manualEntry: Date.now() }, { merge: true }),
-    [navigation, returnTo],
+      manualTo
+        ? navigation.replace(manualTo)
+        : // Na compra o form ignora `manualEntry` (volta como estava); na aba Estoque ele abre o seletor do FAB.
+          navigation.popTo(returnTo, { manualEntry: Date.now() }, { merge: true }),
+    [navigation, returnTo, manualTo],
   )
   // Volta ao form que abriu o scanner, com o rascunho; ele é a confirmação (RC3 A).
   const returnDraft = useCallback(

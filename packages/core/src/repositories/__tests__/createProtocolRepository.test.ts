@@ -219,6 +219,21 @@ describe('createProtocolRepository — parity', () => {
       expect(payload).not.toHaveProperty('stage_started_at')
     })
 
+    // 125 (smoke iOS 19/11): "Toda semana" + dia, depois troca para outra frequência ⇒ o dia ficava gravado.
+    it('frequência sem dia da semana ⇒ weekdays gravado vazio (resíduo do form não vai ao banco)', async () => {
+      const repo = createProtocolRepository({ client, getUserId })
+      await repo.create({ ...VALID_PROTOCOL, frequency: 'dias_alternados', weekdays: ['sexta'] })
+      const payload = client._builder._calls.find(([m]: any) => m === 'insert')[1][0][0]
+      expect(payload.weekdays).toEqual([])
+    })
+
+    it('semanal mantém o dia escolhido', async () => {
+      const repo = createProtocolRepository({ client, getUserId })
+      await repo.create({ ...VALID_PROTOCOL, frequency: 'semanal', weekdays: ['sexta'] })
+      const payload = client._builder._calls.find(([m]: any) => m === 'insert')[1][0][0]
+      expect(payload.weekdays).toEqual(['sexta'])
+    })
+
     it('usa writeSelect customizado se passado', async () => {
       const customSelect = 'id, name'
       client = makeClient({ data: { id: 'new-p-3' }, error: null })
@@ -270,6 +285,24 @@ describe('createProtocolRepository — parity', () => {
       // para um banco onde elas não existem mais (42703), e este teste avisa.
       expect(payload).not.toHaveProperty('titration_status')
       expect(payload).not.toHaveProperty('current_stage_index')
+    })
+  })
+
+  describe('update — weekdays acompanha a frequência (125, smoke iOS 19/11)', () => {
+    beforeEach(() => {
+      client = makeClient({ data: { id: 'p-1' }, error: null })
+    })
+
+    it('sair de semanal ⇒ weekdays vazio', async () => {
+      const repo = createProtocolRepository({ client, getUserId })
+      await repo.update('p-1', { frequency: 'diário' })
+      expect(client._builder._calls.find(([m]: any) => m === 'update')[1][0]).toMatchObject({ frequency: 'diário', weekdays: [] })
+    })
+
+    it('para semanal com dia ⇒ dia mantido', async () => {
+      const repo = createProtocolRepository({ client, getUserId })
+      await repo.update('p-1', { frequency: 'semanal', weekdays: ['sexta'] })
+      expect(client._builder._calls.find(([m]: any) => m === 'update')[1][0]).toMatchObject({ weekdays: ['sexta'] })
     })
   })
 

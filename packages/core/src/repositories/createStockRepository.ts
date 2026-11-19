@@ -127,8 +127,12 @@ export function createStockRepository({ client, getUserId }: CreateStockReposito
 
       const today = getTodayLocal()
       return (data || []).filter((m) => {
+        // 125-1a (smoke 18/11): tratamento que COMEÇA depois de hoje (semanal ancorado na
+        // próxima aplicação) também conta — a pessoa já tem a caixa e quer informar o saldo.
         const hasActiveProtocol = (m.protocols || []).some(
-          (p) => p.active && isProtocolActiveOnDate(p, today),
+          (p) =>
+            p.active &&
+            (isProtocolActiveOnDate(p, today) || (!!p.start_date && p.start_date > today)),
         )
         const totalStock = m.medicine_stock_summary?.[0]?.total_quantity ?? 0
         return hasActiveProtocol || totalStock > 0

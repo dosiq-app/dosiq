@@ -133,7 +133,9 @@ export const protocolService = {
 
   // `measureSource` (FR-012): 'inferred' (salvou a pré-seleção da matriz) | 'chosen' (tocou no campo).
   // Só existe no save — o banco guarda o valor, não a origem (C-B5).
-  async create(protocol, { surface = null, entryPoint = null, measureSource = null } = {}) {
+  // 125 FR-020: `doseSource` ('embalagem'|'manual') e `dosePlausible` (houve aviso de plausibilidade?)
+  // medem de onde veio a dose — só enums/booleano, nenhum dado de saúde novo.
+  async create(protocol, { surface = null, entryPoint = null, measureSource = null, doseSource = null, dosePlausible = null } = {}) {
     const row = await repo.create(protocol)
     await logEvent(
       EVENTS.TREATMENT_CREATED,
@@ -144,6 +146,8 @@ export const protocolService = {
         is_titration: Array.isArray(row?.titration_steps) && row.titration_steps.length > 0,
         ...writeProps(row),
         measure_source: measureSource,
+        dose_source: doseSource,
+        dose_plausible: dosePlausible,
       })
     )
     return row

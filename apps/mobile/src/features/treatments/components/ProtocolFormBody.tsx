@@ -1,4 +1,7 @@
 import { useMemo, useCallback, useState, useEffect } from 'react'
+import DoseWarnings from '@treatments/components/DoseWarnings'
+import TreatmentSentenceCard from '@treatments/components/TreatmentSentenceCard'
+import { doseWarnings, confirmDoseLabel } from '@treatments/utils/dosePlausibility'
 import { View, Text, StyleSheet, Pressable } from 'react-native'
 // ⚠️ Namespace + cast NÃO é desleixo — é contorno de resolução de tipos quebrada, e trocar por
 // import nomeado QUEBRA o gate cross-program (verificado em 2026-07-20):
@@ -498,6 +501,25 @@ function TitrationSection({
   )
 }
 
+// 125 (AC3.2/AC3.3): avisos suaves da dose; "usar mesmo assim" só esconde o aviso daquela dose.
+function DoseWarningsField({ medicine, dose, intakeUnit }) {
+  const [confirmedDose, setConfirmedDose] = useState<string | null>(null)
+  const doseValue = String(dose ?? '')
+  // RC6 #966: a confirmação vale para ESTA dose, nesta unidade e neste remédio — trocar qualquer um reavalia.
+  const doseKey = `${medicine?.id ?? ''}|${intakeUnit ?? ''}|${doseValue}`
+  const warnings = useMemo(
+    () => (confirmedDose === doseKey ? [] : doseWarnings(medicine, dose, intakeUnit)),
+    [confirmedDose, doseKey, medicine, dose, intakeUnit],
+  )
+  return (
+    <DoseWarnings
+      warnings={warnings}
+      confirmLabel={confirmDoseLabel(warnings, doseValue, intakeUnit)}
+      onConfirm={() => setConfirmedDose(doseKey)}
+    />
+  )
+}
+
 export default function ProtocolFormBody({
   form,
   medicine,
@@ -578,6 +600,7 @@ export default function ProtocolFormBody({
           onDoseChange={onDoseChange}
           form={form}
         />
+        <DoseWarningsField medicine={medicine} dose={form.values.dosage_per_intake} intakeUnit={form.values.intake_unit ?? null} />
       </Section>
 
       <FrequencySection
@@ -646,6 +669,9 @@ export default function ProtocolFormBody({
           helperText="Opcional"
         />
       </Section>
+
+      {/* 125 (AC4.1): a frase de conferência antes do "Salvar" (só na criação). */}
+      {isEditMode ? null : <TreatmentSentenceCard medicine={medicine} values={form.values} />}
 
       {/* 054 (emenda FR-008): o guia de tela cheia do Android é a variante do mesmo sheet. */}
       <CriticalAlertPrimerSheet

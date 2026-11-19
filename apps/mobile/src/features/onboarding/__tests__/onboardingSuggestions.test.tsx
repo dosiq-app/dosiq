@@ -87,9 +87,10 @@ describe('onboarding "Digitar à mão" — sugestões do catálogo (119 B)', () 
   })
 
   it('ignorar as sugestões ⇒ manual, sem código', () => {
-    const { getByLabelText, getByText, ctx } = renderStep()
+    const { getByLabelText, getByText, getByTestId, ctx } = renderStep()
     fireEvent.changeText(getByLabelText('Nome do remédio'), 'tizerpatida')
     fireEvent.changeText(getByLabelText('Concentração'), '5')
+    fireEvent.press(getByTestId('presentation-chip-injetavel'))
     fireEvent.press(getByText('Continuar'))
     expect(ctx.setMedicine.mock.calls[0][0].therapeutic_class_code ?? null).toBeNull()
     expect(ctx.setMedicineSource).toHaveBeenCalledWith('manual')

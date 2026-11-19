@@ -46,7 +46,8 @@ export interface SetupWritesInput {
   medicine: Record<string, unknown> | null
   medicineSource: string | null
   treatment: (Record<string, unknown> & { _remind?: boolean }) | null
-  stockTracking: boolean
+  /** null = não escolheu no onboarding ⇒ preferência fica no default do banco (estoque ligado). */
+  stockTracking: boolean | null
 }
 
 export function useOnboardingSetupWrites() {
@@ -62,7 +63,8 @@ export function useOnboardingSetupWrites() {
   const pendingProtocol = useRef<Promise<any> | null>(null)
 
   const writeSetup = useCallback(async ({ medicine, medicineSource, treatment, stockTracking }: SetupWritesInput) => {
-    if (!medicine || !treatment) {
+    // Spec 125 (ADR-131): "Terminar depois" com remédio e sem tratamento grava só o remédio.
+    if (!medicine) {
       throw new Error('Dados do onboarding não encontrados. Volte e revise os passos.')
     }
 
@@ -84,7 +86,15 @@ export function useOnboardingSetupWrites() {
       writtenMedicine.current = medicine
     }
 
-    const { _remind, ...rawProtocolData } = treatment
+    // Só remédio (spec 125 C-4): sem tratamento, sem lembrete. Emenda PO 18/11 (AC1.1b, RC5): "Terminar
+    // depois" não escolheu modo ⇒ a preferência fica no default do banco (estoque ligado), sem gravar.
+    if (!treatment) {
+      if (stockTracking !== null) await timed(chooseStockModeInOnboarding(stockTracking))
+      return { remind: false }
+    }
+
+    // Campos `_` são do wizard (intenção, medição — spec 125 T017), nunca colunas (R-295).
+    const { _remind, _application_date, _dose_typed, _dose_source, _dose_plausible, ...rawProtocolData } = treatment
     // 100 B · D-11 (PO 2026-10-30): o passo mínimo do onboarding não mostra "Acompanhar nas doses";
     // a medida nasce da inferência (classe da caixa × frequência) e a pessoa troca/desliga depois, na
     // edição do tratamento. Gravar aqui é decisão do PO, não exceção ao FR-005 (que vale para legado).
@@ -99,7 +109,13 @@ export function useOnboardingSetupWrites() {
         inFlight(pendingProtocol, () =>
           protocolService.create(
             { ...protocolData, medicine_id: medicineId },
-            { surface: SURFACES.MOBILE, entryPoint: ENTRY_POINTS.ONBOARDING, measureSource: 'inferred' },
+            {
+              surface: SURFACES.MOBILE,
+              entryPoint: ENTRY_POINTS.ONBOARDING,
+              measureSource: 'inferred',
+              doseSource: (_dose_source as string) ?? null,
+              dosePlausible: typeof _dose_plausible === 'boolean' ? _dose_plausible : null,
+            },
           ),
         ),
       )
@@ -111,7 +127,7 @@ export function useOnboardingSetupWrites() {
       writtenTreatment.current = treatment
     }
 
-    await timed(chooseStockModeInOnboarding(stockTracking))
+    if (stockTracking !== null) await timed(chooseStockModeInOnboarding(stockTracking))
     return { remind: Boolean(_remind) }
   }, [])
 

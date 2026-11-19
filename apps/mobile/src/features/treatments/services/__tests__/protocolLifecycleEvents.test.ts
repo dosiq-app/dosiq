@@ -118,6 +118,12 @@ describe('create', () => {
     ])
   })
 
+  it('125 FR-020: dose_source e dose_plausible no payload (só enum/booleano)', async () => {
+    mockRepo.create.mockResolvedValue(ROW)
+    await protocolService.create({}, { surface: 'mobile', doseSource: 'manual', dosePlausible: false })
+    expect(eventsOf('treatment_created')[0]).toMatchObject({ dose_source: 'manual', dose_plausible: false })
+  })
+
   it('sem surface → evento SEM a chave (A-1: nunca mobile implícito); nulos fora do payload', async () => {
     mockRepo.create.mockResolvedValue(ROW)
     await protocolService.create({})

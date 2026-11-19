@@ -9,7 +9,7 @@ import fixture from '../../../../../../../packages/core/src/services/cmed/__test
 import BarcodeScannerScreen from '../BarcodeScannerScreen'
 
 const { __cameraMock: camera } = jest.requireMock('expo-camera')
-const mockNav = { popTo: jest.fn(), goBack: jest.fn(), navigate: jest.fn() }
+const mockNav = { popTo: jest.fn(), goBack: jest.fn(), navigate: jest.fn(), replace: jest.fn() }
 const mockFocus = { current: true }
 const mockRoute = { current: { params: { entryPoint: 'medicine_form' } } }
 const mockLogEvent = jest.fn()
@@ -150,6 +150,19 @@ describe('falhas sempre com motivo e manual (PO-3 · PO-7)', () => {
     // C-D1-3: a saída manual volta ao form pedindo a rolagem até "Identificação".
     expect(mockNav.popTo).toHaveBeenCalledWith('MedicineCreate', { manualEntry: expect.any(Number) }, { merge: true })
     expect(mockNav.goBack).not.toHaveBeenCalled()
+  })
+
+  // 125-1a (smoke 18/11): o onboarding manda a saída manual ao wizard forma › nome › dosagem (`replace`:
+  // o voltar de lá cai na escolha, não na câmera).
+  it('com manualTo: a saída manual substitui a câmera pela rota pedida', () => {
+    const prev = mockRoute.current
+    mockRoute.current = { params: { entryPoint: 'onboarding', returnTo: 'OnboardingMedicineForm', manualTo: 'OnboardingMedicinePresentation' } } as any
+    camera.permission = { granted: false, canAskAgain: true, status: 'denied' }
+    const { getByText } = render(<BarcodeScannerScreen />)
+    fireEvent.press(getByText('Cadastrar digitando'))
+    expect(mockNav.replace).toHaveBeenCalledWith('OnboardingMedicinePresentation')
+    expect(mockNav.popTo).not.toHaveBeenCalled()
+    mockRoute.current = prev
   })
 
   it('o ✕ só fecha, sem pedir rolagem', () => {

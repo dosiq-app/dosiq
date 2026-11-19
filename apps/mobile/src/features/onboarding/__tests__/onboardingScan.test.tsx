@@ -146,6 +146,8 @@ describe('Escolha (US7 cen. 1 · FR-029)', () => {
     expect(mockNav.navigate).toHaveBeenCalledWith('MedicineScan', {
       entryPoint: 'onboarding',
       returnTo: 'OnboardingMedicineForm',
+      // Emenda smoke 18/11: "digitar manualmente" no leitor vai ao wizard forma › nome › dosagem.
+      manualTo: 'OnboardingMedicinePresentation',
     })
   })
 
@@ -168,14 +170,12 @@ describe('Busca 2C em tela cheia (US7 cen. 5)', () => {
     expect(mockNav.popTo).toHaveBeenCalledWith('OnboardingMedicineForm', { searchSelection: selection }, { merge: true })
   })
 
-  it('"Não achei" abre o "Confira" em branco (fallback)', () => {
+  // Spec 125 (AC2.0): "Não achei" segue forma › nome › dosagem; o texto da busca vai junto.
+  it('"Não achei" abre a escolha da forma levando o texto da busca', () => {
     const r = render(withCtx(<OnboardingMedicineSearchStep />).ui)
     fireEvent.press(r.getByLabelText('Não achei. Digitar à mão'))
-    expect(mockNav.popTo).toHaveBeenCalledWith(
-      'OnboardingMedicineForm',
-      { manualEntry: expect.any(Number) },
-      { merge: true },
-    )
+    expect(mockNav.navigate).toHaveBeenCalledWith('OnboardingMedicinePresentation', { query: expect.any(String) })
+    expect(mockNav.popTo).not.toHaveBeenCalled()
   })
 
   it('nome com várias concentrações mostra o passo 2 na mesma tela', () => {
@@ -189,13 +189,17 @@ describe('Busca 2C em tela cheia (US7 cen. 5)', () => {
 
 describe('"Confira" com a caixa lida (US7 cen. 2 · INV-1)', () => {
   it('preenche nome/dose/unidade com o selo de origem e não grava nada', () => {
-    const { getByDisplayValue, getByText, queryByText } = renderStep({ scanDraft: draft(), scanEan: '7896004778402' })
+    const { getByDisplayValue, getByText, getByTestId, queryByText } = renderStep({ scanDraft: draft(), scanEan: '7896004778402' })
     expect(getByDisplayValue('Losartana Potássica')).toBeTruthy()
-    expect(getByDisplayValue('50')).toBeTruthy()
+    // 125 (AC3.5): concentração da caixa em só leitura ("Na caixa").
+    expect(getByTestId('strength-locked')).toBeTruthy()
+    expect(getByText('50 mg')).toBeTruthy()
     expect(getByText('Lido pelo código de barras')).toBeTruthy()
     expect(getByText('Confira o seu remédio')).toBeTruthy()
     expect(queryByText(PALLIATIVE)).toBeNull()
-    expect(getByText('Pular')).toBeTruthy()
+    // 125 (AC1.0): remédio identificado ⇒ "Pular" some; a saída é "Terminar depois".
+    expect(queryByText('Pular')).toBeNull()
+    expect(getByText('Terminar depois')).toBeTruthy()
     expect(mockMedicineCreate).not.toHaveBeenCalled()
   })
 
@@ -239,10 +243,12 @@ describe('composto ambíguo (US7 cen. 3 · INV-2)', () => {
 
 describe('"Confira" com a escolha da busca (US7 cen. 5)', () => {
   it('com a embalagem escolhida, a concentração chega preenchida e a dica paliativa some', () => {
-    const { getByDisplayValue, getByText, queryByText } = renderStep({
+    const { getByDisplayValue, getByText, getByTestId, queryByText } = renderStep({
       searchSelection: { anvisaItem: { name: 'Losartana Potássica', regulatoryCategory: 'Similar' }, cmedDraft: draft() },
     })
-    expect(getByDisplayValue('50')).toBeTruthy()
+    // 125 (AC3.5): concentração da caixa em só leitura ("Na caixa").
+    expect(getByTestId('strength-locked')).toBeTruthy()
+    expect(getByText('50 mg')).toBeTruthy()
     expect(getByText('Preenchido pela lista da ANVISA')).toBeTruthy()
     expect(queryByText(PALLIATIVE)).toBeNull()
   })
@@ -269,12 +275,12 @@ describe('"Confira" em branco (fallback de caixa/busca que não serviram)', () =
 
 describe('telemetria do 1º remédio (TRACKING_PLAN §5.3)', () => {
   it('caixa: "Continuar" emite scan_confirmed 1× e marca source scan', () => {
-    const { getByText, getByDisplayValue, ctx } = renderStep({ scanDraft: draft() })
-    fireEvent.changeText(getByDisplayValue('50'), '25')
+    const { getByText, ctx } = renderStep({ scanDraft: draft() })
     fireEvent.press(getByText('Continuar'))
     fireEvent.press(getByText('Continuar'))
     const confirmed = mockLogEvent.mock.calls.filter(([n]) => n === 'scan_confirmed')
-    expect(confirmed).toEqual([['scan_confirmed', { surface: 'mobile', used_existing: false, dose_edited: true }]])
+    // 125 (AC3.5): dose da caixa travada no onboarding ⇒ dose_edited só pode ser false aqui.
+    expect(confirmed).toEqual([['scan_confirmed', { surface: 'mobile', used_existing: false, dose_edited: false }]])
     expect(ctx.setMedicineSource).toHaveBeenLastCalledWith('scan')
   })
 
@@ -288,9 +294,10 @@ describe('telemetria do 1º remédio (TRACKING_PLAN §5.3)', () => {
   })
 
   it('em branco: source manual', () => {
-    const { getByText, getByLabelText, ctx } = renderStep({ manualEntry: 1 })
+    const { getByText, getByLabelText, getByTestId, ctx } = renderStep({ manualEntry: 1 })
     fireEvent.changeText(getByLabelText('Nome do remédio'), 'Remédio X')
     fireEvent.changeText(getByLabelText('Concentração'), '10')
+    fireEvent.press(getByTestId('presentation-chip-comprimido'))
     fireEvent.press(getByText('Continuar'))
     expect(ctx.setMedicineSource).toHaveBeenCalledWith('manual')
   })

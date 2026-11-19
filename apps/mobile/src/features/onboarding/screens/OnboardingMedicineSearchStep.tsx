@@ -18,6 +18,7 @@ import { MIN_SEARCH_CHARS } from '@shared/hooks/useMedicineDatabase'
 import { ROUTES } from '@navigation/routes'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES, ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
+import { useKeyboardVisible } from '@shared/hooks/useKeyboardVisible'
 import { useOnboarding } from '../OnboardingContext'
 import OnboardingHeader from '@features/onboarding/components/OnboardingHeader'
 import OnboardingAnvisaSeal from '@features/onboarding/components/OnboardingAnvisaSeal'
@@ -28,6 +29,9 @@ const { Search, X, Pencil } = LucideIcons as any
 export default function OnboardingMedicineSearchStep() {
   // States (R-010)
   const navigation = useNavigation<any>()
+  // 125 smoke: KAV 'height' (R-303) não devolve a altura ao fechar o teclado no Android edge-to-edge —
+  // sobra faixa e o rodapé sobe. Ligado só com teclado aberto: fechado, vira View e a altura reseta.
+  const keyboardVisible = useKeyboardVisible()
   const { skip } = useOnboarding()
   // Saída por escolha/"Não achei" não conta como desistência da busca.
   const leavingWithResult = useRef(false)
@@ -91,7 +95,8 @@ export default function OnboardingMedicineSearchStep() {
       exit: 'manual',
     })
     leavingWithResult.current = true
-    navigation.popTo(ROUTES.ONBOARDING_MEDICINE_FORM, { manualEntry: Date.now() }, { merge: true })
+    // 125 (AC2.0): forma primeiro; o texto digitado segue para o nome.
+    navigation.navigate(ROUTES.ONBOARDING_MEDICINE_PRESENTATION, { query: trimmed })
   }, [navigation, trimmed])
 
   const renderItem = useCallback(
@@ -116,7 +121,7 @@ export default function OnboardingMedicineSearchStep() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <OnboardingHeader {...(headerProps as any)} />
 
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <KeyboardAvoidingView enabled={keyboardVisible} style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         {presentationStep ? (
           <View style={styles.presentation}>
             <CmedPresentationStep key={presentationKey} {...presentationStep} />

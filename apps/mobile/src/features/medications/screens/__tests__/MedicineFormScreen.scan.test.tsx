@@ -146,11 +146,13 @@ describe('modo lido (PO-2 · INV-6)', () => {
 
   it('cadastro sem scan não muda: sem título de conferência, source manual, nenhuma pergunta (guard PO-6)', async () => {
     mockMedicines.current = { data: [EXISTING], loading: false }
-    const { queryByText, getByText, getByLabelText } = render(<MedicineFormScreen />)
+    const { queryByText, getByText, getByLabelText, getByTestId } = render(<MedicineFormScreen />)
     expect(queryByText('Confira antes de salvar')).toBeNull()
     expect(queryByText('É este que você já tem?')).toBeNull()
     fireEvent.changeText(getByLabelText(/Nome/), 'Algo')
     fireEvent.changeText(getByLabelText(/Concentração/), '10')
+    fireEvent.press(getByTestId('presentation-chip-comprimido'))
+    fireEvent.press(getByTestId('unit-chip-mg'))
     await act(async () => {
       fireEvent.press(getByText('Criar medicamento'))
     })

@@ -88,6 +88,20 @@ describe('createStockRepository — parity', () => {
       expect(ids).not.toContain('m-drop')
     })
 
+    // 125-1a (smoke 18/11): tratamento ativo que começa no futuro entra (saldo inicial no onboarding);
+    // tratamento já encerrado, não.
+    it('inclui tratamento ativo com início futuro; exclui encerrado', async () => {
+      const rows = [
+        { id: 'm-future', protocols: [{ active: true, frequency: 'semanal', start_date: '2999-01-01', end_date: null }], medicine_stock_summary: [{ total_quantity: 0 }] },
+        { id: 'm-ended', protocols: [{ active: true, frequency: 'diário', start_date: '2020-01-01', end_date: '2020-02-01' }], medicine_stock_summary: [{ total_quantity: 0 }] },
+        { id: 'm-paused-future', protocols: [{ active: false, frequency: 'semanal', start_date: '2999-01-01', end_date: null }], medicine_stock_summary: [{ total_quantity: 0 }] },
+      ]
+      client = makeClient({ data: rows, error: null })
+      const repo = createStockRepository({ client, getUserId })
+      const ids = (await repo.getMedicinesWithStockOrActiveProtocol()).map((m: any) => m.id)
+      expect(ids).toEqual(['m-future'])
+    })
+
     it('valida userId como uuid', async () => {
       const badClient = makeClient({ data: [], error: null })
       const repo = createStockRepository({ client: badClient, getUserId: async () => 'not-a-uuid' })

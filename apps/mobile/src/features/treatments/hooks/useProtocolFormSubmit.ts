@@ -6,6 +6,7 @@
 // - Plano inline: cria via treatmentPlanService.create ANTES do tratamento
 // - Roteamento create vs update por presença de editId
 
+import { doseWarnings } from '@treatments/utils/dosePlausibility'
 import { useCallback, useState } from 'react'
 import { treatmentPlanService } from '../services/treatmentPlanService'
 import { medicineService } from '@medications/services/medicineService'
@@ -116,7 +117,13 @@ export function useProtocolFormSubmit({ editId, existing = null, form, medicine 
 
       const result = editId
         ? await mutation.update(editId, payload, { goBack: !onSaved, previous: existing, measureSource: measure.source })
-        : await mutation.create(payload, { goBack: !onSaved, measureSource: measure.source })
+        : await mutation.create(payload, {
+          goBack: !onSaved,
+          measureSource: measure.source,
+          // 125 FR-020: no form a dose é sempre da pessoa; plausível = sem aviso da regra do core.
+          doseSource: 'manual',
+          dosePlausible: doseWarnings(medicine, currentDose, form.values.intake_unit ?? null).length === 0,
+        })
 
       // Ponto de intenção #2 (120 US2/E-3): o pedido SAIU do submit. O preparo abre na raiz DEPOIS de
       // navegar (`goBack` já desmontou o form) — sem await: não segura o submit. Na escada (`onSaved`)

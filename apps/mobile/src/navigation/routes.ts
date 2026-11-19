@@ -54,7 +54,12 @@ export const ROUTES = {
   ONBOARDING_MEDICINE: 'OnboardingMedicine',              // 066 E: escolha (caixa | busca)
   ONBOARDING_MEDICINE_SEARCH: 'OnboardingMedicineSearch', // 066 E: busca 2C em tela cheia
   ONBOARDING_MEDICINE_FORM: 'OnboardingMedicineForm',     // 066 E: "Confira" (preenchido) ou fallback em branco
+  ONBOARDING_MEDICINE_PRESENTATION: 'OnboardingMedicinePresentation', // 125 F-2: forma (manual)
+  ONBOARDING_MEDICINE_NAME: 'OnboardingMedicineName',                 // 125 F-3: nome com sugestão (manual)
+  ONBOARDING_MEDICINE_STRENGTH: 'OnboardingMedicineStrength',         // 125 F-4: dosagem (manual)
   ONBOARDING_TREATMENT: 'OnboardingTreatment',
+  // 125 (AC4.1): conferência "Está certo?" antes do estoque.
+  ONBOARDING_TREATMENT_REVIEW: 'OnboardingTreatmentReview',
   ONBOARDING_STOCK: 'OnboardingStock',
   ONBOARDING_CONSENT: 'OnboardingConsent', // 096 B3: S1 — consentimento A/B e gravação do setup
   ONBOARDING_STOCK_INITIAL_BALANCE: 'OnboardingStockInitialBalance', // F4b/T017

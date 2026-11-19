@@ -34,12 +34,14 @@ export default function OnboardingMedicineChoiceStep() {
   const headerProps = useMemo(() => ({ step: 1, totalSteps: 4, onSkip: () => skip(1) }), [skip])
 
   // Handlers
-  // A leitura volta ao "Confira" (`returnTo`); a saída manual do leitor cai nele em branco.
+  // A leitura volta ao "Confira" (`returnTo`); a saída manual vai ao wizard forma › nome › dosagem (`manualTo`).
   const openScanner = useCallback(
     () =>
       navigation.navigate(ROUTES.MEDICINE_SCAN, {
         entryPoint: ENTRY_POINTS.ONBOARDING,
         returnTo: ROUTES.ONBOARDING_MEDICINE_FORM,
+        // 125-1a (smoke 18/11): código não lido ⇒ mesmo wizard do "Não achei" da busca (forma primeiro).
+        manualTo: ROUTES.ONBOARDING_MEDICINE_PRESENTATION,
       }),
     [navigation],
   )

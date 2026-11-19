@@ -18,12 +18,12 @@ import {
   DOSAGE_UNITS,
   DOSAGE_UNIT_LABELS,
   PRESENTATIONS,
+  setupDefaults,
   PRESENTATION_LABELS,
   REGULATORY_CATEGORIES,
   REGULATORY_CATEGORY_LABELS,
   normalizeRegulatoryCategory,
   labelAmount,
-  isLiquidDosageUnit,
   type CmedStrengthChoice,
 } from '@dosiq/core'
 import { useFormState } from '@shared/hooks/useFormState'
@@ -39,6 +39,7 @@ import { CatalogFieldSuggestions } from '@medications/components/CatalogSuggesti
 import { catalogLinkPayload, keepSavedStrength } from '@medications/utils/catalogMatch'
 import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggestionSheet'
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
+import { PresentationChips, UnitChipsField } from '@medications/components/FormFirstStrength'
 import { ConcentrationVolumeField } from '@medications/components/ConcentrationVolumeField'
 import {
   valuesFromDraft,
@@ -57,28 +58,15 @@ const TYPE_OPTIONS = MEDICINE_TYPES.map((value) => ({
   label: MEDICINE_TYPE_LABELS[value] ?? value,
 }))
 
-const UNIT_OPTIONS = DOSAGE_UNITS.map((value) => ({
-  value,
-  label: DOSAGE_UNIT_LABELS[value] ?? value,
-}))
-
-// Líquido := dosage_unit termina em '/ml' (decisão-mãe 022).
-const isLiquidUnit = isLiquidDosageUnit
-
-const PRESENTATION_OPTIONS = PRESENTATIONS.map((value) => ({
-  value,
-  label: PRESENTATION_LABELS[value] ?? value,
-}))
-
 const REGULATORY_OPTIONS = REGULATORY_CATEGORIES.map((value) => ({
   value,
   label: REGULATORY_CATEGORY_LABELS[value] ?? value,
 }))
 
-const DEFAULT_INITIAL = { type: 'medicamento', dosage_unit: 'mg' }
+// 125 (AC2.6): remédio novo sem unidade nem forma pré-marcadas — a pessoa escolhe as duas.
+const DEFAULT_INITIAL = { type: 'medicamento' }
 
 // 066 Slice C (T023a): "Ver todas" no fim do dropdown filtrado por `forms` (INV-3).
-const ALL_FORMS_VALUE = '__all__'
 const PRESENTATION_SET = new Set<string>(PRESENTATIONS)
 
 // `forms` do item da base (manifest ≥ 1.1.11); cache antigo não tem o campo.
@@ -138,8 +126,6 @@ export default function MedicineFormScreen() {
   const [sheetOpen, setSheetOpen] = useState(false)
   // 066: formas do item escolhido (filtro do dropdown), "Ver todas", edição manual da forma,
   // dose ambígua (INV-2) e força completa da caixa (D9).
-  const [itemForms, setItemForms] = useState<string[]>([])
-  const [showAllForms, setShowAllForms] = useState(false)
   const [presentationTouched, setPresentationTouched] = useState(false)
   const [doseCheckRequired, setDoseCheckRequired] = useState(false)
   const [strengthLabel, setStrengthLabel] = useState<string | null>(null)
@@ -188,14 +174,6 @@ export default function MedicineFormScreen() {
     }
   }, [medicine])
 
-  const presentationOptions = useMemo(() => {
-    if (showAllForms || itemForms.length < 2) return PRESENTATION_OPTIONS
-    return [
-      ...PRESENTATION_OPTIONS.filter((o) => itemForms.includes(o.value)),
-      { value: ALL_FORMS_VALUE, label: 'Ver todas' },
-    ]
-  }, [itemForms, showAllForms])
-
   // Hooks dependentes (consomem memos acima)
   // Usa createSchema para create + edit — em edit todos obrigatórios continuam exigidos
   // (não pode apagar nome/dose/unidade ao editar).
@@ -220,8 +198,6 @@ export default function MedicineFormScreen() {
     setStrengthChoices(extras.strengthChoices)
     setStrengthLabel(extras.strengthLabel)
     setDoseChoiceError(false)
-    setItemForms([])
-    setShowAllForms(false)
     setPresentationTouched(false)
     setAnvisaFilledLabel([scanDraft.name, scanDraft.strengthLabel].filter(Boolean).join(' '))
     setScanInfo(scanDraft)
@@ -325,8 +301,6 @@ export default function MedicineFormScreen() {
       setAnvisaFilledLabel(
         draft ? [draft.name, draft.strengthLabel].filter(Boolean).join(' ') : (item.name ?? null)
       )
-      setItemForms(draft ? [] : forms)
-      setShowAllForms(false)
       // Trocar pela busca descarta a caixa lida antes (o form deixa de ser "lido pelo código").
       setScanInfo(null)
       if (draft) {
@@ -339,7 +313,8 @@ export default function MedicineFormScreen() {
         setPresentationTouched(false)
       } else {
         const presentation = forms.length === 1 && !presentationTouched ? forms[0] : undefined
-        form.setValues(presentation ? { ...base, presentation } : base)
+        // 125 (AC2.1b): forma única marca o chip; mais de uma deixa desmarcado (a pessoa escolhe).
+        form.setValues(presentation || !presentationTouched ? { ...base, presentation } : base)
         setDoseCheckRequired(false)
         setStrengthChoices([])
         setDoseChoiceError(false)
@@ -370,30 +345,18 @@ export default function MedicineFormScreen() {
     [form]
   )
 
-  // Ao escolher unidade líquida (/ml): marca presentation='liquido'. Densidade NÃO
-  // é pedida aqui (022 Fase C — pertence ao tratamento). Sólido → 'comprimido'.
-  // NÃO sobrescreve 'injetavel' (012): injeção pode ser /ml mas tem TTL próprio.
-  const handleUnitChange = useCallback(
-    (_name, value) => {
-      form.handleChange('dosage_unit', value)
-      const currentPresentation = form.values.presentation
-      if (currentPresentation !== 'injetavel') {
-        form.handleChange('presentation', isLiquidUnit(value) ? 'liquido' : 'comprimido')
-      }
-    },
-    [form]
-  )
+  // 125 (FR-004): a forma é escolhida, nunca derivada da unidade.
+  const handleUnitChange = useCallback((value: string) => form.handleChange('dosage_unit', value), [form])
 
   // Ao selecionar 'injetavel': prefill 28 dias (editável) apenas se shelf_life_days vazio.
   // Outras presentations: limpa apenas o prefill 28 — preserva valor digitado manualmente.
   const handlePresentationChange = useCallback(
     (_name, value) => {
-      if (value === ALL_FORMS_VALUE) {
-        setShowAllForms(true)
-        return
-      }
       setPresentationTouched(true)
       form.handleChange('presentation', value)
+      // 125 (C-3): pomada/spray sem força gravam 'un'; o Zod exige unidade.
+      const fixedUnit = setupDefaults(value).fixedDosageUnit
+      if (fixedUnit && !form.values.dosage_unit) form.handleChange('dosage_unit', fixedUnit)
       if (value === 'injetavel') {
         const current = form.values.shelf_life_days
         if (current === '' || current === null || current === undefined) {
@@ -418,6 +381,11 @@ export default function MedicineFormScreen() {
   )
 
   const handleSubmit = useCallback(async () => {
+    // 125 (FR-004): sem forma escolhida o Zod gravaria 'comprimido' por omissão.
+    if (!form.values.presentation) {
+      Alert.alert('Verifique o formulário', 'Escolha como é o remédio.')
+      return
+    }
     // INV-2 (C-C2): o Zod aceita dose vazia; o composto ambíguo exige a escolha. O botão não muda
     // de rótulo nem trava (C-C10): o erro aparece no campo, como em qualquer obrigatório.
     if (doseCheckRequired && String(form.values.dosage_per_pill ?? '').trim() === '') {
@@ -533,29 +501,26 @@ export default function MedicineFormScreen() {
         </View>
 
         <FormSection title="Dosagem">
-          <View style={styles.row}>
-            <View style={styles.rowDose}>
-              <FormInput
-                name="dosage_per_pill"
-                label="Concentração"
-                required
-                keyboardType="decimal-pad"
-                {...formProps(form, 'dosage_per_pill')}
-                {...(doseChoiceError && askStrength ? { error: 'Escolha a concentração abaixo' } : null)}
-                onChange={handleDoseChange}
-              />
-            </View>
-            <View style={styles.rowUnit}>
-              <FormSelect
-                name="dosage_unit"
-                label="Unidade"
-                required
-                options={UNIT_OPTIONS}
-                {...formProps(form, 'dosage_unit')}
-                onChange={handleUnitChange}
-              />
-            </View>
-          </View>
+          <Text style={styles.fieldLabel}>Como é o remédio?</Text>
+          <PresentationChips
+            value={form.values.presentation as string | undefined}
+            onChange={(value) => handlePresentationChange('presentation', value)}
+          />
+          <FormInput
+            name="dosage_per_pill"
+            label="Concentração"
+            required
+            keyboardType="decimal-pad"
+            {...formProps(form, 'dosage_per_pill')}
+            {...(doseChoiceError && askStrength ? { error: 'Escolha a concentração abaixo' } : null)}
+            onChange={handleDoseChange}
+          />
+          <UnitChipsField
+            presentation={form.values.presentation as string | undefined}
+            unit={form.values.dosage_unit as string | undefined}
+            onChange={handleUnitChange}
+            error={formProps(form, 'dosage_unit').error as string | undefined}
+          />
           <StrengthChoiceCard
             askStrength={askStrength}
             strengthLabel={strengthLabel}
@@ -565,6 +530,7 @@ export default function MedicineFormScreen() {
           {/* FR-031 (ADR-066): denominador do rótulo. Default 1 mL; muda só p/ Mounjaro etc. */}
           <ConcentrationVolumeField
             dosageUnit={form.values.dosage_unit as string | undefined}
+            presentation={form.values.presentation as string | undefined}
             inputProps={{ ...formProps(form, 'concentration_volume_ml'), onChange: handleDoseChange }}
           />
           {form.values.dosage_unit === 'un' && Number(form.values.dosage_per_pill) > 1 && (
@@ -582,13 +548,6 @@ export default function MedicineFormScreen() {
             label="Tipo"
             options={TYPE_OPTIONS}
             {...formProps(form, 'type')}
-          />
-          <FormSelect
-            name="presentation"
-            label="Apresentação"
-            options={presentationOptions}
-            {...formProps(form, 'presentation')}
-            onChange={handlePresentationChange}
           />
           {form.values.presentation === 'injetavel' && (
             <FormInput
@@ -705,16 +664,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing[4],
     paddingBottom: spacing[12],
   },
-  row: {
-    flexDirection: 'row',
-    gap: spacing[3],
-    alignItems: 'flex-start',
-  },
-  rowDose: {
-    flex: 2,
-  },
-  rowUnit: {
-    flex: 1,
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
   },
   warningBox: {
     padding: spacing[3],

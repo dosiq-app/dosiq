@@ -11,6 +11,8 @@ export const EVENTS = {
   ONBOARDING_START: 'onboarding_start',
   ONBOARDING_COMPLETE: 'onboarding_complete',
   ONBOARDING_SKIP: 'onboarding_skip',
+  // 125: "Terminar depois" aceito — gravou o completo (`saved`) e concluiu.
+  ONBOARDING_FINISH_LATER: 'onboarding_finish_later',
 
   // Ciclo de vida do tratamento (spec 065 US3 / CON-034). Pausa ≠ encerramento: `active` true→false
   // é `treatment_paused` (reversível), nunca `treatment_ended`. Emitidos SÓ pela casca do
