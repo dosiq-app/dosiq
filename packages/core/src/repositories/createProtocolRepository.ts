@@ -15,6 +15,7 @@ import type { Database } from '@dosiq/shared-data'
 import {
   validateProtocolCreate,
   validateProtocolUpdate,
+  frequencyRequiresWeekdays,
 } from '../schemas/protocolSchema'
 import { getTodayLocal, getServerTimestamp, parseISO } from '../utils/dateUtils'
 import { createDoseInstanceRepository } from './createDoseInstanceRepository'
@@ -264,6 +265,10 @@ export function createProtocolRepository({
       // criada pelo fluxo próprio (ADR-084). Não reintroduzir campo de titulação aqui.
       const payload = {
         ...validated,
+        // 125 (smoke iOS 19/11): dia da semana só vale em semanal/personalizado. Trocar "Toda semana"
+        // por outra frequência no form deixava o dia escolhido gravado (resíduo sem efeito no motor,
+        // mas dado falso no banco).
+        ...(frequencyRequiresWeekdays(validated.frequency as string) ? {} : { weekdays: [] }),
         user_id: userId,
       }
 
@@ -301,6 +306,10 @@ export function createProtocolRepository({
       // coerência é bidirecional e um N remanescente viraria 23514 cru na edição.
       if (cleanUpdates.frequency !== undefined && cleanUpdates.frequency !== 'intervalo_dias' && !('interval_days' in cleanUpdates)) {
         cleanUpdates.interval_days = null
+      }
+      // 125 (smoke iOS 19/11): idem para `weekdays` — sair de semanal/personalizado leva o dia junto.
+      if (cleanUpdates.frequency !== undefined && !frequencyRequiresWeekdays(cleanUpdates.frequency as string)) {
+        cleanUpdates.weekdays = []
       }
       const { data, error } = await client
         .from('protocols')

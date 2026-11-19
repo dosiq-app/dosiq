@@ -34,7 +34,11 @@ jest.mock('../screens/OnboardingWelcomeStep', () => ({
 jest.mock('../screens/OnboardingMedicineStep', () => ({ __esModule: true, default: () => null }))
 jest.mock('../screens/OnboardingMedicineChoiceStep', () => ({ __esModule: true, default: () => null }))
 jest.mock('../screens/OnboardingMedicineSearchStep', () => ({ __esModule: true, default: () => null }))
+jest.mock('../screens/OnboardingPresentationStep', () => ({ __esModule: true, default: () => null }))
+jest.mock('../screens/OnboardingNameStep', () => ({ __esModule: true, default: () => null }))
+jest.mock('../screens/OnboardingStrengthStep', () => ({ __esModule: true, default: () => null }))
 jest.mock('../screens/OnboardingTreatmentStep', () => ({ __esModule: true, default: () => null }))
+jest.mock('../screens/OnboardingTreatmentReviewStep', () => ({ __esModule: true, default: () => null }))
 jest.mock('../screens/OnboardingStockStep', () => ({ __esModule: true, default: () => null }))
 jest.mock('../screens/OnboardingStockInitialBalanceStep', () => ({ __esModule: true, default: () => null }))
 jest.mock('../screens/OnboardingConsentStep', () => ({ __esModule: true, default: () => null }))
@@ -73,6 +77,22 @@ describe('OnboardingNavigator — eventos', () => {
     await act(async () => { await global.__onbCtx.finish() })
     expect(names().filter((n) => n === 'onboarding_complete')).toHaveLength(1)
     expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  // 125 (AC1.0/AC1.1b): "Terminar depois" não é skip — vai ao S1 com dado; no estoque, força dose-only.
+  it('finishLater vai ao S1 com variante e passo, sem skip; zera a escolha de estoque (null)', async () => {
+    render(<OnboardingNavigator onComplete={jest.fn()} />)
+    await act(async () => { global.__onbCtx.setStockTracking(true) })
+    await act(async () => { global.__onbCtx.finishLater(3, 'full') })
+    expect(mockRefNavigate).toHaveBeenCalledWith('OnboardingConsent', { variant: 'full', step: 3 })
+    expect(global.__onbCtx.stockTracking).toBeNull() // emenda PO 18/11: não escolheu ⇒ default do banco
+    await act(async () => { global.__onbCtx.finishLater(2, 'medicine_only') })
+    expect(mockRefNavigate).toHaveBeenLastCalledWith('OnboardingConsent', { variant: 'medicine_only', step: 2 })
+    expect(names()).not.toContain('onboarding_skip')
+    // Gravou e concluiu ⇒ conta como conclusão.
+    await act(async () => { await global.__onbCtx.writeSetup({}) })
+    await act(async () => { await global.__onbCtx.finish() })
+    expect(names()).toContain('onboarding_complete')
   })
 
   // 096 B3: pular NÃO conclui mais — leva ao S1 sem dado; a conclusão vem do `finish` de lá.

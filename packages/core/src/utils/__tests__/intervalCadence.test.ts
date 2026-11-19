@@ -10,7 +10,7 @@ import {
   frequencyDailyFactor,
   getDailyDoseRate,
 } from '../adherenceLogic'
-import { isIntervalCadenceAvailable, INTERVAL_CADENCE_MIN_MOBILE_VERSION } from '../cadenceRollout'
+import { isIntervalCadenceAvailable, fetchIntervalCadenceAvailability, INTERVAL_CADENCE_MIN_MOBILE_VERSION } from '../cadenceRollout'
 import { computeWindowEnd, WINDOW_DAYS } from '../../services/doseInstancePlanner'
 import { getEndOfDayISO, parseISO } from '../dateUtils'
 import {
@@ -307,5 +307,24 @@ describe('085 H-1 — trava de rollout por usuária', () => {
 
   it('versão ilegível conta como NÃO atualizada', () => {
     expect(isIntervalCadenceAvailable([], [{ platform: 'ios', app_version: 'dev', last_seen_at: seen }], now)).toBe(false)
+  })
+
+  // 125 (smoke 18/11): conta nova sem heartbeat gravado ⇒ o aparelho que pergunta entra como registro.
+  describe('fetchIntervalCadenceAvailability — selfRows', () => {
+    function clientWith(devices: unknown[], activity: unknown[]) {
+      const q = (data: unknown[]) => ({ select: () => ({ eq: () => ({ limit: () => Promise.resolve({ data, error: null }) }) }) })
+      return { from: (t: string) => q(t === 'notification_devices' ? devices : activity) } as never
+    }
+    const self = [{ platform: 'ios', app_version: ok, last_seen_at: seen }]
+
+    it('conta nova (banco vazio) + este aparelho atualizado ⇒ libera', async () => {
+      expect(await fetchIntervalCadenceAvailability(clientWith([], []), 'u-1', now)).toBe(false)
+      expect(await fetchIntervalCadenceAvailability(clientWith([], []), 'u-1', now, self)).toBe(true)
+    })
+
+    it('aparelho ANTIGO da mesma pessoa continua barrando', async () => {
+      const old = [{ platform: 'android', app_version: '0.33.1', last_seen_at: seen }]
+      expect(await fetchIntervalCadenceAvailability(clientWith([], old), 'u-1', now, self)).toBe(false)
+    })
   })
 })

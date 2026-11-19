@@ -7,6 +7,9 @@
 // Variante `empty` ("Pular" em S2–S4): mesmas caixas, sem resumo; conclui sem escrever remédio.
 // CTA nunca cinza (D-8): sem A, foco na caixa + `alert`. B nunca é condição (guarda 4).
 // "Agora não" ⇒ S2 (OnboardingRefuseSheet).
+// 125 (AC1.1/AC1.1b): vinda do "Terminar depois" (`step` presente) — `medicine_only` grava só o remédio,
+// `full` grava remédio + tratamento em dose-only; 3 saídas: Salvar e terminar depois · Continuar o cadastro
+// (volta) · Sair sem salvar (vira o skip, variante sem dado).
 
 import { useCallback, useMemo, useState } from 'react'
 import { View, Text, Pressable, ScrollView, StyleSheet } from 'react-native'
@@ -17,7 +20,8 @@ import { useToast } from '@shared/components/feedback/Toast'
 import { useStockTracking } from '@shared/hooks/useStockTracking'
 import { useConsentGate } from '@platform/consent/useConsentGate'
 import { enablePushAtIntent } from '@platform/notifications/pushPermission'
-import { PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
+import { PERMISSION_ENTRY_POINTS, EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
+import { logEvent } from '@platform/analytics/productAnalytics'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { endSession } from '@platform/session/endSession'
 import { ROUTES } from '@navigation/routes'
@@ -47,10 +51,21 @@ function summaryLines(medicine, treatment): { name: string; detail: string | nul
   return { name: `${medicine.name}${strength}`, detail: detail || null }
 }
 
+type ConsentVariant = 'empty' | 'medicine_only' | 'full'
+
+// Título, corpo e CTA por variante (fora do componente: só lê argumentos).
+function consentTexts(variant: ConsentVariant, later: boolean, name: string) {
+  if (variant === 'empty') return { title: COPY.emptyTitle, body: COPY.emptyBody, cta: COPY.emptyCta }
+  if (!later) return { title: COPY.title, body: COPY.body, cta: COPY.cta }
+  return variant === 'medicine_only'
+    ? { title: COPY.laterMedicineTitle, body: COPY.laterMedicineBody(name), cta: COPY.laterCta }
+    : { title: COPY.laterFullTitle, body: COPY.laterFullBody(name), cta: COPY.laterCta }
+}
+
 export default function OnboardingConsentStep() {
   const navigation = useNavigation<any>()
   const route = useRoute<any>()
-  const { medicine, medicineSource, treatment, stockTracking, writeSetup, finish, markCompleted } = useOnboarding()
+  const { medicine, medicineSource, treatment, stockTracking, writeSetup, finish, markCompleted, skip } = useOnboarding()
   const gate = useConsentGate()
   const { refresh: refreshStockTracking } = useStockTracking()
   const { show } = useToast()
@@ -63,8 +78,19 @@ export default function OnboardingConsentStep() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const empty = route.params?.variant === 'empty' || !medicine || !treatment
-  const summary = useMemo(() => (empty ? null : summaryLines(medicine, treatment)), [empty, medicine, treatment])
+  const requested: ConsentVariant | undefined = route.params?.variant
+  const variant: ConsentVariant =
+    !medicine || requested === 'empty' ? 'empty' : (requested ?? (treatment ? 'full' : 'empty'))
+  const empty = variant === 'empty'
+  const medicineOnly = variant === 'medicine_only'
+  // Só o "Terminar depois" passa `step`; o fluxo normal (estoque › Continuar) não.
+  const finishStep = route.params?.step
+  const later = !empty && finishStep != null
+  const texts = consentTexts(variant, later, medicine?.name ?? '')
+  const summary = useMemo(
+    () => (empty ? null : summaryLines(medicine, medicineOnly ? null : treatment)),
+    [empty, medicineOnly, medicine, treatment],
+  )
   const headerProps = useMemo(() => ({ step: 4, totalSteps: 4, onBack: () => navigation.goBack() }), [navigation])
 
   const handleHealthChange = useCallback((next: boolean) => {
@@ -93,7 +119,15 @@ export default function OnboardingConsentStep() {
         return
       }
 
-      const { remind } = await writeSetup({ medicine, medicineSource, treatment, stockTracking })
+      // Só remédio (AC1.1): `treatment` do contexto é rascunho do passo "quando" — não grava.
+      const { remind } = await writeSetup({ medicine, medicineSource, treatment: medicineOnly ? null : treatment, stockTracking })
+      if (later) {
+        logEvent(EVENTS.ONBOARDING_FINISH_LATER, {
+          surface: SURFACES.MOBILE,
+          step: finishStep,
+          saved: medicineOnly ? 'medicine' : 'medicine_treatment',
+        })
+      }
       // O provider lê a preferência UMA vez (no login) — sem este refresh, o app abre com o valor
       // lido ANTES desta escolha (aba Estoque para quem escolheu dose-only).
       await timed(refreshStockTracking())
@@ -117,7 +151,33 @@ export default function OnboardingConsentStep() {
       setSaving(false)
       setError(err?.message ?? 'Não foi possível concluir. Tente de novo.')
     }
-  }, [health, transfer, gate, show, empty, finish, writeSetup, medicine, medicineSource, treatment, stockTracking, refreshStockTracking, markCompleted, navigation])
+  }, [health, transfer, gate, show, empty, medicineOnly, later, finishStep, finish, writeSetup, medicine, medicineSource, treatment, stockTracking, refreshStockTracking, markCompleted, navigation])
+
+  // "Sair sem salvar" = descarta o remédio/tratamento em memória (nada gravado). 125-1a (smoke 18/11): com o A
+  // já marcado, aproveita as caixas desta tela e conclui aqui (grant + finish) — antes reabria o MESMO
+  // consentimento em branco (variante `empty`). Sem o A: mesmo erro na caixa do "Salvar e terminar depois".
+  const handleExitWithoutSaving = useCallback(async () => {
+    if (!health) {
+      setHealthError(true)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await skip(finishStep, { inPlace: true })
+      const res = await timed(gate.grantV04({ transfer }))
+      if (!res.ok) {
+        setError(COPY.grantError)
+        setSaving(false)
+        return
+      }
+      if (transfer && !res.transferOk) show(COPY.transferNotSaved, { variant: 'info', duration: 6000 })
+      await timed(finish())
+    } catch (err) {
+      setSaving(false)
+      setError(err?.message ?? 'Não foi possível concluir. Tente de novo.')
+    }
+  }, [health, skip, finishStep, gate, transfer, show, finish])
 
   const handleDiscard = useCallback(async () => {
     await endSession('logout')
@@ -133,8 +193,8 @@ export default function OnboardingConsentStep() {
       <OnboardingHeader {...(headerProps as any)} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title} accessibilityRole="header">{empty ? COPY.emptyTitle : COPY.title}</Text>
-        <Text style={styles.subtitle}>{empty ? COPY.emptyBody : COPY.body}</Text>
+        <Text style={styles.title} accessibilityRole="header">{texts.title}</Text>
+        <Text style={styles.subtitle}>{texts.body}</Text>
 
         {summary ? (
           <View style={styles.summary}>
@@ -165,10 +225,20 @@ export default function OnboardingConsentStep() {
       </ScrollView>
 
       <FormActions
-        primaryLabel={empty ? COPY.emptyCta : COPY.cta}
+        primaryLabel={texts.cta}
         onPrimary={handleSave}
         primaryLoading={saving}
       />
+      {later ? (
+        <>
+          <Pressable style={styles.later} onPress={() => navigation.goBack()} disabled={saving} accessibilityRole="button" accessibilityLabel={COPY.laterContinue}>
+            <Text style={styles.laterLink}>{COPY.laterContinue}</Text>
+          </Pressable>
+          <Pressable style={styles.later} onPress={handleExitWithoutSaving} disabled={saving} accessibilityRole="button" accessibilityLabel={COPY.laterExit}>
+            <Text style={styles.laterText}>{COPY.laterExit}</Text>
+          </Pressable>
+        </>
+      ) : (
       <Pressable
         style={styles.later}
         onPress={() => setRefuseOpen(true)}
@@ -178,6 +248,7 @@ export default function OnboardingConsentStep() {
       >
         <Text style={styles.laterText}>{COPY.later}</Text>
       </Pressable>
+      )}
 
       <ConsentDetailsSheet variant={details} onClose={() => setDetails(null)} />
       {refuseOpen ? (
@@ -218,4 +289,6 @@ const styles = StyleSheet.create({
   error: { marginTop: spacing[3], fontSize: 14, fontWeight: '600', color: colors.status.error },
   later: { minHeight: 48, alignItems: 'center', justifyContent: 'center', marginBottom: spacing[2] },
   laterText: { fontSize: 15, fontWeight: '600', color: colors.text.secondary },
+  // hi-fi O-7: "Continuar o cadastro" em link primário; "Sair sem salvar" apagado.
+  laterLink: { fontSize: 15, fontWeight: '600', color: colors.brand.primary },
 })

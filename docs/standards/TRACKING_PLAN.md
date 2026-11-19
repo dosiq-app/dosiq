@@ -222,7 +222,8 @@ de plataforma.
 |---|---|---|---|---|
 | `onboarding_start` | ✅ mobile | montagem do wizard (reabrir o app no meio conta nova tentativa — **ler por pessoa única**; contagem de eventos = recomeços) | `surface` | time to first value: entrou |
 | `onboarding_complete` | ✅ mobile | setup gravado — **1×** mesmo quando o saldo inicial vem depois; nunca após `skip` | `surface` | ativação: chegou ao valor |
-| `onboarding_skip` | ✅ mobile | "Pular" (antes era a mesma função do concluir — 065 C2) | `surface`, `step` (1·2·3 — onde desistiu) | fricção / abandono precoce |
+| `onboarding_skip` | ✅ mobile | "Pular" (antes era a mesma função do concluir — 065 C2) | `surface`, `step` (1·2·3 — onde desistiu) | fricção / abandono precoce. 125: com remédio identificado o "Pular" some; o skip passa a vir só de antes do remédio ou do "Sair sem salvar" |
+| `onboarding_finish_later` | ✅ mobile (125) | "Terminar depois" aceito no consentimento: gravou o completo e concluiu | `surface`, `step` (1·2·3 — onde saiu), `saved` (`medicine`·`medicine_treatment`) | abandono do setup **com** dado gravado (SC-001); soma com `onboarding_complete` |
 
 ### 5.3 Tratamento (entidade central) e medicamento (setup)
 
@@ -236,7 +237,7 @@ segue essa hierarquia — o funil de ativação culmina em `treatment_created`, 
 
 | Evento | Status | Dispara quando | Props | Pergunta |
 |---|---|---|---|---|
-| `treatment_created` | ✅ mobile | tratamento definido e ativado (`active=true`) | `surface`, `entry_point` (`onboarding`·`treatment_form`), `treatment_id`, `medicine_id`, `is_titration`, `frequency`, `interval_days?`, `treatment_plan_id?`, `treatment_planned_end?`, `schedule_preset?`, `presentation?` (092), `tracked_measure?` + `measure_source?: 'inferred'\|'chosen'` (100 B) | **ativação real** (time to first value) |
+| `treatment_created` | ✅ mobile | tratamento definido e ativado (`active=true`) | `surface`, `entry_point` (`onboarding`·`treatment_form`), `treatment_id`, `medicine_id`, `is_titration`, `frequency`, `interval_days?`, `treatment_plan_id?`, `treatment_planned_end?`, `schedule_preset?`, `presentation?` (092), `tracked_measure?` + `measure_source?: 'inferred'\|'chosen'` (100 B), `dose_source?: 'embalagem'\|'manual'` + `dose_plausible?: boolean` (125 FR-020 — houve aviso de plausibilidade?) | **ativação real** (time to first value) |
 | `treatment_edited` | ✅ mobile | qualquer campo do tratamento alterado pela pessoa, ou a escada de titulação (**não** o toggle de pausa, **não** a troca de etapa pela RPC) | `surface`, `treatment_id`, `medicine_id`, `change_kind` (**lista**), `frequency`, `interval_days?`, `treatment_plan_id?`, `treatment_planned_end?`, `schedule_preset?`, `presentation?` (re-emite), `tracked_measure?` (re-emite) + `measure_source?` (só quando `change_kind` tem `measure`) (100 B) | manutenção vs. instabilidade do plano |
 | `treatment_paused` | ✅ mobile | usuário pausa (`active: true→false`) | `surface`, `treatment_id`, `medicine_id` | **pausa reversível ≠ abandono** — desliga notificação/geração de dose, sai da adesão |
 | `treatment_resumed` | ✅ mobile | usuário retoma (`active: false→true`) | `surface`, `treatment_id`, `medicine_id` | recuperação de pausa (pausa→retoma vs. pausa→abandono) |

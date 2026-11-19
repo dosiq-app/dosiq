@@ -12,6 +12,16 @@ export const ONBOARDING_CONSENT_COPY = Object.freeze({
     'Para lembrar e registrar as doses, o dosiq precisa desta autorização. Dá para cadastrar os remédios depois, pelas abas.',
   emptyCta: 'Entrar no app',
   grantError: 'Não foi possível registrar a autorização agora. Confira a conexão e tente de novo.',
+  // 125 (AC1.1/AC1.1b): "Terminar depois" com remédio — grava o que está completo após o A.
+  laterMedicineTitle: 'Salvar o remédio e terminar depois?',
+  laterMedicineBody: (name: string) =>
+    `${name} fica salvo. O horário e a frequência podem ser definidos pela tela Hoje.`,
+  laterFullTitle: 'Salvar e terminar depois?',
+  laterFullBody: (name: string) =>
+    `${name} e o tratamento ficam salvos. O estoque pode ser ligado depois em Perfil.`,
+  laterCta: 'Salvar e terminar depois',
+  laterContinue: 'Continuar o cadastro',
+  laterExit: 'Sair sem salvar',
   transferNotSaved:
     'A autorização opcional não foi registrada agora. Dá para ligar depois em Perfil › Privacidade e dados.',
 })

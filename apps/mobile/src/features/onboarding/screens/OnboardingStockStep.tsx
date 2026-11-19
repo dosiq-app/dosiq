@@ -16,6 +16,7 @@ import * as LucideIcons from 'lucide-react-native'
 const { CalendarClock, Box, Info } = LucideIcons as any
 import FormActions from '@shared/components/form/FormActions'
 import { ROUTES } from '@navigation/routes'
+import FinishLaterButton from '@features/onboarding/components/FinishLaterButton'
 import { useOnboarding } from '../OnboardingContext'
 import OnboardingHeader from '@features/onboarding/components/OnboardingHeader'
 import { colors, spacing, borderRadius, typography } from '@shared/styles/tokens'
@@ -39,21 +40,24 @@ const OPTIONS = [
 
 export default function OnboardingStockStep() {
   const navigation = useNavigation<any>()
-  const { skip, setStockTracking } = useOnboarding()
+  const { finishLater, setStockTracking } = useOnboarding()
 
-  // Opção 1 pré-marcada: o modo dose-only é o default do onboarding (a preferência no banco
-  // nasce `true` por FR-009 — quem escolhe aqui é quem está criando a conta agora).
-  const [selected, setSelected] = useState('doses')
+  // 125-1a (PO smoke 18/11, emenda da 044): nada pré-marcado — a escolha é da pessoa (mesmo princípio da
+  // frequência). "Continuar" só depois de escolher; "Terminar depois" não grava a preferência (default do
+  // banco = estoque ligado). Ordem a (só doses) → b (também estoque) mantida: do menos ao mais completo.
+  const [selected, setSelected] = useState<string | null>(null)
 
   const headerProps = useMemo(
-    () => ({ step: 3, totalSteps: 4, onBack: () => navigation.goBack(), onSkip: () => skip(3) }),
-    [navigation, skip],
+    // 125 (AC1.0/AC1.1b): sem "Pular"; "Terminar depois" grava remédio + tratamento, preferência no default.
+    () => ({ step: 3, totalSteps: 4, onBack: () => navigation.goBack() }),
+    [navigation],
   )
 
   // 096 B3 (T040a): este passo NÃO grava mais. A escolha vai para o contexto e o S1
   // (`OnboardingConsentStep`) grava remédio, tratamento e preferência — só depois do consentimento A.
   const handleContinue = useCallback(() => {
     const option = OPTIONS.find((o) => o.id === selected)
+    if (!option) return
     setStockTracking(option.tracking)
     navigation.navigate(ROUTES.ONBOARDING_CONSENT)
   }, [selected, setStockTracking, navigation])
@@ -108,6 +112,8 @@ export default function OnboardingStockStep() {
         primaryLabel="Continuar"
         onPrimary={handleContinue}
         primaryLoading={false}
+        primaryDisabled={!selected}
+        footer={<FinishLaterButton onPress={() => finishLater(3, 'full')} />}
       />
     </SafeAreaView>
   )

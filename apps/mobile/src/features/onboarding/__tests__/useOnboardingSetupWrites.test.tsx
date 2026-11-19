@@ -50,6 +50,14 @@ afterEach(() => {
 })
 
 describe('useOnboardingSetupWrites', () => {
+  it('125 T017: campos de medição do wizard não vão ao insert; viram props do treatment_created', async () => {
+    const { result } = renderHook(() => useOnboardingSetupWrites())
+    const treatment = { frequency: 'diário', _remind: false, _application_date: '2026-11-17', _dose_typed: true, _dose_source: 'manual', _dose_plausible: false }
+    await act(async () => { await result.current.writeSetup({ ...INPUT, treatment }) })
+    expect(mockProtocolCreate.mock.calls[0][0]).toEqual({ frequency: 'diário', medicine_id: 'med-1', tracked_measure: 'nenhum' })
+    expect(mockProtocolCreate.mock.calls[0][1]).toMatchObject({ doseSource: 'manual', dosePlausible: false })
+  })
+
   it('grava remédio → tratamento (sem _remind) → preferência, e devolve a intenção de lembrete', async () => {
     const { result } = renderHook(() => useOnboardingSetupWrites())
     let out
@@ -131,7 +139,57 @@ describe('useOnboardingSetupWrites', () => {
     expect(mockProtocolCreate.mock.calls[0][0]).toMatchObject({ medicine_id: 'med-late' })
   })
 
-  it('sem remédio/tratamento no contexto ⇒ lança, nada gravado', async () => {
+  // Spec 125 (ADR-131, PO-125-1/2): "Terminar depois" antes do tratamento grava só o remédio.
+  it('só remédio: grava o remédio, sem tratamento nem lembrete; preferência no default (não grava)', async () => {
+    const { result } = renderHook(() => useOnboardingSetupWrites())
+    let out
+    await act(async () => { out = await result.current.writeSetup({ ...INPUT, treatment: null, stockTracking: null }) })
+    expect(mockMedicineCreate).toHaveBeenCalledTimes(1)
+    expect(mockProtocolCreate).not.toHaveBeenCalled()
+    expect(mockChooseStockMode).not.toHaveBeenCalled()
+    expect(out).toEqual({ remind: false })
+  })
+
+  // Emenda PO smoke 18/11 (AC1.1b): "Terminar depois" não escolheu modo ⇒ null ⇒ a preferência fica no
+  // default do banco (estoque ligado); só o passo de estoque grava escolha.
+  it('stockTracking null ⇒ não grava a preferência de estoque', async () => {
+    const { result } = renderHook(() => useOnboardingSetupWrites())
+    await act(async () => { await result.current.writeSetup({ ...INPUT, stockTracking: null }) })
+    expect(mockChooseStockMode).not.toHaveBeenCalled()
+    expect(mockProtocolCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it('só remédio: retry após timeout reaproveita a escrita atrasada (1 remédio)', async () => {
+    jest.useFakeTimers()
+    let resolveLate: (v: any) => void = () => {}
+    mockMedicineCreate.mockReturnValue(new Promise((r) => { resolveLate = r }))
+    const { result } = renderHook(() => useOnboardingSetupWrites())
+    const onlyMedicine = { ...INPUT, treatment: null }
+    await act(async () => {
+      const p = result.current.writeSetup(onlyMedicine).catch(() => {})
+      jest.advanceTimersByTime(WRITE_TIMEOUT_MS)
+      await p
+    })
+    await act(async () => { resolveLate({ id: 'med-late' }) })
+    await act(async () => { await result.current.writeSetup(onlyMedicine) })
+    expect(mockMedicineCreate).toHaveBeenCalledTimes(1)
+    expect(mockProtocolCreate).not.toHaveBeenCalled()
+  })
+
+  it('só remédio falhou no estoque, voltou e completou o tratamento: 1 remédio, 1 tratamento', async () => {
+    mockChooseStockMode.mockRejectedValueOnce(new Error('Erro de rede'))
+    const { result } = renderHook(() => useOnboardingSetupWrites())
+    await act(async () => {
+      await expect(result.current.writeSetup({ ...INPUT, treatment: null })).rejects.toThrow('Erro de rede')
+    })
+    await act(async () => { await result.current.writeSetup(INPUT) })
+    expect(mockMedicineCreate).toHaveBeenCalledTimes(1)
+    expect(mockMedicineUpdate).not.toHaveBeenCalled()
+    expect(mockProtocolCreate).toHaveBeenCalledTimes(1)
+    expect(mockProtocolCreate.mock.calls[0][0]).toMatchObject({ medicine_id: 'med-1' })
+  })
+
+  it('sem remédio no contexto ⇒ lança, nada gravado', async () => {
     const { result } = renderHook(() => useOnboardingSetupWrites())
     await act(async () => {
       await expect(result.current.writeSetup({ ...INPUT, medicine: null })).rejects.toThrow()

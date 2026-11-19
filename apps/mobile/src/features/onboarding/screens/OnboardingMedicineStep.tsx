@@ -17,10 +17,9 @@ import {
   DOSAGE_UNITS,
   DOSAGE_UNIT_LABELS,
   normalizeRegulatoryCategory,
-  isLiquidDosageUnit,
   PRESENTATIONS,
+  formatConcentration,
   type CmedStrengthChoice,
-  defaultIntakeUnitFor,
 } from '@dosiq/core'
 import { useFormState } from '@shared/hooks/useFormState'
 import FormInput from '@shared/components/form/FormInput'
@@ -32,11 +31,15 @@ import { AnvisaBanner } from '@medications/components/AnvisaBanner'
 import { CatalogFieldSuggestions } from '@medications/components/CatalogSuggestionList'
 import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggestionSheet'
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
+import { PresentationChips, StrengthFields } from '@medications/components/FormFirstStrength'
+import { manualIntakeUnit } from '@features/onboarding/utils/manualMedicine'
 import { ConcentrationVolumeField } from '@medications/components/ConcentrationVolumeField'
 import { valuesFromDraft, draftExtras, baseFromScan, scanDoseEdited } from '@medications/utils/medicineDraftValues'
 import { ROUTES } from '@navigation/routes'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
+import FinishLaterButton from '@features/onboarding/components/FinishLaterButton'
+import { useKeyboardVisible } from '@shared/hooks/useKeyboardVisible'
 import { useOnboarding } from '../OnboardingContext'
 import OnboardingHeader from '@features/onboarding/components/OnboardingHeader'
 import OnboardingBrandmark from '@features/onboarding/components/OnboardingBrandmark'
@@ -61,9 +64,6 @@ function singleForm(forms: unknown): string | null {
   const valid = [...new Set(forms.filter((f) => typeof f === 'string' && PRESENTATION_SET.has(f)))]
   return valid.length === 1 ? (valid[0] as string) : null
 }
-
-// Líquido := dosage_unit termina em '/ml' (decisão-mãe 022).
-const isLiquidUnit = isLiquidDosageUnit
 
 // Nova leitura/escolha = novo objeto no param (popTo com merge); a mesma não se reaplica a cada render.
 function isNewParam(value, applied) {
@@ -101,11 +101,63 @@ function formProps(form, name) {
   }
 }
 
+// Dosagem do "Confira": caixa da lista ⇒ "Na caixa" só leitura (125 AC3.5, hi-fi F-3b); senão editável.
+function ConfiraStrength({ form, boxStrength, doseError, onDecimalChange, onUnitChange }) {
+  if (boxStrength) {
+    return <StrengthFields presentation={form.values.presentation} lockedLabel={boxStrength} doseInputProps={{}} unit={null} onUnitChange={() => {}} volumeInputProps={{}} />
+  }
+  return (
+    <>
+      <View style={styles.row}>
+        <View style={styles.rowDose}>
+          <FormInput
+            name="dosage_per_pill"
+            label="Concentração"
+            required
+            keyboardType="decimal-pad"
+            {...formProps(form, 'dosage_per_pill')}
+            {...(doseError ? { error: 'Escolha a concentração abaixo' } : null)}
+            onChange={onDecimalChange}
+          />
+        </View>
+        <View style={styles.rowUnit}>
+          <FormSelect name="dosage_unit" label="Unidade" required options={UNIT_OPTIONS} {...formProps(form, 'dosage_unit')} onChange={onUnitChange} />
+        </View>
+      </View>
+      {/* Spec 113 (FR-005): mesmo campo e condição do form completo; razão só na gravação. */}
+      <ConcentrationVolumeField
+        dosageUnit={form.values.dosage_unit}
+        presentation={form.values.presentation}
+        inputProps={{ ...formProps(form, 'concentration_volume_ml'), onChange: onDecimalChange }}
+      />
+    </>
+  )
+}
+
+// Concentração da caixa escolhida (AC3.5), na notação do rótulo; null = editável (manual ou sem dose).
+function boxStrengthLabel(filledLabel: string | null, values): string | null {
+  if (!filledLabel || !values.dosage_unit || String(values.dosage_per_pill ?? '').trim() === '') return null
+  return formatConcentration(values.dosage_per_pill, values.dosage_unit, values.concentration_volume_ml || null)
+}
+
+// "Verifique os campos destacados" só ajuda se houver campo destacado. Erro em campo que esta tela não
+// renderiza (ex: regulatory_category vinda da ANVISA) deixava o usuário travado sem nenhuma pista.
+// Reparseia porque `form.errors` só reflete o validate() no render seguinte.
+function invalidMessage(values): string {
+  const issues = medicineCreateSchema.safeParse(values).error?.issues ?? []
+  const hidden = issues.find((issue) => !VISIBLE_FIELDS.includes(String(issue.path[0])))
+  const hasVisible = issues.some((issue) => VISIBLE_FIELDS.includes(String(issue.path[0])))
+  return !hasVisible && hidden ? hidden.message : 'Verifique os campos destacados'
+}
+
 export default function OnboardingMedicineStep() {
   // States (R-010)
   const navigation = useNavigation<any>()
+  // 125 smoke: KAV 'height' (R-303) não devolve a altura ao fechar o teclado no Android edge-to-edge —
+  // sobra faixa e o rodapé sobe. Ligado só com teclado aberto: fechado, vira View e a altura reseta.
+  const keyboardVisible = useKeyboardVisible()
   const route = useRoute<any>()
-  const { medicine, setMedicine, setMedicineSource, setMedicineIntakeUnit, skip } = useOnboarding()
+  const { medicine, setMedicine, setMedicineSource, setMedicineIntakeUnit, skip, finishLater } = useOnboarding()
   const { show } = useToast()
   // 066 E: o que veio da caixa (busca 2C ou código de barras) — mesmo estado do cadastro completo.
   const [filledLabel, setFilledLabel] = useState<string | null>(null)
@@ -146,8 +198,7 @@ export default function OnboardingMedicineStep() {
       applyDraft(valuesFromDraft(base, draft, form.values), draft, 'search')
       return
     }
-    const presentation = singleForm(item.forms)
-    form.setValues(presentation ? { ...base, presentation } : base)
+    form.setValues({ ...base, presentation: singleForm(item.forms) ?? undefined })
     setDoseCheckRequired(false)
     setStrengthChoices([])
     setStrengthLabel(null)
@@ -173,8 +224,9 @@ export default function OnboardingMedicineStep() {
   // Memos (R-010)
   // Voltar = escolher outro caminho (caixa ou busca).
   const headerProps = useMemo(
-    () => ({ step: 1, totalSteps: 4, onBack: () => navigation.goBack(), onSkip: () => skip(1) }),
-    [navigation, skip],
+    // 125 (AC1.0): remédio escolhido na lista/caixa ⇒ sem "Pular" (a saída vira "Terminar depois").
+    () => ({ step: 1, totalSteps: 4, onBack: () => navigation.goBack(), onSkip: filledLabel ? undefined : () => skip(1) }),
+    [navigation, skip, filledLabel],
   )
 
   // Handlers
@@ -201,35 +253,25 @@ export default function OnboardingMedicineStep() {
     [form],
   )
 
-  // /ml → presentation='liquido' (densidade pertence ao tratamento — 022 Fase C).
-  const handleUnitChange = useCallback(
-    (_name, value) => {
-      form.handleChange('dosage_unit', value)
-      form.handleChange('presentation', isLiquidUnit(value) ? 'liquido' : 'comprimido')
-    },
-    [form],
-  )
+  // 125 (FR-004): forma escolhida, nunca derivada da unidade (injetável virava comprimido).
+  const handleUnitChange = useCallback((_name, value) => form.handleChange('dosage_unit', value), [form])
+  const handlePresentation = useCallback((v: string) => form.handleChange('presentation', v), [form])
 
-  const handleContinue = useCallback(() => {
+  const commitMedicine = useCallback((): boolean => {
+    // 125 (AC2.1b): lista com mais de uma forma deixa o chip desmarcado — a pessoa escolhe.
+    if (!form.values.presentation) {
+      show('Escolha como é o remédio.', { variant: 'error' })
+      return false
+    }
     // INV-2 (C-C2): composto ambíguo exige a escolha — o Zod aceita dose vazia.
     if (doseCheckRequired && String(form.values.dosage_per_pill ?? '').trim() === '') {
       setDoseChoiceError(true)
       show('Escolha a concentração do remédio.', { variant: 'error' })
-      return
+      return false
     }
     if (!form.validate()) {
-      // "Verifique os campos destacados" só ajuda se houver campo destacado. Erro em campo
-      // que esta tela não renderiza (ex: regulatory_category vinda da ANVISA) deixava o
-      // usuário travado sem nenhuma pista. Reparseia aqui porque `form.errors` só reflete o
-      // validate() no render seguinte — dentro deste handler ainda é o valor anterior.
-      const issues = medicineCreateSchema.safeParse(form.values).error?.issues ?? []
-      const hidden = issues.find((issue) => !VISIBLE_FIELDS.includes(String(issue.path[0])))
-      const hasVisible = issues.some((issue) => VISIBLE_FIELDS.includes(String(issue.path[0])))
-      show(
-        !hasVisible && hidden ? hidden.message : 'Verifique os campos destacados',
-        { variant: 'error' },
-      )
-      return
+      show(invalidMessage(form.values), { variant: 'error' })
+      return false
     }
     // 066 E (TRACKING_PLAN §5.3): de onde veio o remédio, para o `medicine_added` do passo de estoque.
     const source = filledLabel ? (filledSource === 'scan' ? 'scan' : 'anvisa_search') : 'manual'
@@ -247,19 +289,27 @@ export default function OnboardingMedicineStep() {
     // C-7: a unidade da caixa só vale se a concentração ainda é a da caixa; senão, o padrão do form completo.
     const dosageUnit = form.values.dosage_unit as string | undefined
     setMedicineIntakeUnit(
-      draftIntake?.unit && draftIntake.dosageUnit === dosageUnit ? draftIntake.unit : defaultIntakeUnitFor(dosageUnit),
+      draftIntake?.unit && draftIntake.dosageUnit === dosageUnit
+        ? draftIntake.unit
+        : manualIntakeUnit(form.values.presentation as string, dosageUnit),
     )
-    ;(navigation.navigate as any)(ROUTES.ONBOARDING_TREATMENT)
-  }, [form, show, setMedicine, setMedicineSource, setMedicineIntakeUnit, navigation, doseCheckRequired, filledLabel, filledSource, appliedScanDraft, draftIntake])
+    return true
+  }, [form, show, setMedicine, setMedicineSource, setMedicineIntakeUnit, doseCheckRequired, filledLabel, filledSource, appliedScanDraft, draftIntake])
+
+  const handleContinue = useCallback(() => commitMedicine() && (navigation.navigate as any)(ROUTES.ONBOARDING_TREATMENT), [commitMedicine, navigation])
+  // 125 (AC1.0/C-1): com a caixa conferida, "Terminar depois" grava só o remédio.
+  const handleFinishLater = useCallback(() => commitMedicine() && finishLater(1, 'medicine_only'), [commitMedicine, finishLater])
 
   const hasDose = String(form.values.dosage_per_pill ?? '').trim() !== ''
   const askStrength = doseCheckRequired && !hasDose
+  const boxStrength = boxStrengthLabel(filledLabel, form.values)
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <OnboardingHeader {...(headerProps as any)} />
 
       <KeyboardAvoidingView
+        enabled={keyboardVisible}
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
@@ -287,33 +337,15 @@ export default function OnboardingMedicineStep() {
           />
           <CatalogFieldSuggestions catalog={catalog} field="name" onSheetSelect={applySelection} />
 
-          <View style={styles.row}>
-            <View style={styles.rowDose}>
-              <FormInput
-                name="dosage_per_pill"
-                label="Concentração"
-                required
-                keyboardType="decimal-pad"
-                {...formProps(form, 'dosage_per_pill')}
-                {...(doseChoiceError && askStrength ? { error: 'Escolha a concentração abaixo' } : null)}
-                onChange={handleDecimalChange}
-              />
-            </View>
-            <View style={styles.rowUnit}>
-              <FormSelect
-                name="dosage_unit"
-                label="Unidade"
-                required
-                options={UNIT_OPTIONS}
-                {...formProps(form, 'dosage_unit')}
-                onChange={handleUnitChange}
-              />
-            </View>
-          </View>
-          {/* Spec 113 (FR-005): mesmo campo e condição do form completo; razão só na gravação. */}
-          <ConcentrationVolumeField
-            dosageUnit={form.values.dosage_unit as string | undefined}
-            inputProps={{ ...formProps(form, 'concentration_volume_ml'), onChange: handleDecimalChange }}
+          <Text style={styles.fieldLabel}>Como é o remédio?</Text>
+          <PresentationChips value={form.values.presentation as string | undefined} onChange={handlePresentation} />
+          {/* 125 (AC3.5, hi-fi F-3b): caixa da lista com dose ⇒ concentração e volume vêm dela, só leitura; "Trocar" é a saída. */}
+          <ConfiraStrength
+            form={form}
+            boxStrength={boxStrength}
+            doseError={doseChoiceError && askStrength}
+            onDecimalChange={handleDecimalChange}
+            onUnitChange={handleUnitChange}
           />
           <StrengthChoiceCard
             askStrength={askStrength}
@@ -339,6 +371,7 @@ export default function OnboardingMedicineStep() {
           primaryLabel="Continuar"
           onPrimary={handleContinue}
           primaryLoading={false}
+          footer={filledLabel ? <FinishLaterButton onPress={handleFinishLater} /> : null}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -351,6 +384,12 @@ const ONBOARDING_WARNING_BORDER = '#fef3c7'
 const ONBOARDING_WARNING_TEXT = '#b45309'
 
 const styles = StyleSheet.create({
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+    marginBottom: -spacing[2],
+  },
   doseHint: {
     fontSize: 13,
     lineHeight: 18,

@@ -23,7 +23,11 @@ import OnboardingWelcomeStep from './screens/OnboardingWelcomeStep'
 import OnboardingMedicineChoiceStep from './screens/OnboardingMedicineChoiceStep'
 import OnboardingMedicineSearchStep from './screens/OnboardingMedicineSearchStep'
 import OnboardingMedicineStep from './screens/OnboardingMedicineStep'
+import OnboardingPresentationStep from './screens/OnboardingPresentationStep'
+import OnboardingNameStep from './screens/OnboardingNameStep'
+import OnboardingStrengthStep from './screens/OnboardingStrengthStep'
 import OnboardingTreatmentStep from './screens/OnboardingTreatmentStep'
+import OnboardingTreatmentReviewStep from './screens/OnboardingTreatmentReviewStep'
 import OnboardingStockStep from './screens/OnboardingStockStep'
 import OnboardingStockInitialBalanceStep from './screens/OnboardingStockInitialBalanceStep'
 import OnboardingConsentStep from './screens/OnboardingConsentStep'
@@ -51,7 +55,9 @@ export default function OnboardingNavigator({ onComplete }) {
   // Tratamento em configuração no passo 3.
   const [treatment, setTreatment] = useState(null)
   // 096 B3: modo escolhido no S4; gravado só no S1, depois do A.
-  const [stockTracking, setStockTracking] = useState(false)
+  // 125-1a (PO smoke 18/11): null = não escolheu ("Terminar depois") ⇒ a gravação NÃO toca a preferência e o
+  // app fica no default do banco (estoque ligado, value prop da loja). Só o passo de estoque grava escolha.
+  const [stockTracking, setStockTracking] = useState<boolean | null>(null)
   // Escritas do setup vivem AQUI (não no S1): os guardas de idempotência sobrevivem ao S1 desmontar.
   const { writeSetup: writeSetupRaw } = useOnboardingSetupWrites()
   // 065 C2 (G-4): `complete` sai UMA vez. Na opção 2 do passo de estoque `markCompleted` roda antes
@@ -73,10 +79,22 @@ export default function OnboardingNavigator({ onComplete }) {
   // Pular ≠ concluir (065 C2, G-4). `step` = posição do header (1..3) — onde a pessoa desistiu.
   // 096 B3: pular leva ao S1 sem dado ("Antes de entrar no app"); a conclusão (e o onComplete) só
   // acontece lá, depois do A. `skipped` segue suprimindo o `complete` (o `finish` do S1 respeita).
-  const skip = useMemo(() => async (step) => {
+  // `inPlace` (125-1a, smoke 18/11): "Sair sem salvar" com o A já marcado conclui ali mesmo — não reabre o
+  // mesmo consentimento em branco. Registra o skip igual; quem chama faz o grant + finish.
+  const skip = useMemo(() => async (step, opts?: { inPlace?: boolean }) => {
     skipped.current = true
     logEvent(EVENTS.ONBOARDING_SKIP, { surface: SURFACES.MOBILE, step })
+    if (opts?.inPlace) return
     if (navigationRef.isReady()) (navigationRef.navigate as any)(ROUTES.ONBOARDING_CONSENT, { variant: 'empty' })
+  }, [])
+
+  // 125 (AC1.0/AC1.1): com remédio, a saída é "Terminar depois" — consentimento COM dado, que grava o
+  // completo (`medicine_only` antes do estoque; `full` no estoque, em dose-only — AC1.1b). Não marca
+  // `skipped`: concluir gravando é conclusão. `step` volta no "Sair sem salvar" (vira skip).
+  const finishLater = useMemo(() => (step, variant) => {
+    // "Terminar depois" = não escolher agora: zera escolha anterior (ex.: voltou do consentimento ao estoque).
+    setStockTracking(null)
+    if (navigationRef.isReady()) (navigationRef.navigate as any)(ROUTES.ONBOARDING_CONSENT, { variant, step })
   }, [])
 
   // Pulou, voltou e concluiu COM dados: deixou de ser skip (RC6 #900 — sem isto a pessoa sumia do
@@ -116,9 +134,10 @@ export default function OnboardingNavigator({ onComplete }) {
       writeSetup,
       finish,
       skip,
+      finishLater,
       markCompleted,
     }),
-    [medicine, medicineSource, medicineIntakeUnit, treatment, stockTracking, writeSetup, finish, skip, markCompleted],
+    [medicine, medicineSource, medicineIntakeUnit, treatment, stockTracking, writeSetup, finish, skip, finishLater, markCompleted],
   )
 
   // Entrou no wizard. Reabrir o app no meio conta nova tentativa (declarado, analysis-prC G-8).
@@ -135,7 +154,12 @@ export default function OnboardingNavigator({ onComplete }) {
         <Stack.Screen name={ROUTES.ONBOARDING_MEDICINE} component={OnboardingMedicineChoiceStep} />
         <Stack.Screen name={ROUTES.ONBOARDING_MEDICINE_SEARCH} component={OnboardingMedicineSearchStep} />
         <Stack.Screen name={ROUTES.ONBOARDING_MEDICINE_FORM} component={OnboardingMedicineStep} />
+        {/* 125 (AC2.0): busca sem resultado ⇒ forma › nome › dosagem, telas próprias. */}
+        <Stack.Screen name={ROUTES.ONBOARDING_MEDICINE_PRESENTATION} component={OnboardingPresentationStep} />
+        <Stack.Screen name={ROUTES.ONBOARDING_MEDICINE_NAME} component={OnboardingNameStep} />
+        <Stack.Screen name={ROUTES.ONBOARDING_MEDICINE_STRENGTH} component={OnboardingStrengthStep} />
         <Stack.Screen name={ROUTES.ONBOARDING_TREATMENT} component={OnboardingTreatmentStep} />
+        <Stack.Screen name={ROUTES.ONBOARDING_TREATMENT_REVIEW} component={OnboardingTreatmentReviewStep} />
         <Stack.Screen name={ROUTES.ONBOARDING_STOCK} component={OnboardingStockStep} />
         {/* 096 B3: S1 — consentimento A/B; único ponto que grava o setup. */}
         <Stack.Screen name={ROUTES.ONBOARDING_CONSENT} component={OnboardingConsentStep} />

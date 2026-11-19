@@ -95,6 +95,10 @@ export async function fetchIntervalCadenceAvailability(
   client: SupabaseClient<Database>,
   userId: string | null | undefined,
   now: Date = getRawNow(), // instante real: compara com timestamps do banco (getNow desloca o relógio)
+  // 125 (smoke 18/11): o aparelho que pergunta entra como registro recente. Conta nova ainda não tem
+  // heartbeat gravado ⇒ a regra via "nenhum registro" e escondia o Mensal de todo cadastro novo.
+  // Um aparelho ANTIGO da mesma pessoa continua barrando (a regra exige TODOS ≥ mínima).
+  selfRows: CadenceInstallRow[] = [],
 ): Promise<boolean> {
   if (!userId) return false
   try {
@@ -114,7 +118,7 @@ export async function fetchIntervalCadenceAvailability(
     const d = asRows(devices.data)
     const a = asRows(activity.data)
     if (d.length >= CADENCE_ROWS_LIMIT || a.length >= CADENCE_ROWS_LIMIT) return false
-    return isIntervalCadenceAvailable(d, a, now)
+    return isIntervalCadenceAvailable([...d, ...selfRows], a, now)
   } catch {
     return false
   }

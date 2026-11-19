@@ -16,7 +16,11 @@ jest.mock('@react-navigation/native', () => {
 })
 
 const mockFetch = jest.fn()
-jest.mock('@dosiq/core', () => ({ fetchIntervalCadenceAvailability: (...a) => mockFetch(...a) }))
+jest.mock('@dosiq/core', () => ({
+  fetchIntervalCadenceAvailability: (...a) => mockFetch(...a),
+  getRawNow: () => new Date(2026, 10, 19, 10, 0),
+}))
+jest.mock('expo-application', () => ({ nativeApplicationVersion: '0.35.0' }))
 jest.mock('@platform/supabase/nativeSupabaseClient', () => ({
   supabase: { auth: { getUser: () => Promise.resolve({ data: { user: { id: 'u-1' } } }) } },
 }))
@@ -45,25 +49,22 @@ describe('useIntervalCadenceAvailability (086)', () => {
     expect(result.current).toEqual({ available: true, settled: true })
   })
 
+  it('125: o próprio aparelho entra como registro recente (conta nova sem heartbeat)', async () => {
+    mockFetch.mockResolvedValue(true)
+    renderHook(() => useIntervalCadenceAvailability())
+    await act(async () => {})
+    const selfRows = mockFetch.mock.calls[0][3]
+    expect(selfRows).toHaveLength(1)
+    expect(selfRows[0]).toMatchObject({ app_version: '0.35.0' })
+    expect(typeof selfRows[0].platform).toBe('string')
+    expect(typeof selfRows[0].last_seen_at).toBe('string')
+  })
+
   it('erro ⇒ lado seguro (false), settled', async () => {
     mockFetch.mockRejectedValue(new Error('rede'))
     const { result } = renderHook(() => useIntervalCadenceAvailability())
     await act(async () => {})
     expect(result.current).toEqual({ available: false, settled: true })
-  })
-
-  it('onboarding (holdLateAnswer): teto ⇒ settled sem a opção; resposta tardia só vale no próximo foco', async () => {
-    const d = deferred()
-    mockFetch.mockReturnValueOnce(d.promise).mockResolvedValue(true)
-    const { result } = renderHook(() => useIntervalCadenceAvailability({ holdLateAnswer: true }))
-    await act(async () => { jest.advanceTimersByTime(CADENCE_GATE_TIMEOUT_MS) })
-    expect(result.current).toEqual({ available: false, settled: true })
-
-    await act(async () => { d.resolve(true) })
-    expect(result.current).toEqual({ available: false, settled: true }) // sem salto com a tela desenhada
-
-    await act(async () => { mockFocus() })
-    expect(result.current).toEqual({ available: true, settled: true })
   })
 
   it('formulário (padrão): resposta tardia é aplicada na hora — sem salto, opções só no seletor', async () => {

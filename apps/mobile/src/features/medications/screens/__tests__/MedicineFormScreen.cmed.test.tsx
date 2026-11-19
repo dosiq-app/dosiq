@@ -84,9 +84,11 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
   })
 
   it('cadastro sem a busca registra source manual no medicine_added', async () => {
-    const { getByText, getByLabelText } = render(<MedicineFormScreen />)
+    const { getByText, getByLabelText, getByTestId } = render(<MedicineFormScreen />)
     fireEvent.changeText(getByLabelText('Nome'), 'Remédio X')
     fireEvent.changeText(getByLabelText('Concentração'), '5')
+    fireEvent.press(getByTestId('presentation-chip-comprimido'))
+    fireEvent.press(getByTestId('unit-chip-mg'))
     await act(async () => fireEvent.press(getByText('Criar medicamento')))
     expect(mockCreate.mock.calls[0][1]).toMatchObject({ source: 'manual' })
   })
@@ -129,11 +131,12 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
   })
 
   it('força que o app não converte (B8 "500 mg/"): campos vazios e a referência da embalagem (C-C10)', () => {
-    const { getByText, queryByText, queryByDisplayValue } = render(<MedicineFormScreen />)
+    const { getByText, queryByDisplayValue, queryAllByRole } = render(<MedicineFormScreen />)
     select({ anvisaItem: ITEM, cmedDraft: draft({ dosage_per_pill: null, dosage_unit: null, strengthLabel: '500 mg/', presentation: 'injetavel' }) })
     expect(getByText('Na embalagem: 500 mg/')).toBeTruthy()
     expect(queryByDisplayValue('500')).toBeNull()
-    expect(queryByText('mg', { exact: true })).toBeNull()
+    // 125: unidade em chips — nenhuma marcada (antes: select vazio).
+    expect(queryAllByRole('radio', { checked: true }).map((n) => n.props.testID).filter((id) => String(id).startsWith('unit-chip'))).toEqual([])
   })
 
   it('genérico: sem laboratório e sem registro (D11)', async () => {
@@ -157,32 +160,37 @@ describe('MedicineFormScreen — rascunho da CMED (066 Slice C)', () => {
   })
 
   it('forms com valor único pré-preenche a apresentação', async () => {
-    const { getByText, getByLabelText } = render(<MedicineFormScreen />)
+    const { getByText, getByLabelText, getByTestId } = render(<MedicineFormScreen />)
     select({ anvisaItem: { ...ITEM, forms: ['injetavel'] } })
+    expect(getByTestId('presentation-chip-injetavel').props.accessibilityState).toMatchObject({ checked: true })
     fireEvent.changeText(getByLabelText('Concentração'), '5')
+    fireEvent.press(getByTestId('unit-chip-mg/ml'))
     await act(async () => fireEvent.press(getByText('Criar medicamento')))
     expect(mockCreate.mock.calls[0][0].presentation).toBe('injetavel')
   })
 
-  it('forms com vários valores filtra o dropdown e mantém "Ver todas" (INV-3)', () => {
-    const { getByLabelText, getByText, queryByText } = render(<MedicineFormScreen />)
+  // Spec 125 (AC2.1/AC2.1b): os 7 chips do CHECK; item com mais de uma forma deixa o chip desmarcado.
+  it('forms com vários valores: 7 chips, nenhum marcado, salvar pede a forma', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
+    const { getByTestId, getByText } = render(<MedicineFormScreen />)
     select({ anvisaItem: { ...ITEM, forms: ['comprimido', 'liquido'] } })
-    fireEvent.press(getByLabelText('Apresentação'))
-    expect(getByText('Ver todas')).toBeTruthy()
-    expect(queryByText('Pomada')).toBeNull()
-    fireEvent.press(getByText('Ver todas'))
-    fireEvent.press(getByLabelText('Apresentação'))
-    expect(getByText('Pomada')).toBeTruthy()
+    for (const p of ['comprimido', 'capsula', 'liquido', 'injetavel', 'pomada', 'spray', 'outro']) {
+      expect(getByTestId(`presentation-chip-${p}`).props.accessibilityState).toMatchObject({ checked: false })
+    }
+    await act(async () => fireEvent.press(getByText('Criar medicamento')))
+    expect(alert).toHaveBeenCalledWith('Verifique o formulário', 'Escolha como é o remédio.')
+    expect(mockCreate).not.toHaveBeenCalled()
+    alert.mockRestore()
   })
 
   it('forma escolhida à mão não é sobrescrita por forms do próximo item', async () => {
-    const { getByLabelText, getByText } = render(<MedicineFormScreen />)
-    fireEvent.press(getByLabelText('Apresentação'))
-    fireEvent.press(getByText('Pomada'))
+    const { getByLabelText, getByText, getByTestId } = render(<MedicineFormScreen />)
+    fireEvent.press(getByTestId('presentation-chip-pomada'))
     select({ anvisaItem: { ...ITEM, forms: ['comprimido'] } })
     fireEvent.changeText(getByLabelText('Concentração'), '5')
     await act(async () => fireEvent.press(getByText('Criar medicamento')))
-    expect(mockCreate.mock.calls[0][0].presentation).toBe('pomada')
+    // C-3: pomada grava unidade 'un'
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({ presentation: 'pomada', dosage_unit: 'un' })
   })
 })
 
@@ -239,6 +247,8 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
     const utils = render(<MedicineFormScreen />)
     typeAndSettle(utils, 'Nome', 'tizerpatida')
     fireEvent.changeText(utils.getByLabelText('Concentração'), '5')
+    fireEvent.press(utils.getByTestId('presentation-chip-injetavel'))
+    fireEvent.press(utils.getByTestId('unit-chip-mg/ml'))
     await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
     const payload = mockCreate.mock.calls[0][0]
     expect(payload.name).toBe('tizerpatida')
@@ -253,6 +263,8 @@ describe('MedicineFormScreen — sugestões do catálogo (119 B)', () => {
     typeAndSettle(utils, 'Nome', 'mounjaro')
     expect(utils.queryByTestId('catalog-suggestions')).toBeNull()
     fireEvent.changeText(utils.getByLabelText('Concentração'), '5')
+    fireEvent.press(utils.getByTestId('presentation-chip-injetavel'))
+    fireEvent.press(utils.getByTestId('unit-chip-mg/ml'))
     await act(async () => fireEvent.press(utils.getByText('Criar medicamento')))
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })

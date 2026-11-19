@@ -1,3 +1,4 @@
+import type React from 'react'
 import {
   View,
   Text,
@@ -17,6 +18,17 @@ export default function FormActions({
   secondaryLabel = undefined,
   onSecondary = undefined,
   destructive = false,
+  footer = null,
+}: {
+  primaryLabel: string
+  onPrimary: () => void
+  primaryDisabled?: boolean
+  primaryLoading: boolean
+  secondaryLabel?: string
+  onSecondary?: () => void
+  destructive?: boolean
+  /** Ação terciária abaixo dos botões (ex.: "Terminar depois", spec 125) — dentro do inset da barra de gestos. */
+  footer?: React.ReactNode
 }) {
   // Cor de fundo do botão primário (destruidor ou normal)
   const primaryBgColor = destructive ? colors.status.error : colors.primary[700]
@@ -36,8 +48,9 @@ export default function FormActions({
     ? spacing[3]
     : Math.max(spacing[3], insets.bottom)
 
-  return (
-    <View style={[styles.row, { paddingBottom: bottomPad }]}>
+  // Com `footer`, o inset vai para o contêiner: a ação terciária fica ACIMA da barra de gestos.
+  const row = (
+    <View style={[styles.row, footer ? null : { paddingBottom: bottomPad }]}>
       {/* Botão primário */}
       <TouchableOpacity
         style={[
@@ -69,6 +82,13 @@ export default function FormActions({
           <Text style={styles.secondaryLabel}>{secondaryLabel}</Text>
         </TouchableOpacity>
       ) : null}
+    </View>
+  )
+  if (!footer) return row
+  return (
+    <View style={{ paddingBottom: bottomPad }}>
+      {row}
+      {footer}
     </View>
   )
 }

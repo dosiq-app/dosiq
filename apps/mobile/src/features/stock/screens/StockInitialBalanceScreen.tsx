@@ -104,7 +104,7 @@ export default function StockInitialBalanceScreen({
 
           {state.medicines && state.medicines.length === 0 ? (
             <EmptyState
-              icon="💊"
+              icon={<Pill size={28} color={colors.brand.primary} strokeWidth={1.75} />}
               message="Você ainda não tem medicamentos ativos. Pode ativar o controle de estoque mesmo assim — os saldos entram quando você cadastrar."
             />
           ) : (

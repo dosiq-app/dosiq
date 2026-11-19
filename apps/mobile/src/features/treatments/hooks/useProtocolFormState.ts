@@ -8,9 +8,9 @@
 //
 // Retorna API plana consumida pelo screen; tudo memoizado/estável.
 
-import { useCallback, useEffect, useState, startTransition } from 'react'
+import { useCallback, useEffect, useRef, useState, startTransition } from 'react'
 import { useFormState } from '@shared/hooks/useFormState'
-import { protocolCreateSchema } from '@dosiq/core'
+import { protocolCreateSchema, setupDefaults } from '@dosiq/core'
 import { useProtocol } from './useProtocols'
 import { treatmentPlanService } from '../services/treatmentPlanService'
 
@@ -86,6 +86,8 @@ export function useProtocolFormState({ editId, todayIso, presetPlanId }) {
   }))
   const [prefilled, setPrefilled] = useState(false)
 
+  // 125 T015: a dose que o default da forma pôs (para não sobrescrever a digitada).
+  const autoDose = useRef<string | null>(null)
   const { data: existing, loading: existingLoading, error: existingError } = useProtocol(editId)
 
   // Effects — load planos
@@ -122,12 +124,32 @@ export function useProtocolFormState({ editId, todayIso, presetPlanId }) {
   }, [editId, prefilled, existing, todayIso, form])
 
   // Handlers — wrappers para o screen
+  // 125 (AC3.1/T015): na criação, a dose nasce pela forma — '1' só onde a dose é contagem
+  // (comprimido/cápsula; caneta por aplicação); mg/mL/UI nasce vazia. Só troca a dose que o próprio
+  // default pôs (nunca a digitada).
+  // Emenda PO smoke iOS 19/11: a dose digitada só sobrevive à troca se a forma E a unidade forem as
+  // mesmas (outra marca do mesmo tratamento). Forma/unidade diferente ⇒ o número muda de sentido
+  // ("15" mL viraria 15 comprimidos) ⇒ volta ao default da nova forma.
   const selectMedicine = useCallback(
     (med) => {
+      const prev = medicine
       setMedicine(med)
-      form.handleChange('medicine_id', med.id)
+      const current = String(form.values.dosage_per_intake ?? '')
+      const untouched = current === '' || current === autoDose.current
+      const sameKind = !!prev && prev.presentation === med?.presentation && prev.dosage_unit === med?.dosage_unit
+      // Vale também na edição (smoke iOS 19/11): trocar o remédio por outra forma/unidade num tratamento
+      // salvo carregava "15" (gotas) para o comprimido. Mesma forma+unidade ⇒ edição mantém a dose salva.
+      if (sameKind && (editId || !untouched)) {
+        form.handleChange('medicine_id', med.id)
+        return
+      }
+      const dose = setupDefaults(med?.presentation, med?.dosage_unit).defaultDose
+      autoDose.current = dose
+      // A unidade da tomada e a densidade são da forma anterior: herdá-las gravava comprimido com
+      // `intake_unit='gotas'` (smoke iOS 19/11). Zera; o efeito do form repõe o default do líquido.
+      form.setValues({ ...form.values, medicine_id: med.id, dosage_per_intake: dose, intake_unit: null, units_per_ml: '' })
     },
-    [form]
+    [form, editId, medicine]
   )
 
   const changePlanField = useCallback(

@@ -65,6 +65,8 @@ describe('useProtocolFormSubmit × preparo (PO-120-3)', () => {
     await act(async () => { await result.current.submit() })
     await flush()
     expect(mutation.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ goBack: true }))
+    // 125 FR-020: no form a dose é da pessoa; caneta por aplicação sem aviso ⇒ plausível.
+    expect(mutation.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ doseSource: 'manual', dosePlausible: true }))
     expect(order).toEqual(['create', 'primer'])
     expect(mockRequestOS).not.toHaveBeenCalled()
     expect(mockOpen).toHaveBeenCalledWith({

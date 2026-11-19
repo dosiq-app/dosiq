@@ -101,6 +101,28 @@ export type { ConsentGateMode, ConsentGateDecision } from './consentGate'
 export { weightChange } from './weightChange'
 export type { WeightChange } from './weightChange'
 
+// Setup do tratamento: defaults por forma, plausibilidade e frase de conferência (spec 125, INV-6)
+export {
+  setupDefaults,
+  toSetupPresentation,
+  checkDosePlausibility,
+  denominatorLooksLikePackage,
+  describeTreatment,
+  nextDoseDate,
+  anchorFromApplication,
+} from './treatmentSetup'
+export type {
+  SetupPresentation,
+  SetupFrequencyChoice,
+  SetupDefaults,
+  DosePlausibilityKind,
+  DosePlausibilityWarning,
+  DosePlausibilityInput,
+  DescribeTreatmentInput,
+  TreatmentDescription,
+  ApplicationAnchorInput,
+} from './treatmentSetup'
+
 // Medida × etapa do tratamento (contrato 069 FR-010/FR-012; criado pela 097 DS-7)
 export {
   buildTreatmentMeasureSeries,
