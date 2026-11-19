@@ -73,7 +73,7 @@ export function AnvisaBanner({ onPress, filledLabel = null, children = null, fil
           <Text style={styles.placeholder}>Buscar remédio pelo nome</Text>
         </Pressable>
         {children}
-        <Text style={styles.support}>Preenche nome, concentração e apresentação com os dados oficiais.</Text>
+        <Text style={styles.support}>Preenche nome, como é e dosagem com os dados oficiais.</Text>
       </View>
       <View style={styles.divider} accessibilityRole="text">
         <View style={styles.dividerLine} />

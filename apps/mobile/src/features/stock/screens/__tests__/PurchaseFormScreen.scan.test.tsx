@@ -3,8 +3,18 @@
 // mexe no form e abre o sheet de alerta (C-14). O remédio travado nunca muda sozinho. Compra sem leitura continua igual.
 
 import React from 'react'
-import { render, fireEvent, act, waitFor } from '@testing-library/react-native'
+import { render as rtlRender, fireEvent, act, waitFor } from '@testing-library/react-native'
+
 import PurchaseFormScreen from '../PurchaseFormScreen'
+
+// 125 1c (AC7.3/AC7.7): campos que este teste lê moram em "Mais detalhes", fechado por padrão — o
+// bloco é aberto logo após o render. O "nasce fechado" tem teste próprio (formsOrder1c.test.tsx).
+function render(ui) {
+  const utils = rtlRender(ui)
+  const more = utils.queryByTestId('purchase-more-details')
+  if (more) fireEvent.press(more)
+  return utils
+}
 
 const mockCreatePurchase = jest.fn()
 const mockCreateLiquidPurchase = jest.fn()
@@ -297,5 +307,19 @@ describe('caixa de outro remédio (PO-10)', () => {
     fireEvent.press(utils.getByText('Continuar com Amoxicilina + Clavulanato'))
     expect(utils.getByDisplayValue('42')).toBeTruthy()
     expect(utils.getByDisplayValue('EMS')).toBeTruthy()
+  })
+})
+
+describe('remédio nos params (smoke 1c, PO 19/11)', () => {
+  it('a caixa entra no 1º render, sem esperar o getById, e o getById não sobrescreve o laboratório lido', async () => {
+    let resolveGet: (m: any) => void = () => {}
+    mockGetById.mockReturnValue(new Promise((r) => { resolveGet = r }))
+    mockRoute.current = { params: { ...BASE_PARAMS, medicine: TRAVADO, scanDraft: scanDraft(), scanEan: EAN } }
+    const { getByDisplayValue } = render(<PurchaseFormScreen />)
+    await act(async () => {})
+    expect(getByDisplayValue('21')).toBeTruthy()
+    expect(getByDisplayValue('EMS')).toBeTruthy()
+    await act(async () => resolveGet({ ...TRAVADO, laboratory: 'Outro Lab', regulatory_category: 'Novo' }))
+    expect(getByDisplayValue('EMS')).toBeTruthy()
   })
 })

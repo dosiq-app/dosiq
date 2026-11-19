@@ -1,5 +1,13 @@
 // Utilitários puros das sugestões do catálogo (spec 119 fatia B), fora dos componentes (fast refresh).
-import { buildNameSuggestionIndex, normalizeText, suggestByName } from '@dosiq/core'
+import {
+  buildNameSuggestionIndex,
+  medicineDraftFromRow,
+  normalizeText,
+  rowsForAnvisaItem,
+  setupDefaults,
+  suggestByName,
+  type CmedIndex,
+} from '@dosiq/core'
 
 /** Rótulo completo de uma sugestão para leitor de tela (RC2 D-7). */
 export function suggestionLabel(item: any): string {
@@ -71,16 +79,48 @@ const STRENGTH_KEYS = ['dosage_per_pill', 'dosage_unit', 'presentation', 'concen
 export function keepSavedStrength<T extends Record<string, any>>(saved: any, values: T): T {
   if (!saved) return values
   const out: Record<string, any> = { ...values }
+  const savedHasDose = !isBlank(saved.dosage_per_pill)
   for (const key of STRENGTH_KEYS) {
-    if (saved[key] !== null && saved[key] !== undefined && saved[key] !== '') out[key] = saved[key]
+    // Unidade sem número não é força conhecida (smoke 1c, "Aas" null + 'g') — a da caixa vale.
+    if (key === 'dosage_unit' && !savedHasDose) continue
+    if (!isBlank(saved[key])) out[key] = saved[key]
   }
   return out as T
 }
 
-export function catalogLinkPayload(medicine: any, draft: any): Record<string, unknown> | null {
-  const dose = medicine?.dosage_per_pill === '' || medicine?.dosage_per_pill == null ? null : Number(medicine.dosage_per_pill)
+function isBlank(value: unknown): boolean {
+  return value === null || value === undefined || value === ''
+}
+
+const SOLID_FORMS = new Set(['comprimido', 'capsula'])
+
+/**
+ * Força/forma que o vínculo grava, ou `null` quando a caixa tem outra força conhecida (não vincula).
+ * Smoke 1c (PO 19/11): 'un' é contagem, não força — com caixa de comprimido/cápsula, o cadastro em 'un'
+ * (ou forma "outro"/vazia) assume forma, número e unidade da caixa; estoque e logs seguem em unidades.
+ * Líquido/injetável não: estoque/log passariam a mL/mg. Unidade sem número também não é força conhecida
+ * ("Aas" comprimido null + 'g'): a caixa traz número E unidade. Com número, unidade diferente segue não
+ * vinculando (R-299: o histórico lê a força viva do remédio).
+ */
+function strengthPayload(medicine: any, draft: any): Record<string, unknown> | null {
+  const countOnly = medicine?.dosage_unit === 'un' && SOLID_FORMS.has(draft.presentation)
+  const dose = countOnly || isBlank(medicine?.dosage_per_pill) ? null : Number(medicine.dosage_per_pill)
   if (dose !== null && draft.dosage_per_pill != null && dose !== draft.dosage_per_pill) return null
-  if (medicine?.dosage_unit && draft.dosage_unit && medicine.dosage_unit !== draft.dosage_unit) return null
+  const knownUnit = dose !== null ? medicine?.dosage_unit : null
+  if (knownUnit && draft.dosage_unit && knownUnit !== draft.dosage_unit) return null
+  const takesPresentation = !medicine?.presentation || (countOnly && !SOLID_FORMS.has(medicine.presentation))
+  // Pomada/spray/outro ficam em 'un' (smoke 1c): a força da caixa não entra.
+  const unitOnly = setupDefaults(takesPresentation ? draft.presentation : medicine.presentation).strengthOptional
+  const out: Record<string, unknown> = {}
+  if (!unitOnly && dose === null && draft.dosage_per_pill != null) out.dosage_per_pill = draft.dosage_per_pill
+  if (!unitOnly && !knownUnit && draft.dosage_unit) out.dosage_unit = draft.dosage_unit
+  if (takesPresentation && draft.presentation) out.presentation = draft.presentation
+  return out
+}
+
+export function catalogLinkPayload(medicine: any, draft: any): Record<string, unknown> | null {
+  const strength = strengthPayload(medicine, draft)
+  if (!strength) return null
   const payload: Record<string, unknown> = {
     name: draft.name,
     active_ingredient: draft.active_ingredient,
@@ -89,10 +129,31 @@ export function catalogLinkPayload(medicine: any, draft: any): Record<string, un
     therapeutic_class_code: draft.therapeutic_class_code,
     regulatory_category: draft.regulatory_category,
     anvisa_registration: draft.anvisa_registration,
+    ...strength,
   }
-  if (dose === null && draft.dosage_per_pill != null) payload.dosage_per_pill = draft.dosage_per_pill
-  if (!medicine?.dosage_unit && draft.dosage_unit) payload.dosage_unit = draft.dosage_unit
-  if (!medicine?.presentation && draft.presentation) payload.presentation = draft.presentation
   for (const key of Object.keys(payload)) if (payload[key] === undefined) delete payload[key]
   return payload
+}
+
+/**
+ * Smoke 1c (PO 19/11): o convite só oferece o que o "Sim, é esse" consegue aplicar. Item da lista
+ * oficial é vinculável quando alguma caixa dele (CMED) tem código de classe e passa no
+ * `catalogLinkPayload` deste remédio. Sem caixa vinculável, o item sai do convite.
+ */
+export function linkableCatalogMatches(index: CmedIndex, items: any[], medicine: any): any[] {
+  return items.filter((item) =>
+    rowsForAnvisaItem(index, item).some((rowIdx) => {
+      const row = index.rows[rowIdx]
+      if (!row) return false
+      const draft = medicineDraftFromRow(row)
+      return !!draft.therapeutic_class_code && catalogLinkPayload(medicine, draft) !== null
+    })
+  )
+}
+
+/** Assinatura do que decide o veredito: muda a força/nome do remédio ⇒ recalcula. */
+export function catalogLinkSignature(medicine: any): string {
+  return [medicine?.name, medicine?.active_ingredient, medicine?.presentation, medicine?.dosage_per_pill, medicine?.dosage_unit]
+    .map((v) => String(v ?? ''))
+    .join('|')
 }

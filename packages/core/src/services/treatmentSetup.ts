@@ -5,7 +5,7 @@
 // 1 aplicação de caneta em mg/UI) ou, na 1b, a TRANSCRIÇÃO da embalagem de dose única (concentração ×
 // volume da unidade — dado da caixa, não sugestão clínica; PO 2026-11-17/19).
 
-import { isLiquidDosageUnit, formatNumberPtBR } from '../utils/doseUnit'
+import { formatNumberPtBR } from '../utils/doseUnit'
 import { cleanFloat } from '../utils/formUtils'
 import { parseLocalDate, formatLocalDate, addDays } from '../utils/dateUtils'
 
@@ -20,6 +20,11 @@ export interface SetupDefaults {
   strengthUnits: string[]
   /** Unidade gravada quando a forma não tem dosagem (pomada/spray sem força ⇒ 'un', PO 2026-11-17 C-3). */
   fixedDosageUnit: string | null
+  /**
+   * Dosagem opcional (pomada/spray/outro): só 'un', número livre que o app NÃO usa em conta (smoke 1c,
+   * PO 19/11 — as unidades dérmicas ainda não foram desenhadas). O onboarding pula a pergunta.
+   */
+  strengthOptional: boolean
   /** Pergunta da dose; null = a forma resolve a dose (sem campo). */
   doseQuestion: string | null
   /** Dose inicial: '1' só onde a dose é contagem de unidades; '' (vazia) senão (FR-008). */
@@ -56,6 +61,7 @@ function injectableDefaults(dosageUnit: string | null | undefined): SetupDefault
     presentation: 'injetavel',
     strengthUnits: ['mg/ml', 'ui/ml', 'mg', 'ui'],
     fixedDosageUnit: null,
+    strengthOptional: false,
     doseQuestion: perPen ? null : 'Quanto aplica de cada vez?',
     defaultDose: perPen ? '1' : '',
     intakeUnits,
@@ -72,7 +78,6 @@ function injectableDefaults(dosageUnit: string | null | undefined): SetupDefault
  */
 export function setupDefaults(presentationInput: string | null | undefined, dosageUnit?: string | null): SetupDefaults {
   const presentation = toSetupPresentation(presentationInput)
-  const liquidUnit = isLiquidDosageUnit(dosageUnit)
   switch (presentation) {
     case 'comprimido':
     case 'capsula':
@@ -80,6 +85,7 @@ export function setupDefaults(presentationInput: string | null | undefined, dosa
         presentation,
         strengthUnits: ['mg', 'mcg', 'g', 'ui'],
         fixedDosageUnit: null,
+        strengthOptional: false,
         doseQuestion: presentation === 'comprimido' ? 'Quantos comprimidos por vez?' : 'Quantas cápsulas por vez?',
         defaultDose: '1',
         intakeUnits: [],
@@ -92,6 +98,7 @@ export function setupDefaults(presentationInput: string | null | undefined, dosa
         presentation,
         strengthUnits: ['mg/ml', 'ui/ml'],
         fixedDosageUnit: null,
+        strengthOptional: false,
         doseQuestion: 'Quanto toma de cada vez?',
         defaultDose: '',
         intakeUnits: dosageUnit === 'ui/ml' ? ['UI', 'gotas'] : ['gotas', 'ml'],
@@ -104,8 +111,9 @@ export function setupDefaults(presentationInput: string | null | undefined, dosa
     case 'pomada':
       return {
         presentation,
-        strengthUnits: [],
+        strengthUnits: ['un'],
         fixedDosageUnit: 'un',
+        strengthOptional: true,
         doseQuestion: null,
         defaultDose: '1',
         intakeUnits: [],
@@ -116,9 +124,10 @@ export function setupDefaults(presentationInput: string | null | undefined, dosa
     case 'spray':
       return {
         presentation,
-        strengthUnits: ['mcg', 'mg/ml'],
+        strengthUnits: ['un'],
         // Spray sem força digitada também precisa de unidade no Zod (C-3).
         fixedDosageUnit: 'un',
+        strengthOptional: true,
         doseQuestion: null,
         defaultDose: '1',
         intakeUnits: [],
@@ -129,10 +138,11 @@ export function setupDefaults(presentationInput: string | null | undefined, dosa
     default:
       return {
         presentation: 'outro',
-        strengthUnits: ['mg', 'mcg', 'g', 'mg/ml', 'ui/ml', 'ui', 'un'],
-        fixedDosageUnit: null,
+        strengthUnits: ['un'],
+        fixedDosageUnit: 'un',
+        strengthOptional: true,
         doseQuestion: 'Quanto usa de cada vez?',
-        defaultDose: liquidUnit ? '' : '1',
+        defaultDose: '1',
         intakeUnits: [],
         doseRequired: false,
         frequencyOrder: ORDER_OTHER,
@@ -143,7 +153,13 @@ export function setupDefaults(presentationInput: string | null | undefined, dosa
 
 // ── Plausibilidade (FR-009 · INV-5: aviso, nunca bloqueio) ─────────────────────────────────
 
-export type DosePlausibilityKind = 'exceeds_pen' | 'looks_like_ml' | 'denominator_looks_like_package' | 'ml_looks_like_drops' | 'exceeds_injection_volume'
+export type DosePlausibilityKind =
+  | 'exceeds_pen'
+  | 'looks_like_ml'
+  | 'denominator_looks_like_package'
+  | 'ml_looks_like_drops'
+  | 'exceeds_injection_volume'
+  | 'count_looks_high'
 
 export interface DosePlausibilityWarning {
   kind: DosePlausibilityKind
@@ -179,6 +195,36 @@ export const DROPS_MAX_ML_PER_INTAKE = 5
  * Coerência de leitura, sem escada de bula (SaMD). Ex.: 5 mg em 1,34 mg/mL = 3,7 mL ⇒ avisa.
  */
 export const INJECTION_MAX_ML_PER_APPLICATION = 1
+
+/**
+ * Smoke 1c (PO 19/11): contagem por tomada acima do comum é quase sempre outro número no lugar —
+ * mg digitado como comprimidos/gotas, 3 mg como 3 canetas. Não há teto oficial por tomada (ANVISA/CFM/ISMP:
+ * só por fármaco, na bula); estes são tetos de LEITURA, acima dos maiores usos legítimos comuns
+ * (prednisona 5 mg em dose alta ~12 cp · dipirona adulto 40 gotas · lactulose ~45 mL · caneta de dose
+ * única = 1 por aplicação). Aviso, nunca bloqueio (INV-5); o Zod segue com o teto de 1000.
+ */
+export const COUNT_MAX_PER_INTAKE = { units: 10, drops: 60, ml: 50, penApplications: 1 } as const
+
+function countWarning(dose: number, unit: string, presentation?: string | null): DosePlausibilityWarning | null {
+  const count = countKindFor(unit, presentation)
+  if (!count || dose <= count.max) return null
+  return { kind: 'count_looks_high', message: `São ${formatNumberPtBR(dose)} ${count.noun} por vez. ${count.hint}` }
+}
+
+type CountKind = { max: number; noun: string; hint: string }
+
+function countKindFor(unit: string, presentation?: string | null): CountKind | null {
+  const u = unit.toLowerCase()
+  if (u === 'gotas') return { max: COUNT_MAX_PER_INTAKE.drops, noun: 'gotas', hint: 'Confira se o número não é a dose em mg ou mL.' }
+  if (u === 'ml' && presentation === 'liquido') return { max: COUNT_MAX_PER_INTAKE.ml, noun: 'mL', hint: 'Confira se o número não é a dose em mg ou gotas.' }
+  if (u !== '') return null
+  if (presentation === 'comprimido') return { max: COUNT_MAX_PER_INTAKE.units, noun: 'comprimidos', hint: 'Confira se o número não é a dosagem em mg.' }
+  if (presentation === 'capsula') return { max: COUNT_MAX_PER_INTAKE.units, noun: 'cápsulas', hint: 'Confira se o número não é a dosagem em mg.' }
+  // Injetável sem unidade na tomada = dose por caneta: a dose conta aplicações (setupDefaults, C-2).
+  if (presentation === 'injetavel')
+    return { max: COUNT_MAX_PER_INTAKE.penApplications, noun: 'aplicações', hint: 'A dose em mg já vem na caneta: cada aplicação costuma ser 1 caneta.' }
+  return null
+}
 
 function toNumber(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined) return null
@@ -266,6 +312,8 @@ export function checkDosePlausibility(input: DosePlausibilityInput): DosePlausib
       message: `${formatNumberPtBR(conc)} mg/mL costuma ser em gotas. Confira: a dose é ${formatNumberPtBR(dose)} gotas, ou a concentração é outra?`,
     })
   }
+  const count = countWarning(dose, unit, input.presentation)
+  if (count) warnings.push(count)
   return warnings
 }
 

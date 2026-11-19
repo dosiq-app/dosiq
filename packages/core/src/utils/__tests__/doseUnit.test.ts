@@ -6,6 +6,7 @@ import {
   formatActiveIngredientHint,
   formatActiveIngredientFormula,
   formatActiveIngredientShort,
+  activeIngredientParts,
   formatMedicineFullName,
   roundForDisplay,
 } from '../doseUnit'
@@ -228,5 +229,13 @@ describe('roundForDisplay (073 PR 2)', () => {
   it('zero é valor, não ausência', () => {
     expect(roundForDisplay(0)).toBe(0)
     expect(roundForDisplay(0.001)).toBe(0)
+  })
+})
+
+describe('un = contagem: o número cadastrado nunca multiplica a dose (smoke 125 1c, PO 19/11)', () => {
+  it('fórmula e dica não fazem "1 × 32 un"', () => {
+    expect(activeIngredientParts(1, 32, 'un')).toBeNull()
+    expect(formatActiveIngredientFormula(2, 32, 'un')).toBe('Equivale a 2 unidades')
+    expect(formatActiveIngredientHint(1, 32, 'un')).toBe('1 unidade')
   })
 })

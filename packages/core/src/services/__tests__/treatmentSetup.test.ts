@@ -61,9 +61,19 @@ describe('setupDefaults — FR-021 / FR-008 (PO-125-4, PO-125-5)', () => {
     expect(d.frequencyOrder).toEqual(['diário', 'quando_necessário', 'dias_alternados', 'semanal', 'mensal_30'])
   })
 
-  it('pomada: sem dosagem, unidade fixa un (C-3)', () => {
+  it.each(['pomada', 'spray', 'outro'])('%s: só "un", dosagem opcional (smoke 1c, PO 19/11)', (form) => {
+    const d = setupDefaults(form)
+    expect(d.strengthUnits).toEqual(['un'])
+    expect(d.fixedDosageUnit).toBe('un')
+    expect(d.strengthOptional).toBe(true)
+  })
+
+  it('comprimido/líquido/injetável: dosagem obrigatória', () => {
+    for (const form of ['comprimido', 'capsula', 'liquido', 'injetavel']) expect(setupDefaults(form).strengthOptional).toBe(false)
+  })
+
+  it('pomada: unidade fixa un (C-3)', () => {
     const d = setupDefaults('pomada')
-    expect(d.strengthUnits).toEqual([])
     expect(d.fixedDosageUnit).toBe('un')
     expect(d.frequencyOrder[0]).toBe('quando_necessário')
   })
@@ -319,5 +329,32 @@ describe('checkDosePlausibility — rótulo reconstruído com ponto flutuante (s
   it('dose acima do rótulo avisa com o número do rótulo arredondado (5, não 4,999…)', () => {
     const w = checkDosePlausibility({ dose: 7.5, doseUnit: 'mg', presentation: 'injetavel', penContent: pen, denominatorMl: 0.6 })
     expect(w.find((x) => x.kind === 'exceeds_pen')?.message).toBe('O rótulo diz 5 mg. Confirma 7,5 mg?')
+  })
+})
+
+describe('checkDosePlausibility — contagem alta por tomada (smoke 1c, PO 19/11)', () => {
+  const kinds = (input: Parameters<typeof checkDosePlausibility>[0]) => checkDosePlausibility(input).map((w) => w.kind)
+  it.each([
+    ['comprimido', null, 11],
+    ['capsula', null, 20],
+    ['liquido', 'gotas', 1000],
+    ['liquido', 'ml', 60],
+    ['injetavel', null, 3],
+  ])('%s em %s: %s avisa', (presentation, doseUnit, dose) => {
+    expect(kinds({ dose, doseUnit, presentation })).toContain('count_looks_high')
+  })
+  it.each([
+    ['comprimido', null, 10],
+    ['liquido', 'gotas', 40],
+    ['liquido', 'ml', 45],
+    ['injetavel', null, 1],
+    ['injetavel', 'UI', 80],
+    ['outro', null, 50],
+  ])('%s em %s: %s não avisa (uso comum / sem teto)', (presentation, doseUnit, dose) => {
+    expect(kinds({ dose, doseUnit, presentation })).not.toContain('count_looks_high')
+  })
+  it('texto diz a contagem e o que conferir', () => {
+    const [w] = checkDosePlausibility({ dose: 3, doseUnit: null, presentation: 'injetavel' })
+    expect(w.message).toBe('São 3 aplicações por vez. A dose em mg já vem na caneta: cada aplicação costuma ser 1 caneta.')
   })
 })

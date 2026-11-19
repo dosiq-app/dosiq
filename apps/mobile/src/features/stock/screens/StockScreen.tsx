@@ -127,6 +127,8 @@ function useStockScan(route, navigation, setSheetVisible) {
         mode: 'create',
         medicineId: medicine.id,
         medicineName: medicine.name,
+        // Smoke 1c: o remédio inteiro — a compra aplica a caixa no 1º render, sem esperar o getById.
+        medicine,
         scanDraft: scan.draft,
         scanEan: scan.ean,
         ...(confirmed ? { scanConfirmed: true } : {}),
@@ -156,11 +158,14 @@ function useStockScan(route, navigation, setSheetVisible) {
   // Remédio ainda não cadastrado: abre o cadastro preenchido pela caixa (D1; não cria compra).
   const register = useCallback(() => {
     setCurrent(null)
-    if (current) navigateCrossTab(ROUTES.TREATMENTS, ROUTES.MEDICINE_CREATE, { scanDraft: current.draft })
+    if (current) navigateCrossTab(ROUTES.TREATMENTS, ROUTES.MEDICINE_CREATE, { scanDraft: current.draft, purchaseAfter: { scanEan: current.ean } })
   }, [current])
 
   const sheet = current && current.resolution.kind !== 'one' ? current : null
-  return { sheet, open, close, pick, register }
+  // Smoke 1c (PO 19/11): caixa lida ainda sendo conferida (recarga dos remédios) ⇒ camada "Conferindo a
+  // caixa…" no lugar da lista com spinner. Termina ao resolver: um ⇒ compra; vários/nenhum ⇒ sheet.
+  const checking = !!scanDraft && scanDraft !== applied
+  return { sheet, open, close, pick, register, checking }
 }
 
 export default function StockScreen() {
@@ -328,6 +333,12 @@ export default function StockScreen() {
         onSelect={handleSelectMedicine}
       />
 
+      {scan.checking ? (
+        <View style={[StyleSheet.absoluteFill, styles.checking]} testID="stock-scan-checking">
+          <LoadingState message="Conferindo a caixa…" />
+        </View>
+      ) : null}
+
       {scan.sheet ? (
         <StockScanSheet
           draft={scan.sheet.draft}
@@ -345,6 +356,7 @@ export default function StockScreen() {
 const SCAN_FAB_BOTTOM = spacing[6] + 56 + spacing[3]
 
 const styles = StyleSheet.create({
+  checking: { backgroundColor: colors.bg.screen, zIndex: 10 },
   listContent: {
     paddingBottom: spacing[12],
   },

@@ -584,6 +584,9 @@ export function activeIngredientParts(qty: number | string | null | undefined, d
   if ((unit === 'un' || unit === 'gotas') && dosagePerPill === 1) {
     return null
   }
+  // Smoke 125 1c (PO 19/11): 'un' é CONTAGEM (pomada/spray/outro). O número cadastrado com 'un' é rótulo
+  // da caixa ainda sem unidade de massa — nunca multiplica a dose ("1 × 32 un = 32 un" estava errado).
+  if (unit === 'un') return null
 
   return { value: displayTotal, unit: displayTotalUnit }
 }

@@ -30,7 +30,6 @@ export default function TreatmentSentenceCard({ medicine, values }: { medicine: 
   if (!medicine?.name || !values.frequency) return null
   return (
     <View style={styles.card} testID="treatment-sentence-card">
-      <Text style={styles.title}>Confere</Text>
       <Text style={styles.sentence} testID="treatment-sentence">{description.sentence}</Text>
       {description.next ? <Text style={styles.next}>{description.next}</Text> : null}
     </View>
@@ -38,8 +37,7 @@ export default function TreatmentSentenceCard({ medicine, values }: { medicine: 
 }
 
 const styles = StyleSheet.create({
-  card: { marginHorizontal: spacing[4], marginTop: spacing[4], padding: spacing[4], borderRadius: borderRadius.lg, backgroundColor: colors.brand.mint, gap: spacing[1] },
-  title: { fontSize: 13, fontWeight: '700', color: colors.text.secondary, textTransform: 'uppercase' },
+  card: { padding: spacing[4], borderRadius: borderRadius.lg, backgroundColor: colors.brand.mint, borderWidth: 1, borderColor: colors.border.default, gap: spacing[1] },
   sentence: { fontSize: 16, fontWeight: '600', color: colors.text.primary, lineHeight: 22 },
   next: { fontSize: 14, color: colors.text.secondary },
 })

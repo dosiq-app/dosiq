@@ -11,13 +11,16 @@
 // bug; este verifica QUAL bola está marcada.
 
 import React from 'react'
-import { render } from '@testing-library/react-native'
+import { render as rtlRender, fireEvent } from '@testing-library/react-native'
 import ProtocolFormBody from '../ProtocolFormBody'
 
-// 086: a trava agora reconsulta no foco (useFocusEffect) — fora de navegação, dublê resolvido.
-jest.mock('@treatments/hooks/useIntervalCadenceAvailability', () => ({
-  useIntervalCadenceAvailability: () => ({ available: false, settled: true }),
-}))
+// 125 1c (AC7.2): a Evolução mora em "Mais opções". Na edição com etapas o bloco já abre sozinho
+// (smoke 1c); senão, o render abre.
+function render(ui) {
+  const utils = rtlRender(ui)
+  if (!utils.getByTestId('more-options').props.accessibilityState?.expanded) fireEvent.press(utils.getByTestId('more-options'))
+  return utils
+}
 
 jest.mock('@dosiq/core', () => {
   const actual = jest.requireActual('@dosiq/core')

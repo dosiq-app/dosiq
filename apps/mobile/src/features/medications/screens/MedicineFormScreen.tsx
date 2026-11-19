@@ -39,8 +39,14 @@ import { CatalogFieldSuggestions } from '@medications/components/CatalogSuggesti
 import { catalogLinkPayload, keepSavedStrength } from '@medications/utils/catalogMatch'
 import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggestionSheet'
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
-import { PresentationChips, UnitChipsField } from '@medications/components/FormFirstStrength'
+import { PresentationChips, UnitChipsField, ChoiceChips } from '@medications/components/FormFirstStrength'
 import { ConcentrationVolumeField } from '@medications/components/ConcentrationVolumeField'
+import FormChangeSheet from '@medications/components/FormChangeSheet'
+import CollapsibleSection from '@shared/components/form/CollapsibleSection'
+import { useFormChangeReview } from '@medications/hooks/useFormChangeReview'
+import { moreDetailsSummary } from '@medications/utils/moreDetailsSummary'
+import { useLeaveMedicineForm } from '@medications/hooks/useLeaveMedicineForm'
+import { missingRequired, requiredUi } from '@medications/utils/medicineRequired'
 import {
   valuesFromDraft,
   draftExtras,
@@ -100,10 +106,19 @@ function isNewScan(isEditing, scanDraft, appliedScanDraft) {
   return !isEditing && !!scanDraft && scanDraft !== appliedScanDraft
 }
 
+// 125 1c (AC7.6): "Novo remédio"/"Editar remédio" · botão "Salvar remédio".
 function formTitle(isEditing, scanInfo) {
-  if (isEditing) return 'Editar Medicamento'
-  return scanInfo ? 'Confira antes de salvar' : 'Novo Medicamento'
+  if (isEditing) return 'Editar remédio'
+  return scanInfo ? 'Confira antes de salvar' : 'Novo remédio'
 }
+
+// AC7.4: validade depois de aberto só para injetável e líquido (R-295: 0/193 sólidos com valor, prod 17/11).
+const SHELF_LIFE_FORMS = new Set(['injetavel', 'liquido'])
+// Campos que o form mostra com erro no próprio campo. Erro do Zod fora deles ainda cai no alerta (anti-silent).
+const INLINE_ERROR_FIELDS = new Set(['name', 'presentation', 'dosage_per_pill', 'dosage_unit', 'concentration_volume_ml', 'shelf_life_days', 'active_ingredient', 'type', 'therapeutic_class', 'regulatory_category', 'laboratory'])
+
+// AC7.3: campos que moram em "Mais detalhes" — erro visível em qualquer um abre o bloco.
+const MORE_DETAIL_FIELDS = ['active_ingredient', 'type', 'therapeutic_class', 'regulatory_category', 'laboratory']
 
 // FR-017 / D11: o laboratório do genérico é da caixa, não do remédio — exibido, não guardado.
 function ScanGenericNote({ scanInfo }) {
@@ -115,6 +130,55 @@ function ScanGenericNote({ scanInfo }) {
         É genérico: de qualquer laboratório, é o mesmo remédio. Por isso o laboratório não fica guardado.
       </Text>
     </View>
+  )
+}
+
+// 125 1c (AC7.3): "Mais detalhes" nasce fechado — princípio ativo, tipo em 2 chips, classe, categoria,
+// laboratório. Erro visível em qualquer um abre o bloco sozinho.
+function MedicineMoreDetails({ form, catalog, onIdentificationChange, scanInfo }) {
+  const forceOpen = MORE_DETAIL_FIELDS.some((k) => form.touched[k] && form.errors[k])
+  return (
+    <CollapsibleSection
+      title="Mais detalhes"
+      summary={moreDetailsSummary(form.values)}
+      forceOpen={forceOpen}
+      testID="more-details"
+    >
+      <View style={styles.details}>
+        <FormInput
+          name="active_ingredient"
+          label="Princípio ativo"
+          {...formProps(form, 'active_ingredient')}
+          onChange={onIdentificationChange}
+        />
+        <CatalogFieldSuggestions catalog={catalog} field="active_ingredient" />
+        <Text style={styles.fieldLabel}>Tipo</Text>
+        <ChoiceChips
+          options={TYPE_OPTIONS}
+          value={(form.values.type as string) ?? null}
+          onChange={(v) => form.handleChange('type', v)}
+          accessibilityLabel="Tipo"
+          testIDPrefix="medicine-type"
+        />
+        <FormInput
+          name="therapeutic_class"
+          label="Classe terapêutica"
+          {...formProps(form, 'therapeutic_class')}
+        />
+        <FormSelect
+          name="regulatory_category"
+          label="Categoria regulatória"
+          options={REGULATORY_OPTIONS}
+          {...formProps(form, 'regulatory_category')}
+        />
+        <FormInput
+          name="laboratory"
+          label="Laboratório"
+          {...formProps(form, 'laboratory')}
+        />
+        <ScanGenericNote scanInfo={scanInfo} />
+      </View>
+    </CollapsibleSection>
   )
 }
 
@@ -132,6 +196,8 @@ export default function MedicineFormScreen() {
   // C-C10: concentrações de 1 toque do composto ambíguo; erro no campo ao salvar sem escolher.
   const [strengthChoices, setStrengthChoices] = useState<CmedStrengthChoice[]>([])
   const [doseChoiceError, setDoseChoiceError] = useState(false)
+  // Smoke 1c: tentou salvar ⇒ forma e dosagem vazias mostram erro no campo (como os do Zod), sem pop-up.
+  const [submitAttempted, setSubmitAttempted] = useState(false)
   // C5.3: o que veio da busca (card vira selo de origem + "Trocar") e a origem do medicine_added.
   const [anvisaFilledLabel, setAnvisaFilledLabel] = useState<string | null>(null)
   // 066 D1 (RC3 A): o form é a confirmação do código de barras. `scanInfo` = caixa lida aplicada;
@@ -179,6 +245,9 @@ export default function MedicineFormScreen() {
   // (não pode apagar nome/dose/unidade ao editar).
   const form = useFormState(medicineCreateSchema, { initialValues })
   const { create, update, isLoading } = useMedicineMutation()
+  // 125 1c (AC7.5/AC7.10): fila da folha de troca de forma depois de salvar a edição.
+  const formChange = useFormChangeReview({ navigation, before: medicine })
+  const leave = useLeaveMedicineForm(navigation, route)
   // 119 B (D-5): em edição, só medicamento SEM código recebe sugestão; salvar atualiza o mesmo id.
   const catalog = useCatalogSuggestionSheet<'name' | 'active_ingredient'>({
     values: form.values,
@@ -248,15 +317,15 @@ export default function MedicineFormScreen() {
       setSearchCandidatesDecided(true)
       if (scanInfo) logEvent(EVENTS.SCAN_CONFIRMED, { surface: SURFACES.MOBILE, used_existing: true, dose_edited: false })
       Alert.alert('Você já tem este remédio', `Vamos usar "${existing?.name ?? 'o remédio escolhido'}". Nada novo foi criado.`, [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { text: 'OK', onPress: () => leave(existing) },
       ])
     },
-    [navigation, scanInfo]
+    [leave, scanInfo]
   )
   const handleCreateNew = useCallback(() => setCandidatesDecided(true), [])
   const handleNoCandidates = useCallback(() => setCandidatesDecided(true), [])
   // ✕ no sheet: sai do cadastro sem gravar nada (INV-1).
-  const handleCandidatesClose = useCallback(() => navigation.goBack(), [navigation])
+  const handleCandidatesClose = useCallback(() => leave(), [leave])
   const closeSheet = useCallback(() => {
     setSheetOpen(false)
     clearSheet()
@@ -355,16 +424,19 @@ export default function MedicineFormScreen() {
       setPresentationTouched(true)
       form.handleChange('presentation', value)
       // 125 (C-3): pomada/spray sem força gravam 'un'; o Zod exige unidade.
-      const fixedUnit = setupDefaults(value).fixedDosageUnit
-      if (fixedUnit && !form.values.dosage_unit) form.handleChange('dosage_unit', fixedUnit)
+      // Smoke 1c (PO 19/11): pomada/spray/outro só têm 'un'; voltar a uma forma com força limpa o 'un'.
+      const defaults = setupDefaults(value)
+      if (defaults.strengthOptional) form.handleChange('dosage_unit', defaults.fixedDosageUnit)
+      else if (form.values.dosage_unit && !defaults.strengthUnits.includes(String(form.values.dosage_unit)))
+        form.handleChange('dosage_unit', undefined)
       if (value === 'injetavel') {
         const current = form.values.shelf_life_days
         if (current === '' || current === null || current === undefined) {
           form.handleChange('shelf_life_days', '28')
         }
-      } else {
-        // Campo fica oculto fora de injetavel — limpar evita persistir valor
-        // obsoleto ao salvar (review Gemini #658, mesmo fix do web).
+      } else if (!SHELF_LIFE_FORMS.has(value)) {
+        // Campo fica oculto fora de injetável/líquido (AC7.4) — limpar evita persistir valor
+        // obsoleto ao salvar (review Gemini #658, mesmo fix do web). Líquido mantém o que houver.
         form.handleChange('shelf_life_days', '')
       }
     },
@@ -380,17 +452,24 @@ export default function MedicineFormScreen() {
     [form]
   )
 
+
   const handleSubmit = useCallback(async () => {
     // 125 (FR-004): sem forma escolhida o Zod gravaria 'comprimido' por omissão.
-    if (!form.values.presentation) {
-      Alert.alert('Verifique o formulário', 'Escolha como é o remédio.')
+    // Smoke 1c (PO 19/11): obrigatórios fora do Zod (forma; dosagem nas formas com força) erram no campo,
+    // junto com os do Zod — um único jeito de mostrar campo obrigatório.
+    const { presentationMissing, dosageMissing } = missingRequired(form.values)
+    if (presentationMissing || dosageMissing) {
+      setSubmitAttempted(true)
+      if (dosageMissing && doseCheckRequired) setDoseChoiceError(true)
+      form.validate()
+      scrollRef.current?.scrollTo({ y: identificationY.current, animated: true })
       return
     }
     // INV-2 (C-C2): o Zod aceita dose vazia; o composto ambíguo exige a escolha. O botão não muda
     // de rótulo nem trava (C-C10): o erro aparece no campo, como em qualquer obrigatório.
     if (doseCheckRequired && String(form.values.dosage_per_pill ?? '').trim() === '') {
       setDoseChoiceError(true)
-      Alert.alert('Verifique o formulário', 'Escolha a concentração do remédio.')
+      scrollRef.current?.scrollTo({ y: identificationY.current, animated: true })
       return
     }
     // FM-7: a pergunta "É este que você já tem?" ainda não teve resposta (lista chegando).
@@ -402,18 +481,20 @@ export default function MedicineFormScreen() {
       // Anti-silent-no-op (smoke iOS 022): nunca falhar sem feedback. Mostra 1º erro.
       // form.errors fica stale neste tick (setErrors async); reparse p/ msg precisa.
       const parsed = medicineCreateSchema.safeParse(form.values)
-      const firstError = parsed.success ? null : parsed.error.issues[0]?.message
-      Alert.alert(
-        'Verifique o formulário',
-        firstError || 'Há campos obrigatórios não preenchidos.'
-      )
+      const issues = parsed.success ? [] : parsed.error.issues
+      setSubmitAttempted(true)
+      const hidden = issues.find((i) => !INLINE_ERROR_FIELDS.has(String(i.path[0] ?? '')))
+      if (hidden) Alert.alert('Verifique o formulário', hidden.message || 'Há campos obrigatórios não preenchidos.')
+      else scrollRef.current?.scrollTo({ y: identificationY.current, animated: true })
       return
     }
     // FR-031 (ADR-066): normaliza amount→razão. Líquido c/ denominador ≠ 1 → dosage_per_pill =
     // amount ÷ denominador + grava concentration_volume_ml; senão passthrough (coluna null).
     const payload = { ...form.values, ...normalizeConcentration(form.values) }
     if (isEditing) {
-      await update(medicine.id, payload, { goBack: true })
+      const saved = await update(medicine.id, payload)
+      if (!saved) return
+      await formChange.afterUpdate({ ...medicine, ...payload, ...(typeof saved === 'object' ? saved : null) })
     } else {
       if (scanInfo) {
         logEvent(EVENTS.SCAN_CONFIRMED, {
@@ -422,9 +503,10 @@ export default function MedicineFormScreen() {
           dose_edited: scanDoseEdited(form.values, scanInfo),
         })
       }
-      await create(payload, { goBack: true, source: createSource(scanInfo, anvisaFilledLabel) })
+      const created = await create(payload, { goBack: false, source: createSource(scanInfo, anvisaFilledLabel) })
+      if (created) leave(typeof created === 'object' ? created : null)
     }
-  }, [form, isEditing, medicine, create, update, anvisaFilledLabel, doseCheckRequired, scanInfo, candidatesDecided, searchDraft, searchCandidatesDecided])
+  }, [form, isEditing, medicine, create, update, anvisaFilledLabel, doseCheckRequired, scanInfo, candidatesDecided, searchDraft, searchCandidatesDecided, formChange, leave])
 
   const handleStrengthChoice = useCallback(
     (choice: CmedStrengthChoice) => {
@@ -434,6 +516,7 @@ export default function MedicineFormScreen() {
     [form]
   )
 
+  const required = requiredUi(form.values, submitAttempted)
   const hasDose = String(form.values.dosage_per_pill ?? '').trim() !== ''
   const askStrength = doseCheckRequired && !hasDose
 
@@ -441,7 +524,7 @@ export default function MedicineFormScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => navigation.goBack()}
+          onPress={() => leave()}
           style={styles.headerBtn}
           hitSlop={8}
           accessibilityRole="button"
@@ -481,37 +564,32 @@ export default function MedicineFormScreen() {
         )}
 
         <View onLayout={handleIdentificationLayout}>
-          <FormSection title="Identificação">
+          <FormSection title="Remédio" required>
             <FormInput
               name="name"
               label="Nome"
-              required
               {...formProps(form, 'name')}
               onChange={handleIdentificationChange}
             />
             <CatalogFieldSuggestions catalog={catalog} field="name" />
-            <FormInput
-              name="active_ingredient"
-              label="Princípio Ativo"
-              {...formProps(form, 'active_ingredient')}
-              onChange={handleIdentificationChange}
-            />
-            <CatalogFieldSuggestions catalog={catalog} field="active_ingredient" />
           </FormSection>
         </View>
 
-        <FormSection title="Dosagem">
-          <Text style={styles.fieldLabel}>Como é o remédio?</Text>
+        <FormSection title="Como é" required>
           <PresentationChips
             value={form.values.presentation as string | undefined}
             onChange={(value) => handlePresentationChange('presentation', value)}
+            error={required.presentationError}
           />
+        </FormSection>
+
+        <FormSection title="Dosagem" required={required.dosageRequired}>
           <FormInput
             name="dosage_per_pill"
             label="Concentração"
-            required
             keyboardType="decimal-pad"
             {...formProps(form, 'dosage_per_pill')}
+            {...(required.dosageError ? { error: required.dosageError } : null)}
             {...(doseChoiceError && askStrength ? { error: 'Escolha a concentração abaixo' } : null)}
             onChange={handleDoseChange}
           />
@@ -533,58 +611,31 @@ export default function MedicineFormScreen() {
             presentation={form.values.presentation as string | undefined}
             inputProps={{ ...formProps(form, 'concentration_volume_ml'), onChange: handleDoseChange }}
           />
-          {form.values.dosage_unit === 'un' && Number(form.values.dosage_per_pill) > 1 && (
-            <View style={styles.warningBox}>
-              <Text style={styles.warningText}>
-                ⚠️ Dica: Para a unidade genérica 'un.', a concentração deveria ser 1. Caso seu medicamento tenha dosagem química ativa (ex: 500 mg), altere a unidade ao lado para 'mg', 'ui', etc.
-              </Text>
-            </View>
-          )}
-        </FormSection>
-
-        <FormSection title="Classificação">
-          <FormSelect
-            name="type"
-            label="Tipo"
-            options={TYPE_OPTIONS}
-            {...formProps(form, 'type')}
-          />
-          {form.values.presentation === 'injetavel' && (
+          {required.dosageOptional ? (
+            <Text style={styles.optionalHint}>Opcional. O número fica guardado como está na caixa; o app conta por unidade.</Text>
+          ) : null}
+          {/* AC7.4: validade depois da dosagem, só injetável e líquido. */}
+          {SHELF_LIFE_FORMS.has(String(form.values.presentation ?? '')) && (
             <FormInput
               name="shelf_life_days"
-              label="Validade após aberto (dias)"
+              label="Validade depois de aberto (dias)"
               keyboardType="number-pad"
-              helperText="Dias de uso após abrir o frasco/caneta — confira a bula."
+              helperText="Dias de uso depois de abrir o frasco ou a caneta. Confira a bula."
               {...formProps(form, 'shelf_life_days')}
               onChange={handleShelfLifeChange}
             />
           )}
-          <FormInput
-            name="therapeutic_class"
-            label="Classe Terapêutica"
-            {...formProps(form, 'therapeutic_class')}
-          />
-          <FormSelect
-            name="regulatory_category"
-            label="Categoria Regulatória"
-            options={REGULATORY_OPTIONS}
-            {...formProps(form, 'regulatory_category')}
-          />
-          <FormInput
-            name="laboratory"
-            label="Laboratório"
-            {...formProps(form, 'laboratory')}
-          />
-          <ScanGenericNote scanInfo={scanInfo} />
         </FormSection>
+
+        <MedicineMoreDetails form={form} catalog={catalog} onIdentificationChange={handleIdentificationChange} scanInfo={scanInfo} />
       </ScrollView>
 
       <FormActions
-        primaryLabel={isEditing ? 'Salvar' : 'Criar medicamento'}
+        primaryLabel="Salvar remédio"
         onPrimary={handleSubmit}
         primaryLoading={isLoading}
         secondaryLabel="Cancelar"
-        onSecondary={() => navigation.goBack()}
+        onSecondary={() => leave()}
       />
       </KeyboardAvoidingView>
 
@@ -607,6 +658,8 @@ export default function MedicineFormScreen() {
           onClose={handleCandidatesClose}
         />
       ) : null}
+      {/* AC7.5: a folha só aparece com a tela em foco (useFormChangeReview). */}
+      <FormChangeSheet item={formChange.current} onReview={formChange.review} onDismiss={formChange.skip} />
       {searchDraft && !searchCandidatesDecided && !scanInfo ? (
         <MedicineCandidatesSheet
           draft={searchDraft}
@@ -619,11 +672,6 @@ export default function MedicineFormScreen() {
     </SafeAreaView>
   )
 }
-
-// Tons suaves originais do caixa de aviso do formulário (preserva tom pastel suave)
-const FORM_WARNING_BG = '#fffbeb'
-const FORM_WARNING_BORDER = '#fef3c7'
-const FORM_WARNING_TEXT = '#b45309'
 
 const styles = StyleSheet.create({
   safe: {
@@ -669,19 +717,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.secondary,
   },
-  warningBox: {
-    padding: spacing[3],
-    borderRadius: borderRadius.md,
-    backgroundColor: FORM_WARNING_BG,
-    borderWidth: 1,
-    borderColor: FORM_WARNING_BORDER,
-    marginTop: spacing[2],
-  },
-  warningText: {
-    fontSize: 13,
-    color: FORM_WARNING_TEXT,
-    lineHeight: 18,
-  },
+  details: { gap: spacing[3], marginBottom: spacing[4] },
+  optionalHint: { fontSize: 13, color: colors.text.secondary, lineHeight: 18 },
   // 066 D1 (C5.3): 2º botão do card da ANVISA, mesmo peso da busca.
   scanButton: {
     flexDirection: 'row',

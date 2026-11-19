@@ -12,6 +12,8 @@ const mockSheet: { props: any } = { props: null }
 const MOUNJARO = { name: 'Mounjaro', activeIngredient: 'Tirzepatida', laboratory: 'Lilly', regulatoryCategory: 'Novo', forms: ['injetavel'] }
 
 jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: jest.fn(),
+  useIsFocused: () => true,
   useNavigation: () => mockNav,
   useRoute: () => ({ params: { manualEntry: true } }),
 }))

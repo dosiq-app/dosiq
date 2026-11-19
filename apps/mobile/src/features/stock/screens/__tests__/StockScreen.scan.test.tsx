@@ -121,7 +121,7 @@ describe('"Ler a caixa" na aba Estoque (PO-13)', () => {
     await act(async () => {})
     expect(getByText('Este remédio ainda não está cadastrado')).toBeTruthy()
     fireEvent.press(getByText('Cadastrar com os dados da caixa'))
-    expect(mockCrossTab).toHaveBeenCalledWith('Tratamentos', 'MedicineCreate', { scanDraft: expect.objectContaining({ boxQuantity: 21 }) })
+    expect(mockCrossTab).toHaveBeenCalledWith('Tratamentos', 'MedicineCreate', { scanDraft: expect.objectContaining({ boxQuantity: 21 }), purchaseAfter: { scanEan: EAN } })
     expect(mockNav.navigate).not.toHaveBeenCalled()
   })
 
@@ -179,5 +179,22 @@ describe('"Ler a caixa" na aba Estoque (PO-13)', () => {
     expect(queryByText('Este remédio ainda não está cadastrado')).toBeNull()
     expect(mockNav.navigate).toHaveBeenCalledWith('PurchaseForm', expect.objectContaining({ medicineId: 'm7' }))
     expect(mockNav.navigate).toHaveBeenCalledWith('PurchaseForm', expect.not.objectContaining({ scanConfirmed: true }))
+  })
+})
+
+describe('caixa lida: sem lista piscando e sem espera no form (smoke 1c, PO 19/11)', () => {
+  it('"Conferindo a caixa…" enquanto recarrega; some ao resolver; a compra recebe o remédio inteiro', async () => {
+    const utils = renderWithScan([LOSARTANA, AMOX])
+    expect(utils.getByTestId('stock-scan-checking')).toBeTruthy()
+    await act(async () => {})
+    expect(utils.queryByTestId('stock-scan-checking')).toBeNull()
+    expect(mockNav.navigate.mock.calls[0][1].medicine).toMatchObject({ id: 'm1' })
+  })
+
+  it('caixa não cadastrada: a camada sai e o sheet de cadastro aparece', async () => {
+    const utils = renderWithScan([LOSARTANA])
+    await act(async () => {})
+    expect(utils.queryByTestId('stock-scan-checking')).toBeNull()
+    expect(mockNav.navigate).not.toHaveBeenCalledWith('PurchaseForm', expect.anything())
   })
 })

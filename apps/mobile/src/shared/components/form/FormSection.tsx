@@ -1,12 +1,16 @@
 import { View, Text, StyleSheet } from 'react-native'
 import { colors, spacing } from '@shared/styles/tokens'
 
-export default function FormSection({ title = undefined, description = undefined, children, style = undefined }) {
+// `required`: a seção INTEIRA é obrigatória ⇒ o asterisco fica no título, não nos campos (smoke 125 1c).
+export default function FormSection({ title = undefined, description = undefined, children, style = undefined, required = false }) {
   return (
     <View style={[styles.wrapper, style]}>
       {/* Título em maiúsculas com estilo eyebrow */}
       {title ? (
-        <Text style={styles.title}>{title.toUpperCase()}</Text>
+        <Text style={styles.title}>
+          {title.toUpperCase()}
+          {required ? <Text style={styles.asterisk}> *</Text> : null}
+        </Text>
       ) : null}
 
       {/* Descrição (secundária) */}
@@ -30,6 +34,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     color: colors.text.muted,
     marginBottom: spacing[2],
+  },
+  asterisk: {
+    color: colors.status.error,
   },
   description: {
     fontSize: 13,

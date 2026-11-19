@@ -5,9 +5,6 @@ import React from 'react'
 import { render, fireEvent } from '@testing-library/react-native'
 import ProtocolFormBody from '../ProtocolFormBody'
 
-jest.mock('@treatments/hooks/useIntervalCadenceAvailability', () => ({
-  useIntervalCadenceAvailability: () => ({ available: true, settled: true }),
-}))
 // Seletor: o dublê lista as opções (o sheet nativo está fora do escopo).
 jest.mock('@shared/components/form/FormSelect', () => {
   const { View, Text } = jest.requireActual('react-native')

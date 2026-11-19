@@ -63,7 +63,7 @@ export const CHANGE_GROUPS = {
   frequency: ['frequency', 'interval_days'],
   dates: ['start_date', 'end_date'],
   alarm: ['critical_alarm'],
-  // 100 B: "Acompanhar nas doses" (TRACKING_PLAN §5.3) — o valor vai em `tracked_measure` (não é clínico).
+  // 100 B: "Acompanhar medidas" (TRACKING_PLAN §5.3) — o valor vai em `tracked_measure` (não é clínico).
   measure: ['tracked_measure'],
   plan: ['treatment_plan_id'],
   details: ['name', 'notes'],

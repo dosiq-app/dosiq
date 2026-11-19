@@ -1,4 +1,4 @@
-// TrackedMeasureField.tsx — "Acompanhar nas doses" no form do tratamento (spec 100 B · FR-004).
+// TrackedMeasureField.tsx — "Acompanhar medidas" no form do tratamento (spec 100 B · FR-004).
 //
 // Campo do form, não etapa nem modal (FR-004). Sempre visível e trocável, "Nenhum" sempre disponível
 // (D-2). A pré-seleção sem toque vem da inferência (`displayedTrackedMeasure`) e segue o medicamento e a

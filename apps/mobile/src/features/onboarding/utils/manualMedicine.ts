@@ -28,7 +28,7 @@ export function manualIntakeUnit(presentation: string | null | undefined, dosage
   return setupDefaults(presentation, dosageUnit).intakeUnits[0] ?? null
 }
 
-/** Forma sem pergunta de dosagem (pomada): o nome já completa o remédio. */
+/** Forma sem pergunta de dosagem (pomada/spray/outro — dosagem opcional, smoke 1c): o nome completa o remédio. */
 export function skipsStrength(presentation: string | null | undefined): boolean {
-  return setupDefaults(presentation).strengthUnits.length === 0
+  return setupDefaults(presentation).strengthOptional
 }

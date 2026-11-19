@@ -3,9 +3,19 @@
 // que você já tem?" quando há candidato e só o botão grava. O cadastro por scan nunca cria compra.
 
 import React from 'react'
-import { render, fireEvent, act } from '@testing-library/react-native'
+import { render as rtlRender, fireEvent, act, waitFor } from '@testing-library/react-native'
+
 import { Alert } from 'react-native'
 import MedicineFormScreen from '../MedicineFormScreen'
+
+// 125 1c (AC7.3/AC7.7): campos que este teste lê moram em "Mais detalhes", fechado por padrão — o
+// bloco é aberto logo após o render. O "nasce fechado" tem teste próprio (formsOrder1c.test.tsx).
+function render(ui) {
+  const utils = rtlRender(ui)
+  const more = utils.queryByTestId('more-details')
+  if (more) fireEvent.press(more)
+  return utils
+}
 
 const mockCreate = jest.fn()
 const mockLogEvent = jest.fn()
@@ -13,7 +23,11 @@ const mockNav = { goBack: jest.fn(), navigate: jest.fn(), setParams: jest.fn() }
 const mockRoute: { current: any } = { current: { params: {} } }
 const mockMedicines: { current: { data: any[] | null; loading: boolean } } = { current: { data: [], loading: false } }
 
+// Smoke 1c: a saída do form usa navigateCrossTab (navigationRef) — fora do escopo destes testes.
+jest.mock('@navigation/navigateCrossTab', () => ({ navigateCrossTab: jest.fn() }))
 jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: jest.fn(),
+  useIsFocused: () => true,
   useNavigation: () => mockNav,
   useRoute: () => mockRoute.current,
 }))
@@ -109,20 +123,22 @@ describe('modo lido (PO-2 · INV-6)', () => {
     const { getByText } = renderScanned()
     expect(getByText('Caixa desta vez: EMS')).toBeTruthy()
     await act(async () => {
-      fireEvent.press(getByText('Criar medicamento'))
+      fireEvent.press(getByText('Salvar remédio'))
     })
     expect(mockCreate).toHaveBeenCalledTimes(1)
     const [payload, options] = mockCreate.mock.calls[0]
     expect(payload).toMatchObject({ dosage_per_pill: 500, dosage_unit: 'mg', presentation: 'comprimido', anvisa_registration: null })
     expect(payload.laboratory || null).toBeNull()
-    expect(options).toMatchObject({ goBack: true, source: 'scan' })
+    // Smoke 1c: a saída é do form (`useLeaveMedicineForm`), não da mutação — volta a quem abriu.
+    expect(options).toMatchObject({ source: 'scan' })
+    await waitFor(() => expect(mockNav.goBack).toHaveBeenCalled())
   })
 
   it('a pessoa corrige a dose antes de salvar: vale o que ela afirmou (INV-6) e o evento só diz que mudou', async () => {
     const { getByDisplayValue, getByText } = renderScanned()
     fireEvent.changeText(getByDisplayValue('500'), '875')
     await act(async () => {
-      fireEvent.press(getByText('Criar medicamento'))
+      fireEvent.press(getByText('Salvar remédio'))
     })
     expect(mockCreate.mock.calls[0][0].dosage_per_pill).toBe(875)
     expect(mockLogEvent).toHaveBeenCalledWith('scan_confirmed', expect.objectContaining({ dose_edited: true, used_existing: false }))
@@ -138,7 +154,7 @@ describe('modo lido (PO-2 · INV-6)', () => {
     )
     expect(getByText('Este remédio junta mais de uma substância')).toBeTruthy()
     await act(async () => {
-      fireEvent.press(getByText('Criar medicamento'))
+      fireEvent.press(getByText('Salvar remédio'))
     })
     expect(mockCreate).not.toHaveBeenCalled()
     alert.mockRestore()
@@ -154,7 +170,7 @@ describe('modo lido (PO-2 · INV-6)', () => {
     fireEvent.press(getByTestId('presentation-chip-comprimido'))
     fireEvent.press(getByTestId('unit-chip-mg'))
     await act(async () => {
-      fireEvent.press(getByText('Criar medicamento'))
+      fireEvent.press(getByText('Salvar remédio'))
     })
     expect(mockCreate.mock.calls[0]?.[1]).toMatchObject({ source: 'manual' })
   })
@@ -208,7 +224,7 @@ describe('"É este que você já tem?" (PO-6 · D-4)', () => {
     fireEvent.press(getByText('Não, cadastrar como novo'))
     expect(queryByText('É este que você já tem?')).toBeNull()
     await act(async () => {
-      fireEvent.press(getByText('Criar medicamento'))
+      fireEvent.press(getByText('Salvar remédio'))
     })
     expect(mockCreate).toHaveBeenCalledTimes(1)
   })
@@ -234,7 +250,7 @@ describe('"É este que você já tem?" (PO-6 · D-4)', () => {
     const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {})
     const { getByText } = renderScanned()
     await act(async () => {
-      fireEvent.press(getByText('Criar medicamento'))
+      fireEvent.press(getByText('Salvar remédio'))
     })
     expect(mockCreate).not.toHaveBeenCalled()
     expect(alert).toHaveBeenCalledWith('Um momento', expect.any(String))
@@ -253,7 +269,7 @@ describe('cadastro por scan nunca cria compra (066 D2 · PO-4 guard)', () => {
     mockStockTracking.current = on
     const { getByText } = renderScanned()
     await act(async () => {
-      fireEvent.press(getByText('Criar medicamento'))
+      fireEvent.press(getByText('Salvar remédio'))
     })
     expect(mockCreate).toHaveBeenCalledTimes(1)
     expect(mockPurchaseCalls).not.toHaveBeenCalled()
