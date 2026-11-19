@@ -22,6 +22,7 @@ import {
   MONTHLY_INTERVAL_DAYS,
   anchorFromApplication,
   INTAKE_UNIT_LABELS,
+  formatNumberPtBR,
 } from '@dosiq/core'
 import { useFormState } from '@shared/hooks/useFormState'
 import FormInput from '@shared/components/form/FormInput'
@@ -38,6 +39,7 @@ import DoseWarnings from '@treatments/components/DoseWarnings'
 import {
   asksApplicationDay, confirmDoseLabel, doseLabel, doseSource, doseWarnings, frequencySegments, treatmentDefaults,
 } from '@features/onboarding/utils/treatmentStepModel'
+import { penDoseModel, boxForSource, isPackageDose } from '@treatments/utils/penDose'
 import { useKeyboardVisible } from '@shared/hooks/useKeyboardVisible'
 import { useOnboarding } from '../OnboardingContext'
 import OnboardingHeader from '@features/onboarding/components/OnboardingHeader'
@@ -100,7 +102,7 @@ function CadenceDetails({ form, asksDay, isWeekly, isMonthly, applicationDate, t
 
 // Dose pela pergunta da forma (FR-021) + unidade (mg/UI, hi-fi O-3) + avisos suaves (AC3.2/AC3.3).
 // Sem pergunta ⇒ a forma resolve (caneta por aplicação).
-function DoseSection({ form, label, value, warnings, intakeUnits, onChange, onConfirm, hint = undefined }) {
+function DoseSection({ form, label, value, warnings, intakeUnits, onChange, onConfirm }) {
   if (!label) return null
   const intakeUnit = form.values.intake_unit ?? null
   return (
@@ -110,7 +112,6 @@ function DoseSection({ form, label, value, warnings, intakeUnits, onChange, onCo
         label={label}
         keyboardType="decimal-pad"
         value={value}
-        placeholder={hint}
         error={form.touched.dosage_per_intake ? form.errors.dosage_per_intake : undefined}
         onChange={onChange}
         onBlur={form.handleBlur}
@@ -126,6 +127,31 @@ function DoseSection({ form, label, value, warnings, intakeUnits, onChange, onCo
       ) : null}
       <DoseWarnings warnings={warnings} confirmLabel={confirmDoseLabel(warnings, value, intakeUnit)} onConfirm={onConfirm} />
     </View>
+  )
+}
+
+// 125 1b (AC5.1/AC5.2): origem da dose da caixa de dose única e atalhos de dose escritos na caixa.
+function PenDoseInfo({ model, dose, intakeUnit, onDial }) {
+  return (
+    <>
+      {model.derived ? (
+        <Text style={styles.origin} testID="dose-origin">
+          {`Da embalagem: ${formatNumberPtBR(model.derived.dose)} ${model.derived.intakeUnit} por aplicação.`}
+        </Text>
+      ) : null}
+      {model.dialDoses.length > 0 ? (
+        <View style={styles.doseBlock}>
+          <Text style={styles.label}>Doses que a caneta marca</Text>
+          <ChoiceChips
+            options={model.dialDoses.map((d) => ({ value: String(d), label: `${formatNumberPtBR(d)} mg` }))}
+            value={intakeUnit === 'mg' && model.dialDoses.includes(Number(dose)) ? String(Number(dose)) : null}
+            onChange={(v) => onDial(Number(v))}
+            accessibilityLabel="Doses que a caneta marca"
+            testIDPrefix="dial-dose"
+          />
+        </View>
+      ) : null}
+    </>
   )
 }
 
@@ -153,7 +179,7 @@ function ScheduleBlock({ form, asksDay }) {
 
 // Valores iniciais (fora do componente: só lê argumentos). 125 FR-008/FR-021: dose e pré-seleção pela
 // forma — '1' só onde a dose é contagem; "Todo dia" pré-marcado só p/ comprimido/cápsula.
-function buildInitialValues(treatment, medicine, medicineIntakeUnit, defaults) {
+function buildInitialValues(treatment, medicine, medicineIntakeUnit, defaults, derived = null) {
   const base = {
     medicine_id: medicine?.id ?? FAKE_UUID,
     // O remédio pode ter mudado no "Confira": a unidade da tomada segue o remédio atual.
@@ -172,7 +198,9 @@ function buildInitialValues(treatment, medicine, medicineIntakeUnit, defaults) {
   return {
     ...base,
     name: medicine?.name ?? 'Meu tratamento',
-    dosage_per_intake: defaults.defaultDose,
+    // 125 1b (AC5.1): dose única da embalagem nasce preenchida (editável); senão o default da forma.
+    ...(derived ? { intake_unit: derived.intakeUnit } : {}),
+    dosage_per_intake: derived ? derived.dose : defaults.defaultDose,
     frequency: defaults.preselectedFrequency ?? '',
     weekdays: [],
     time_schedule: ['08:00'],
@@ -194,7 +222,7 @@ export default function OnboardingTreatmentStep() {
   // 125 smoke: KAV 'height' (R-303) não devolve a altura ao fechar o teclado no Android edge-to-edge —
   // sobra faixa e o rodapé sobe. Ligado só com teclado aberto: fechado, vira View e a altura reseta.
   const keyboardVisible = useKeyboardVisible()
-  const { medicine, medicineSource, medicineIntakeUnit, treatment, setTreatment, finishLater } = useOnboarding()
+  const { medicine, medicineSource, medicineIntakeUnit, medicineBox, treatment, setTreatment, finishLater } = useOnboarding()
   const { show } = useToast()
   // 125 (AC2.5b): dia da aplicação do injetável não diário — nada marcado por omissão.
   const [applicationDate, setApplicationDate] = useState<string | null>(treatment?._application_date ?? null)
@@ -214,10 +242,14 @@ export default function OnboardingTreatmentStep() {
 
   // Memos (R-010)
   const defaults = useMemo(() => treatmentDefaults(medicine), [medicine])
+  // Embalagem só da caixa (busca/leitor); manual usa o rótulo digitado (decisão A, PO 19/11).
+  const box = boxForSource(medicineSource, medicineBox)
+  // 125 1b (AC5.1): dose da caixa de dose única (rótulo curado) e atalhos de dose da caixa.
+  const pen = useMemo(() => penDoseModel(medicine, box), [medicine, box])
   const segments = useMemo(() => frequencySegments(defaults), [defaults])
   const initialValues = useMemo(
-    () => buildInitialValues(treatment, medicine, medicineIntakeUnit, defaults),
-    [treatment, medicine, medicineIntakeUnit, defaults],
+    () => buildInitialValues(treatment, medicine, medicineIntakeUnit, defaults, pen.derived),
+    [treatment, medicine, medicineIntakeUnit, defaults, pen.derived],
   )
   const form = useFormState(protocolCreateSchema, { initialValues })
   const today = useMemo(() => getTodayLocal(), [])
@@ -240,15 +272,6 @@ export default function OnboardingTreatmentStep() {
   const confirmKey = `${form.values.intake_unit ?? ''}|${doseValue}`
   const shownWarnings = confirmedDose === confirmKey ? [] : warnings
   const doseFirst = medicine?.presentation === 'injetavel' && !!label
-  // Smoke 18/11: sugestão em cinza = o número da caneta (valor da CAIXA, mesma unidade da dose). Só
-  // placeholder — não preenche; os avisos (AC3.2/3.3) seguem pegando o valor digitado fora do esperado.
-  const doseHint = useMemo(() => {
-    if (!doseFirst || !medicine?.dosage_per_pill) return undefined
-    const base = String(medicine.dosage_unit ?? '').replace('/ml', '')
-    const unit = base === 'ui' ? 'UI' : base
-    if (unit !== (form.values.intake_unit ?? null)) return undefined
-    return String(medicine.dosage_per_pill).replace('.', ',')
-  }, [doseFirst, medicine?.dosage_per_pill, medicine?.dosage_unit, form.values.intake_unit])
   const keptRemind = treatment?._remind ?? true
   // 125 (AC2.7): traço 3 = tratamento (índice 2 — o header conta do 0; traço 1 = cadastro). Remédio já existe ⇒ sem "Pular" (AC1.0). "‹" no "quando" do
   // injetável volta à dose (O-3), não ao remédio.
@@ -328,6 +351,12 @@ export default function OnboardingTreatmentStep() {
     [form],
   )
 
+  // Atalho de dose escrito na caixa: escolha de 1 toque (a dose continua sendo a da receita).
+  const handleDialDose = useCallback(
+    (dose: number) => form.setValues({ ...form.values, dosage_per_intake: dose, intake_unit: 'mg' }),
+    [form],
+  )
+
   // O-3 › O-4: a dose (obrigatória, sem default) antes do "quando".
   const handleDoseNext = useCallback(() => {
     const raw = String(form.values.dosage_per_intake ?? '').trim()
@@ -377,12 +406,12 @@ export default function OnboardingTreatmentStep() {
       _remind: keptRemind,
       _application_date: applicationDate,
       // 125 T017: medição (enums, sem dado de saúde novo).
-      _dose_source: doseSource(doseTyped, medicineSource),
+      _dose_source: isPackageDose(pen, dose, (form.values.intake_unit as string) ?? null) ? 'embalagem' : doseSource(doseTyped, medicineSource),
       _dose_typed: doseTyped,
       _dose_plausible: warnings.length === 0,
     })
     ;(navigation.navigate as any)(ROUTES.ONBOARDING_TREATMENT_REVIEW)
-  }, [form, asksDay, applicationDate, defaults, medicine, medicineSource, keptRemind, doseTyped, warnings, show, setTreatment, navigation])
+  }, [form, asksDay, applicationDate, defaults, medicine, medicineSource, keptRemind, doseTyped, warnings, pen, show, setTreatment, navigation])
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -398,17 +427,18 @@ export default function OnboardingTreatmentStep() {
             <>
               {/* hi-fi O-3: dose por aplicação, tela própria. */}
               <Text style={styles.title}>{defaults.doseQuestion}</Text>
-              <Text style={styles.subtitle}>O número escrito no rótulo da embalagem.</Text>
+              {/* PO smoke 19/11: a dose é da RECEITA — o rótulo da caneta multidose (1,34 mg/mL) não é dose. */}
+              <Text style={styles.subtitle}>O número escrito na sua receita médica.</Text>
               <DoseSection
               form={form}
               label={'Dose por aplicação'}
               value={doseValue}
-              hint={doseHint}
               warnings={shownWarnings}
               intakeUnits={defaults.intakeUnits}
               onChange={handleDoseChange}
               onConfirm={() => setConfirmedDose(confirmKey)}
             />
+              <PenDoseInfo model={pen} dose={form.values.dosage_per_intake} intakeUnit={(form.values.intake_unit as string) ?? null} onDial={handleDialDose} />
             </>
           ) : (
             <>
@@ -484,6 +514,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
   },
   doseBlock: { gap: spacing[2] },
+  origin: { fontSize: 13, lineHeight: 18, color: colors.text.secondary },
   subtitle: {
     fontSize: 15,
     color: colors.text.secondary,

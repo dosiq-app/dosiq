@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   rowsForAnvisaItem,
   groupByConcentration,
+  dialDosesForChoice,
   countConcentrationChoices,
   medicineDraftFromRow,
   type CmedIndex,
@@ -35,6 +36,13 @@ function optionsForItem(index: CmedIndex | null, item: any): PickerConcentration
   if (!index || !item) return []
   const rows = rowsForAnvisaItem(index, item)
   return rows.length > 0 ? groupByConcentration(index, rows) : []
+}
+
+// 125 1b (smoke 19/11): a escolha é da CONCENTRAÇÃO, que junta canetas diferentes — os atalhos de dose são a
+// união do que as embalagens dela marcam (Ozempic 1,5 + 3 mL ⇒ 0,25 · 0,5 · 1 mg).
+function withDialDoses(draft: CmedMedicineDraft, index: CmedIndex, item: any, row: any): CmedMedicineDraft {
+  const rows = rowsForAnvisaItem(index, item).map((i) => index.rows[i]).filter(Boolean)
+  return { ...draft, dialDoses: dialDosesForChoice(rows, row) }
 }
 
 // Única escolha possível (1 concentração sem 2º nível de laboratório) ⇒ a linha dela.
@@ -102,7 +110,7 @@ export function useMedicineSearchFlow({ active, onSelect }: SearchFlowOptions) {
       // SSOT CMED (2026-10-12): nome sem embalagem não deveria existir — rastro p/ investigar.
       console.warn('[useMedicineSearchFlow] item sem embalagem CMED:', item?.name)
     }
-    const draft = row ? medicineDraftFromRow(row) : undefined
+    const draft = row && cmed.index ? withDialDoses(medicineDraftFromRow(row), cmed.index, item, row) : undefined
     logEvent(EVENTS.MEDICINE_PRESENTATION_SELECTED, {
       surface: SURFACES.MOBILE,
       outcome,

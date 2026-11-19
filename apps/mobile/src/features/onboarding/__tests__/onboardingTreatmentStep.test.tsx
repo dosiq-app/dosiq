@@ -145,7 +145,7 @@ describe('injetável (AC2.2, AC2.5, AC2.5b, AC3.3)', () => {
     mockIntakeUnit = 'mg'
     const { getByText, getByLabelText, getByTestId, queryByTestId, queryByText } = render(<OnboardingTreatmentStep />)
     expect(getByText('Quanto aplica de cada vez?')).toBeTruthy()
-    expect(getByText('O número escrito no rótulo da embalagem.')).toBeTruthy()
+    expect(getByText('O número escrito na sua receita médica.')).toBeTruthy()
     expect(getByTestId('intake-unit-mg').props.accessibilityState.checked).toBe(true)
     expect(queryByText('De quanto em quanto tempo?')).toBeNull()
     fireEvent.press(getByText('Continuar'))

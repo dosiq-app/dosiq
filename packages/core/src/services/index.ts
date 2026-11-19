@@ -110,6 +110,8 @@ export {
   describeTreatment,
   nextDoseDate,
   anchorFromApplication,
+  derivePenDose,
+  dialDosesFromText,
 } from './treatmentSetup'
 export type {
   SetupPresentation,
@@ -121,6 +123,8 @@ export type {
   DescribeTreatmentInput,
   TreatmentDescription,
   ApplicationAnchorInput,
+  PenDoseInput,
+  PenDose,
 } from './treatmentSetup'
 
 // Medida × etapa do tratamento (contrato 069 FR-010/FR-012; criado pela 097 DS-7)
@@ -201,7 +205,7 @@ export type {
   PickerConcentration,
   PickerLabChoice,
 } from './cmed/cmedIndex'
-export { medicineDraftFromRow, strengthChoicesFromDs } from './cmed/cmedMedicine'
+export { medicineDraftFromRow, strengthChoicesFromDs, dialDosesForChoice } from './cmed/cmedMedicine'
 export { packageFromText, presentationFromRow } from './cmed/cmedPackage'
 export type { CmedPackage, InjectionContainer } from './cmed/cmedPackage'
 export { defaultIntakeUnitFor, intakeUnitFromPresentation } from './cmed/cmedIntakeUnit'

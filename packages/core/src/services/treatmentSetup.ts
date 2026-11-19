@@ -1,10 +1,12 @@
 // treatmentSetup.ts — regras puras do cadastro de remédio + tratamento (spec 125, INV-6).
 // Fonte única para onboarding, form completo e Hoje: defaults por forma (FR-021), avisos de
 // plausibilidade (FR-009, nunca bloqueiam — INV-5) e a frase de conferência (FR-011).
-// O app não propõe posologia (INV-3): a única dose que nasce preenchida é a contagem de unidades
-// (1 comprimido, 1 aplicação de caneta em mg/UI) — nunca uma massa.
+// O app não propõe posologia (INV-3): a dose que nasce preenchida é a contagem de unidades (1 comprimido,
+// 1 aplicação de caneta em mg/UI) ou, na 1b, a TRANSCRIÇÃO da embalagem de dose única (concentração ×
+// volume da unidade — dado da caixa, não sugestão clínica; PO 2026-11-17/19).
 
 import { isLiquidDosageUnit, formatNumberPtBR } from '../utils/doseUnit'
+import { cleanFloat } from '../utils/formUtils'
 import { parseLocalDate, formatLocalDate, addDays } from '../utils/dateUtils'
 
 export type SetupPresentation = 'comprimido' | 'capsula' | 'liquido' | 'injetavel' | 'pomada' | 'spray' | 'outro'
@@ -210,7 +212,10 @@ function looksLikeMl(dose: number, unit: string, pen: number | null, denominator
 export function checkDosePlausibility(input: DosePlausibilityInput): DosePlausibilityWarning[] {
   const warnings: DosePlausibilityWarning[] = []
   const dose = toNumber(input.dose)
-  const pen = toNumber(input.penContent)
+  // Smoke 1b C-1b-S6 (AP-226/R-277): o conteúdo é reconstruído do salvo POR mL (8,333333333333 × 0,6 =
+  // 4,9999999999998) — `cleanFloat` antes de comparar e de mostrar, senão a dose igual ao rótulo vira "maior".
+  const rawPen = toNumber(input.penContent)
+  const pen = rawPen === null ? null : cleanFloat(rawPen)
   const denominator = toNumber(input.denominatorMl)
   const unit = input.doseUnit ?? ''
 
@@ -467,4 +472,66 @@ export function anchorFromApplication(i: ApplicationAnchorInput): { start_date: 
   let next = applied
   while (next < today) next = addDays(next, n)
   return { start_date: formatLocalDate(next), weekdays: [] }
+}
+
+// ── Dose pela embalagem (1b, FR-013 — simplificada pelo PO no smoke de 2026-11-19) ─────────────
+// A dose por aplicação é da RECEITA. Só nasce preenchida onde a embalagem diz o conteúdo de UMA aplicação:
+// rótulo curado com volume (`lv`, spec 113 — hoje o Mounjaro, "2,5 mg / 0,5 mL"). Recipiente, volume da caneta
+// multidose e "≈ N aplicações" não mudam a dose — ficam fora desta tela (C-1b-S3/S4).
+
+export interface PenDoseInput {
+  presentation: string | null | undefined
+  /** `mg/ml` ou `ui/ml`; outra unidade ⇒ sem derivação (mg por caneta já é "1 aplicação"). */
+  dosageUnit: string | null | undefined
+  /** Concentração por 1 mL. */
+  perMl: number | string | null | undefined
+  /** Volume do rótulo curado (`lv`) de UMA unidade, em mL. Quem chama garante a origem curada. */
+  volumeMl: number | string | null | undefined
+}
+
+export interface PenDose {
+  dose: number
+  intakeUnit: 'mg' | 'UI'
+}
+
+/** Mesmo teto do `protocolSchema.dosage_per_intake`: nunca pré-preencher o que o schema recusa. */
+const MAX_DERIVED_DOSE = 1000
+
+function massUnitOf(dosageUnit: string | null | undefined): 'mg' | 'UI' | null {
+  if (dosageUnit === 'mg/ml') return 'mg'
+  if (dosageUnit === 'ui/ml') return 'UI'
+  return null
+}
+
+/**
+ * Dose de injetável de dose única = concentração × volume do rótulo curado (AC5.1). Unidade com mais de
+ * 1 mL não é dose única de injeção. Qualquer dado faltando ⇒ null (campo vazio, a pessoa digita a receita).
+ */
+export function derivePenDose(i: PenDoseInput): PenDose | null {
+  if (i.presentation !== 'injetavel') return null
+  const intakeUnit = massUnitOf(i.dosageUnit)
+  if (!intakeUnit) return null
+  const perMl = toNumber(i.perMl)
+  const volume = toNumber(i.volumeMl)
+  if (perMl === null || perMl <= 0 || volume === null || volume <= 0) return null
+  if (volume > INJECTION_MAX_ML_PER_APPLICATION) return null
+  const dose = cleanFloat(perMl * volume) // R-277
+  if (dose <= 0 || dose > MAX_DERIVED_DOSE) return null
+  return { dose, intakeUnit }
+}
+
+const DIAL_DOSES = /\(DOSES?\s+([^)]*)\)/i
+const DIAL_NUMBER = /(\d+(?:[.,]\d+)?)\s*MG\b/gi
+
+/** Doses do mostrador escritas na apresentação CMED ("(DOSES 0,25MG E 0,5 MG)") — nunca lista nome→dose. */
+export function dialDosesFromText(text: string | null | undefined): number[] {
+  if (!text) return []
+  const block = DIAL_DOSES.exec(text)
+  if (!block) return []
+  const doses: number[] = []
+  for (const m of block[1].matchAll(DIAL_NUMBER)) {
+    const n = Number(m[1].replace(',', '.'))
+    if (Number.isFinite(n) && n > 0 && !doses.includes(n)) doses.push(n)
+  }
+  return doses
 }

@@ -31,7 +31,11 @@ import {
   INTERVAL_DAYS_MAX,
   resolveCurrentStep,
   defaultIntakeUnitFor,
+  setupDefaults,
+  isLiquidDosageUnit,
 } from '@dosiq/core'
+import ApplicationDayField from '@features/onboarding/components/ApplicationDayField'
+import { useApplicationDay } from '@treatments/hooks/useApplicationDay'
 import FormInput from '@shared/components/form/FormInput'
 import FormSelect from '@shared/components/form/FormSelect'
 import FormDatePicker from '@shared/components/form/FormDatePicker'
@@ -70,6 +74,38 @@ function buildFrequencyOptions(currentFrequency, intervalAvailable = false, mont
   }))
 }
 
+// 125 1b (AC5.2b): injetável segue a regra da forma do core — mg/mL ⇒ mg ou mL; UI/mL ⇒ UI ou mL;
+// nunca gotas (Ozempic pelo form completo nascia "X gotas").
+// RC5 1b: o mL é só do form completo (já existia aqui); o onboarding segue só mg/UI — com o chip mL ao lado da dose
+// da caixa, "2,5" viraria 2,5 mL sem aviso.
+function injectableIntakeUnits(medicine): string[] {
+  if (medicine?.presentation !== 'injetavel') return []
+  const units = setupDefaults('injetavel', medicine?.dosage_unit).intakeUnits
+  return isLiquidDosageUnit(medicine?.dosage_unit) && units.length > 0 ? [...units, 'ml'] : units
+}
+
+// Default da unidade de tomada: gotas é a apresentação líquida mais comum; ui/ml → 'UI'.
+// 066 E (C-7): a regra mora no core — o onboarding usa a mesma quando a caixa não diz a unidade.
+function defaultIntakeFor(medicine): string {
+  return injectableIntakeUnits(medicine)[0] ?? defaultIntakeUnitFor(medicine?.dosage_unit) ?? 'gotas'
+}
+
+// Dropdown por forma (022 + B2): injetável pela regra do core; ui/ml → {UI, gotas}; mg/ml → {gotas, ml, mg};
+// resto → {gotas, ml}. Tratamento antigo com unidade fora da regra (injetável em gotas) mostra o valor salvo.
+function intakeOptionsFor(medicine, currentIntake: string | null) {
+  const injectable = injectableIntakeUnits(medicine)
+  const byForm =
+    injectable.length > 0
+      ? injectable
+      : medicine?.dosage_unit === 'ui/ml'
+        ? ['UI', 'gotas']
+        : medicine?.dosage_unit === 'mg/ml'
+          ? ['gotas', 'ml', 'mg']
+          : ['gotas', 'ml']
+  const allowed = currentIntake && !byForm.includes(currentIntake) ? [...byForm, currentIntake] : byForm
+  return allowed.map((u) => ({ value: u, label: INTAKE_UNIT_LABELS[u] ?? u }))
+}
+
 function useProtocolFormDerived(form, medicine) {
   const startDateAsDate = useMemo(
     () => (form.values.start_date ? parseLocalDate(form.values.start_date) : null),
@@ -101,22 +137,14 @@ function useProtocolFormDerived(form, medicine) {
     return hint ? `✨ ${hint}` : fallback
   }, [form.values.dosage_per_intake, form.values.intake_unit, form.values.units_per_ml, medicine, isLiquid])
 
-  // Default da unidade de tomada: gotas é a apresentação líquida mais comum (mg é
-  // exceção do GLP-1 — usuário troca p/ mg manualmente). ui/ml → 'UI'.
-  // 066 E (C-7): a regra mora no core — o onboarding usa a mesma quando a caixa não diz a unidade.
-  const defaultIntake = defaultIntakeUnitFor(medicine?.dosage_unit) ?? 'gotas'
+  const defaultIntake = defaultIntakeFor(medicine)
   const isMg = form.values.intake_unit === 'mg'
-  // mg usa a CONCENTRAÇÃO já cadastrada (dosage_per_pill = mg/ml) — não pede densidade.
-  // Dropdown dinâmico por forma (022 + B2): ui/ml → {UI, gotas}; mg/ml → {mg, ml, gotas}; resto → {gotas, ml}.
-  const intakeOptions = useMemo(() => {
-    const allowed =
-      medicine?.dosage_unit === 'ui/ml'
-        ? ['UI', 'gotas']
-        : medicine?.dosage_unit === 'mg/ml'
-          ? ['gotas', 'ml', 'mg']
-          : ['gotas', 'ml']
-    return allowed.map((u) => ({ value: u, label: INTAKE_UNIT_LABELS[u] ?? u }))
-  }, [medicine?.dosage_unit])
+  const currentIntake = form.values.intake_unit ?? null
+  const intakeOptions = useMemo(
+    () => intakeOptionsFor(medicine, currentIntake),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [medicine?.dosage_unit, medicine?.presentation, currentIntake],
+  )
   // Densidade (units_per_ml) só p/ gotas/UI (razão física sub-ml). mg usa a
   // concentração do medicamento (dosage_per_pill = mg/ml) — não pede densidade.
   const needsDensity =
@@ -257,7 +285,9 @@ function toIntervalDays(raw) {
 
 const PRESET_FREQUENCIES = new Set(['diário', 'dias_alternados'])
 
-function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onStartDateChange }) {
+// 125 1b (AC5.3): `applicationDay` (useApplicationDay) troca dias da semana/próxima dose pelo dia da aplicação.
+function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onStartDateChange, applicationDay }) {
+  const asksDay = applicationDay.asks
   // States — FR-014: até a usuária escolher uma opção, "Mensal" é DERIVADO dos valores carregados;
   // depois vale a escolha dela (digitar 30 em "A cada X dias" não troca a opção). Não derivar UMA vez
   // na montagem: na edição o prefill chega por `form.reset` num efeito DEPOIS do 1º render
@@ -280,9 +310,9 @@ function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onS
       const patch = applyCadenceChoice(choice, form.values.interval_days ?? null)
       if (!patch) return
       setChosen(choice)
-      form.setValues(patch)
+      form.setValues(applicationDay.reanchor(patch))
     },
-    [form]
+    [form, applicationDay]
   )
   return (
     <Section title="Frequência e Horários" required>
@@ -311,7 +341,17 @@ function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onS
           required
         />
       ) : null}
-      {isDayCadence ? (
+      {asksDay ? (
+        <View style={styles.fieldBlock}>
+          <ApplicationDayField
+            value={applicationDay.date}
+            today={applicationDay.today}
+            onChange={applicationDay.choose}
+            error={form.touched.weekdays && form.errors.weekdays ? 'Escolha o dia da aplicação.' : null}
+          />
+        </View>
+      ) : null}
+      {isDayCadence && !asksDay ? (
         <View style={styles.fieldBlock}>
           <NextDoseField
             values={form.values}
@@ -322,7 +362,7 @@ function FrequencySection({ form, showWeekdays, isEditMode, startDateAsDate, onS
           />
         </View>
       ) : null}
-      {showWeekdays ? (
+      {showWeekdays && !asksDay ? (
         <View style={styles.fieldBlock}>
           <Text style={styles.fieldLabel}>Dias da semana</Text>
           <WeekdaySelector
@@ -520,6 +560,7 @@ function DoseWarningsField({ medicine, dose, intakeUnit }) {
   )
 }
 
+
 export default function ProtocolFormBody({
   form,
   medicine,
@@ -537,7 +578,8 @@ export default function ProtocolFormBody({
 }) {
   const [guideVisible, setGuideVisible] = useState(false)
   const [guideMsg, setGuideMsg] = useState('')
-
+  // 125 1b (AC5.3): dia da aplicação do injetável não diário, só na criação.
+  const applicationDay = useApplicationDay({ form, presentation: medicine?.presentation, disabled: isEditMode })
   const {
     startDateAsDate,
     endDateAsDate,
@@ -551,7 +593,6 @@ export default function ProtocolFormBody({
     defaultDensity,
     doseDisplay,
   } = useProtocolFormDerived(form, medicine)
-
   const setCritical = useCallback((value: boolean) => form.handleChange('critical_alarm', value), [form])
   const setTrackedMeasure = useCallback((value) => form.handleChange('tracked_measure', value), [form])
   const showFullScreenGuide = useCallback(() => {
@@ -564,7 +605,6 @@ export default function ProtocolFormBody({
   // 054 FR-008b: fluxo do toggle por plataforma/estado de permissão vive no hook.
   const criticalToggle = useCriticalAlarmToggle({ setCritical, onEnabledAndroid: showFullScreenGuide })
   const showWeekdays = frequencyRequiresWeekdays(form.values.frequency)
-
   return (
     <>
       <Section title="Medicamento">
@@ -608,7 +648,7 @@ export default function ProtocolFormBody({
         showWeekdays={showWeekdays}
         isEditMode={isEditMode}
         startDateAsDate={startDateAsDate}
-        onStartDateChange={onStartDateChange}
+        onStartDateChange={onStartDateChange} applicationDay={applicationDay}
       />
 
       <CriticalAlarmCard
@@ -642,7 +682,7 @@ export default function ProtocolFormBody({
         onStartDateChange={onStartDateChange}
         onEndDateChange={onEndDateChange}
         form={form}
-        hideStartDate={!isEditMode && form.values.frequency === 'intervalo_dias'}
+        hideStartDate={!isEditMode && (form.values.frequency === 'intervalo_dias' || applicationDay.asks)}
       />
 
       <Section title="Organização">

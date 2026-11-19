@@ -120,7 +120,7 @@ export function useProtocolFormSubmit({ editId, existing = null, form, medicine 
         : await mutation.create(payload, {
           goBack: !onSaved,
           measureSource: measure.source,
-          // 125 FR-020: no form a dose é sempre da pessoa; plausível = sem aviso da regra do core.
+          // 125 FR-020: no form a dose é sempre da pessoa (sem pré-montagem — smoke 1b, PO 19/11).
           doseSource: 'manual',
           dosePlausible: doseWarnings(medicine, currentDose, form.values.intake_unit ?? null).length === 0,
         })

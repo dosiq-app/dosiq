@@ -41,6 +41,7 @@ function renderStep() {
     setMedicine: jest.fn(),
     setMedicineSource: jest.fn(),
     setMedicineIntakeUnit: jest.fn(),
+    setMedicineBox: jest.fn(),
     skip: jest.fn(),
   }
   return { ...render(<OnboardingContext.Provider value={ctx as any}><OnboardingMedicineStep /></OnboardingContext.Provider>), ctx }

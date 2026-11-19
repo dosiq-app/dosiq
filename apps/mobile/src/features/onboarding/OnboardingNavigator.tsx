@@ -52,6 +52,9 @@ export default function OnboardingNavigator({ onComplete }) {
   const [medicineSource, setMedicineSource] = useState(null)
   // 066 E (C-7): unidade da tomada do 1º remédio (gotas/ml/UI/mg; null = comprimido), usada pelo Tratamento.
   const [medicineIntakeUnit, setMedicineIntakeUnit] = useState(null)
+  // 125 1b: embalagem da caixa escolhida (recipiente, volume da unidade, concentração por mL, doses do
+  // mostrador). Só vale com `medicineSource` da caixa — o cadastro manual a ignora (decisão A, PO 19/11).
+  const [medicineBox, setMedicineBox] = useState(null)
   // Tratamento em configuração no passo 3.
   const [treatment, setTreatment] = useState(null)
   // 096 B3: modo escolhido no S4; gravado só no S1, depois do A.
@@ -127,6 +130,8 @@ export default function OnboardingNavigator({ onComplete }) {
       setMedicineSource,
       medicineIntakeUnit,
       setMedicineIntakeUnit,
+      medicineBox,
+      setMedicineBox,
       treatment,
       setTreatment,
       stockTracking,
@@ -137,7 +142,7 @@ export default function OnboardingNavigator({ onComplete }) {
       finishLater,
       markCompleted,
     }),
-    [medicine, medicineSource, medicineIntakeUnit, treatment, stockTracking, writeSetup, finish, skip, finishLater, markCompleted],
+    [medicine, medicineSource, medicineIntakeUnit, medicineBox, treatment, stockTracking, writeSetup, finish, skip, finishLater, markCompleted],
   )
 
   // Entrou no wizard. Reabrir o app no meio conta nova tentativa (declarado, analysis-prC G-8).

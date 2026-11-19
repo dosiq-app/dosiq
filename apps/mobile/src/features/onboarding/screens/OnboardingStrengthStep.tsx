@@ -100,7 +100,7 @@ export default function OnboardingStrengthStep() {
       <KeyboardAvoidingView enabled={keyboardVisible} style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Text style={styles.title} accessibilityRole="header">Qual é a dosagem?</Text>
-          <Text style={styles.subtitle}>O número escrito no rótulo da embalagem.</Text>
+          <Text style={styles.subtitle}>O número escrito na sua receita médica.</Text>
           <StrengthFields
             presentation={presentation}
             doseInputProps={{ ...formProps(form, 'dosage_per_pill'), onChange: handleDecimal }}
