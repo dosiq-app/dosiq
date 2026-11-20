@@ -206,6 +206,14 @@ export type {
   PickerLabChoice,
 } from './cmed/cmedIndex'
 export { medicineDraftFromRow, strengthChoicesFromDs, dialDosesForChoice } from './cmed/cmedMedicine'
+export {
+  CMED_STRENGTHS_VERSION,
+  decodeCmedStrengths,
+  isStrengthsAligned,
+  indexByRegistration,
+  strengthEntriesFor,
+} from './cmed/cmedStrengths'
+export type { CmedStrengths, CmedStrengthsDecodeResult, StrengthEntry } from './cmed/cmedStrengths'
 export { packageFromText, presentationFromRow } from './cmed/cmedPackage'
 export type { CmedPackage, InjectionContainer } from './cmed/cmedPackage'
 export { defaultIntakeUnitFor, intakeUnitFromPresentation } from './cmed/cmedIntakeUnit'

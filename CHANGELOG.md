@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Sidecar de forças CMED no app, sem mudança visível (spec 125, Fatia 2-pré)
+
+- **Core** (`Added`, **no-user-impact** — nenhum consumidor visível nesta fatia): `decodeCmedStrengths`, `isStrengthsAligned`, `indexByRegistration` e `strengthEntriesFor` (`services/cmed/cmedStrengths.ts`, CON-048) leem o sidecar `cmedStrengths.json` v1 por registro, sem depender da base leve; sidecar de outra versão que o manifest ou com contagem divergente fica indisponível.
+- **Mobile** (`Added`, **no-user-impact**, sem bump de `APP_VERSION`; sai junto do próximo build do trem v0.35): `useCmedStrengths` baixa e guarda o sidecar (≈ 0,5 MB) só quando habilitado; ainda não é montado por nenhuma tela.
+- **Web**: sem mudança.
+- **Store-note:** não se aplica.
+
 ### Forms completos na ordem do onboarding (spec 125, Fatia 1c)
 
 - **Mobile** (`Changed`/`Added`/`Removed`/`Fixed`, **patch** `APP_VERSION` 0.34.32 → **0.34.33**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — telas reorganizadas e comportamento novo nos forms, 100% JS, nada desligado por flag):
