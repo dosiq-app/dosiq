@@ -21,6 +21,13 @@ const TONE_BG: Record<PromoCardTone, string> = {
   error: colors.status.errorLight,
   neutral: colors.bg.card,
 }
+// Emenda PO smoke 125 (20/11): só o FOCO da Hoje tem fundo colorido. Fora dele o card fica branco e o tom
+// vai para a borda (o ícone já carrega a cor). Erro (sem estoque com dose em 24 h) mantém o fundo sempre.
+const TONE_BORDER: Record<PromoCardTone, string> = {
+  warning: colors.status.warning,
+  error: colors.status.error,
+  neutral: colors.border.default,
+}
 // D-7: alvo de toque ≥44 pt sem mudar o desenho do botão (12+12 de padding + ~17 de texto).
 const HIT_SLOP = { top: 4, bottom: 4, left: 0, right: 0 }
 
@@ -41,13 +48,18 @@ interface PromoCardShellProps {
   secondary?: PromoCardAction
   dismiss?: { accessibilityLabel: string; onPress: () => void; testID?: string }
   tone?: PromoCardTone
+  /** 125 fatia 2: só o foco da Hoje tem botão cheio; fora dele o CTA vira contorno. Default: cheio. */
+  emphasis?: boolean
   testID?: string
 }
 
-export default function PromoCardShell({ icon, title, subtitle, primary, secondary, dismiss, tone = 'warning', testID }: PromoCardShellProps) {
+export default function PromoCardShell({ icon, title, subtitle, primary, secondary, dismiss, tone = 'warning', emphasis = true, testID }: PromoCardShellProps) {
+  // Fora do foco, o contorno do botão segue o tom (âmbar/vermelho) — o verde de ação fica só no foco (PO 20/11).
+  // Neutro mantém o verde (cinza pareceria desabilitado).
+  const toneCta = tone === 'neutral' ? null : TONE_BORDER[tone]
   return (
     // D-7: um rótulo único (título + subtítulo) para o leitor de tela.
-    <View style={[styles.card, { backgroundColor: TONE_BG[tone] }]} accessibilityRole="summary" testID={testID}>
+    <View style={[styles.card, emphasis || tone === 'error' ? { backgroundColor: TONE_BG[tone] } : { backgroundColor: colors.bg.card, borderColor: TONE_BORDER[tone] }]} accessibilityRole="summary" testID={testID}>
       {dismiss && (
         <Pressable
           style={styles.dismiss}
@@ -68,7 +80,7 @@ export default function PromoCardShell({ icon, title, subtitle, primary, seconda
       </View>
       <View style={styles.actions}>
         <Pressable
-          style={({ pressed }) => [styles.ctaPrimary, pressed && styles.ctaPressed]}
+          style={({ pressed }) => [emphasis ? styles.ctaPrimary : styles.ctaOutline, !emphasis && toneCta && { borderColor: toneCta }, pressed && styles.ctaPressed]}
           onPress={primary.onPress}
           disabled={primary.loading}
           hitSlop={HIT_SLOP}
@@ -78,9 +90,9 @@ export default function PromoCardShell({ icon, title, subtitle, primary, seconda
           testID={primary.testID}
         >
           {primary.loading ? (
-            <ActivityIndicator size="small" color={colors.text.inverse} />
+            <ActivityIndicator size="small" color={emphasis ? colors.text.inverse : toneCta ?? colors.brand.primary} />
           ) : (
-            <Text style={styles.ctaPrimaryText}>{primary.label}</Text>
+            <Text style={emphasis ? styles.ctaPrimaryText : [styles.ctaOutlineText, toneCta && { color: toneCta }]}>{primary.label}</Text>
           )}
         </Pressable>
         {secondary && (<Pressable
@@ -148,7 +160,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing[2] },
   ctaPrimary: {
     backgroundColor: colors.brand.primary,
-    borderRadius: borderRadius.full,
+    borderRadius: borderRadius.md, // CTA = retângulo arredondado; pílula só p/ chips de seleção (PO 20/11)
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[5],
   },
@@ -157,10 +169,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.card,
     borderWidth: 1,
     borderColor: colors.border.default,
-    borderRadius: borderRadius.full,
+    borderRadius: borderRadius.md, // CTA = retângulo arredondado; pílula só p/ chips de seleção (PO 20/11)
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[5],
   },
   ctaNeutralText: { fontSize: 14, fontWeight: '700', color: colors.text.primary },
+  ctaOutline: {
+    backgroundColor: colors.bg.card,
+    borderWidth: 1.5,
+    borderColor: colors.brand.primary,
+    borderRadius: borderRadius.md, // CTA = retângulo arredondado; pílula só p/ chips de seleção (PO 20/11)
+    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[5],
+  },
+  ctaOutlineText: { fontSize: 14, fontWeight: '700', color: colors.brand.primary },
   ctaPressed: { opacity: 0.85 },
 })

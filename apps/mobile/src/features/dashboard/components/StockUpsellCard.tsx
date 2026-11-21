@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   },
   ctaPrimary: {
     backgroundColor: colors.brand.primary,
-    borderRadius: borderRadius.full,
+    borderRadius: borderRadius.md, // CTA = retângulo arredondado; pílula só p/ chips de seleção (PO 20/11)
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[5],
   },
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg.card,
     borderWidth: 1,
     borderColor: colors.border.default,
-    borderRadius: borderRadius.full,
+    borderRadius: borderRadius.md, // CTA = retângulo arredondado; pílula só p/ chips de seleção (PO 20/11)
     paddingVertical: spacing[3],
     paddingHorizontal: spacing[5],
   },

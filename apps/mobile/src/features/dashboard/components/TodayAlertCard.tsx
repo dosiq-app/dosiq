@@ -27,6 +27,8 @@ interface Props {
   /** Quantos alertas de estoque estão elegíveis (só para o `stock_low_viewed`). */
   stockCount?: number
   onDismiss?: () => void
+  /** 125 fatia 2: foco da Hoje ⇒ botão cheio; senão contorno. */
+  emphasis?: boolean
 }
 
 type Look = { tone: PromoCardTone; Icon: any; color: string }
@@ -38,7 +40,7 @@ const LOOK: Record<StockLevel | 'supply', Look> = {
   stock_low: { tone: 'neutral', Icon: PackageSearch, color: colors.text.secondary },
 }
 
-export default function TodayAlertCard({ payload, stockCount = 1, onDismiss }: Props) {
+export default function TodayAlertCard({ payload, stockCount = 1, onDismiss, emphasis = true }: Props) {
   const level = payload.type === 'supply' ? 'supply' : payload.level
   // S-21: compra escalada usa o visual do degrau (âmbar D-2..D-1, vermelho em D).
   const urgency = payload.type === 'supply' ? payload.urgency : null
@@ -67,6 +69,7 @@ export default function TodayAlertCard({ payload, stockCount = 1, onDismiss }: P
     <PromoCardShell
       testID="today-alert-card"
       tone={tone}
+      emphasis={emphasis}
       icon={<Icon size={22} color={color} />}
       title={copy.title}
       subtitle={copy.subtitle}

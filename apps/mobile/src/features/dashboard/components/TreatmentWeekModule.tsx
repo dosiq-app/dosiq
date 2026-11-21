@@ -42,6 +42,7 @@ import {
   firstScheduledTime,
   type WeightWindow,
 } from '@dashboard/utils/treatmentWeek'
+import { treatmentSetupRows } from '@dashboard/utils/setupCopy'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 
 type Props = {
@@ -57,6 +58,8 @@ type Props = {
   onRegisterEarly?: (instance: any) => void
   /** Chevron da L3 → detalhe do tratamento. */
   onOpenTreatment?: (protocolId: string) => void
+  /** 125 fatia 2: "Ajustar" do miolo da L1 antes da 1ª dose → edição do tratamento. */
+  onAdjustTreatment?: (protocolId: string) => void
 }
 
 /**
@@ -155,6 +158,7 @@ function ModuleHeader({ medicineName, medicine }: { medicineName: string | null;
 
 export default function TreatmentWeekModule({
   userId, profile, medicineName, treatmentStart, timezone, reloadKey, protocol = null, onRegisterEarly, onOpenTreatment,
+  onAdjustTreatment,
 }: Props) {
   // States
   const [windowChoice, setWindowChoice] = useState<WeightWindow | null>(null)
@@ -177,6 +181,11 @@ export default function TreatmentWeekModule({
   const axisFrom = useMemo(
     () => chartAxisFrom(windowFrom, points?.[0]?.day ?? null, series.journeyStart ?? treatmentStart, today),
     [points, series.journeyStart, treatmentStart, windowFrom, today]
+  )
+  // 125 fatia 2 (PO smoke 20/11): antes da 1ª dose, o miolo da L1 é o setup do tratamento (só "Ajustar").
+  const setupRows = useMemo(
+    () => (protocol && onAdjustTreatment ? treatmentSetupRows(protocol, protocol.medicine, today) : null),
+    [protocol, onAdjustTreatment, today],
   )
   const lastDay = series.last ? formatLocalDate(getUserTime(parseISO(series.last.measuredAt), timezone)) : null
 
@@ -204,6 +213,7 @@ export default function TreatmentWeekModule({
           onRegisterEarly={() => earlyAnchor && onRegisterEarly?.(earlyAnchor)}
           injectable={injectable}
           daily={daily}
+          setup={setupRows?.length ? { rows: setupRows, onAdjust: () => onAdjustTreatment?.(protocol.id) } : null}
         />
       ) : null}
       <WeightRow

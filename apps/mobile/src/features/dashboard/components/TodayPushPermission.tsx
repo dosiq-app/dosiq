@@ -23,7 +23,7 @@ interface Props {
   protocols: any[]
 }
 
-export default function TodayPushPermission({ reach, protocols }: Props) {
+export default function TodayPushPermission({ reach, protocols, emphasis = true }: Props & { emphasis?: boolean }) {
   // States
   const [loading, setLoading] = useState(false)
   const [wentToSettings, setWentToSettings] = useState(false)
@@ -94,6 +94,7 @@ export default function TodayPushPermission({ reach, protocols }: Props) {
 
   return (
     <PushPermissionCard
+      emphasis={emphasis}
       reason={reason}
       reminder={reminder}
       multiple={multiple}

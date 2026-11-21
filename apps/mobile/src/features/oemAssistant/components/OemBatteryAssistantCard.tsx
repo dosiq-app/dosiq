@@ -15,15 +15,18 @@ interface OemBatteryAssistantCardProps {
   reason: Exclude<AssistantReason, null>
   onAdjust: () => void
   onDismiss: () => void
+  /** Foco da Hoje: fundo âmbar e botão cheio só quando é o foco (emenda PO 20/11). */
+  emphasis?: boolean
 }
 
-export default function OemBatteryAssistantCard({ reason, onAdjust, onDismiss }: OemBatteryAssistantCardProps) {
+export default function OemBatteryAssistantCard({ reason, onAdjust, onDismiss, emphasis = true }: OemBatteryAssistantCardProps) {
   const subtitle =
     reason === 'restricted'
       ? 'O aparelho está segurando o Dosiq em segundo plano. Um ajuste rápido ajuda o alarme a tocar na hora.'
       : 'A economia de bateria deste aparelho pode adiar os alarmes. Um ajuste rápido ajuda a evitar isso.'
   return (
     <PromoCardShell
+      emphasis={emphasis}
       icon={<TriangleAlert size={22} color={colors.status.warning} strokeWidth={2} />}
       title="O alarme pode não tocar neste aparelho"
       subtitle={subtitle}

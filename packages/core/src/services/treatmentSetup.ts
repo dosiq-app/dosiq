@@ -7,7 +7,7 @@
 
 import { formatNumberPtBR } from '../utils/doseUnit'
 import { cleanFloat } from '../utils/formUtils'
-import { parseLocalDate, formatLocalDate, addDays } from '../utils/dateUtils'
+import { parseLocalDate, formatLocalDate, addDays, parseISO } from '../utils/dateUtils'
 
 export type SetupPresentation = 'comprimido' | 'capsula' | 'liquido' | 'injetavel' | 'pomada' | 'spray' | 'outro'
 
@@ -343,6 +343,10 @@ export interface TreatmentDescription {
   sentence: string
   /** "Próxima: hoje às 18:00" / "amanhã às 08:00" / "terça, 24/11 às 08:00"; null em quando_necessário ou sem data. */
   next: string | null
+  /** Partes da frase, para quem mostra em linhas (miolo da L1, 125 fatia 2): "0,5 mg por aplicação". */
+  dose: string | null
+  /** "toda segunda às 15:00" · "todo dia às 08:00". */
+  frequency: string | null
 }
 
 const UNIT_TEXT: Record<string, string> = { mg: 'mg', mcg: 'mcg', g: 'g', ui: 'UI', un: 'un.', 'mg/ml': 'mg/mL', 'ui/ml': 'UI/mL' }
@@ -490,7 +494,7 @@ export function describeTreatment(i: DescribeTreatmentInput): TreatmentDescripti
   if (dose) parts.push(dose)
   const freq = frequencyText(i)
   if (freq) parts.push(freq)
-  return { sentence: parts.join(' · '), next: nextText(nextDoseDate(i), i) }
+  return { sentence: parts.join(' · '), next: nextText(nextDoseDate(i), i), dose: dose || null, frequency: freq || null }
 }
 
 // ── Dia da aplicação (AC2.5b) ──────────────────────────────────────────────────────────────
@@ -582,4 +586,195 @@ export function dialDosesFromText(text: string | null | undefined): number[] {
     if (Number.isFinite(n) && n > 0 && !doses.includes(n)) doses.push(n)
   }
   return doses
+}
+
+// ── Coerência tratamento × caixa (fatia 2, FR-019 · AC6.4 · INV-6) ─────────────────────────────
+// Referência = entradas do sidecar 127 do MESMO registro (lidas ao vivo, nunca gravadas no remédio —
+// T200 A recusada). Falha fechada: qualquer dado faltando ⇒ `indeterminado` (AC6.4c), nunca `coerente`.
+// O resultado só ORDENA as perguntas do card (probableSide); o app não propõe dose (INV-3).
+
+export type CoherenceReason = 'dose' | 'unidade' | 'conc_fora'
+
+export interface CoherenceBox {
+  /** Concentração do registro, por 1 mL. */
+  perMl: number
+  /** `mg/ml` ou `ui/ml`. */
+  dosageUnit: string
+  /** Unidade de massa da aplicação. */
+  unit: 'mg' | 'UI'
+  /** Volume de UMA aplicação (`lv`); null na multidose. */
+  volumeMl: number | null
+  /** Dose de uma aplicação (dose única); null na multidose. */
+  dose: number | null
+  /** Doses do mostrador (multidose); vazio na dose única. */
+  dialDoses: number[]
+}
+
+export type CoherenceVerdict =
+  | { status: 'coerente' }
+  | { status: 'indeterminado' }
+  | {
+      status: 'incoerente'
+      reason: CoherenceReason
+      /** null em `conc_fora` (a caixa salva não existe no registro). */
+      box: CoherenceBox | null
+      /** Dose do tratamento na unidade de massa da caixa (null quando não convertível). */
+      doseMass: number | null
+      /** Lado provavelmente errado: só ordena as linhas da folha (DS-3). */
+      probableSide: 'caixa' | 'dose'
+      /** `unidade`: trocar só a unidade deixa coerente (AC6.4b). */
+      fixAvailable: boolean
+      multidose: boolean
+    }
+
+export interface CoherenceTreatmentInput {
+  dosage_per_intake: number | string | null | undefined
+  intake_unit?: string | null
+}
+
+export interface CoherenceMedicineInput {
+  presentation: string | null | undefined
+  dosage_per_pill: number | string | null | undefined
+  dosage_unit: string | null | undefined
+  concentration_volume_ml?: number | string | null
+  anvisa_registration?: string | null
+}
+
+/** Tolerância relativa da comparação de números da caixa (float do cadastro, 0,4466… vs 1,34). */
+const COHERENCE_TOLERANCE = 0.01
+
+function near(a: number, b: number): boolean {
+  return Math.abs(a - b) <= COHERENCE_TOLERANCE * Math.max(Math.abs(a), Math.abs(b))
+}
+
+interface StrengthLike {
+  d: number | null
+  u: string | null
+  lv: number | null
+  dd: number[]
+}
+
+/**
+ * `entries` = forças do registro do remédio no sidecar (`strengthEntriesFor`); `null` = sidecar não pronto
+ * ou desalinhado ⇒ indeterminado.
+ */
+export function classifyCoherence(
+  t: CoherenceTreatmentInput,
+  med: CoherenceMedicineInput,
+  entries: StrengthLike[] | null | undefined,
+): CoherenceVerdict {
+  const INDET: CoherenceVerdict = { status: 'indeterminado' }
+  if (!entries || entries.length === 0) return INDET
+  if (med.presentation !== 'injetavel') return INDET
+  const perMl = toNumber(med.dosage_per_pill)
+  if (perMl === null || perMl <= 0 || !med.dosage_unit) return INDET
+  const valid = entries.filter((e) => typeof e.d === 'number' && e.d > 0 && !!e.u)
+  if (!valid.length) return INDET
+  const dose = toNumber(t.dosage_per_intake)
+  if (dose === null || dose <= 0) return INDET
+
+  // AC6.4d / RC3 E-5: concentração (valor E unidade) fora do registro ⇒ a caixa está errada; dose não é julgada.
+  const match = valid.find((e) => e.u === med.dosage_unit && near(e.d as number, perMl))
+  if (!match) {
+    return { status: 'incoerente', reason: 'conc_fora', box: null, doseMass: null, probableSide: 'caixa', fixAvailable: false, multidose: false }
+  }
+  const unit = massUnitOf(med.dosage_unit)
+  if (!unit) return INDET
+
+  let box: CoherenceBox
+  if (match.lv) {
+    const pen = derivePenDose({ presentation: 'injetavel', dosageUnit: med.dosage_unit, perMl: match.d, volumeMl: match.lv })
+    if (!pen) return INDET
+    box = { perMl: match.d as number, dosageUnit: med.dosage_unit, unit, volumeMl: match.lv, dose: pen.dose, dialDoses: [] }
+  } else if (match.dd.length) {
+    box = { perMl: match.d as number, dosageUnit: med.dosage_unit, unit, volumeMl: null, dose: null, dialDoses: match.dd }
+  } else {
+    return INDET // AC6.4c: sem volume de uma aplicação nem mostrador (Ozivy)
+  }
+  const multidose = box.dose === null
+  const fits = (mass: number) => (multidose ? box.dialDoses.some((d) => near(d, mass)) : near(box.dose as number, mass))
+
+  const intake = t.intake_unit ?? null
+  // Contagem (sem unidade): 1 aplicação da dose única = a caixa toda.
+  if (!intake) {
+    if (multidose) return INDET
+    return dose === 1 ? { status: 'coerente' } : INDET
+  }
+  const otherMass = unit === 'mg' ? 'UI' : 'mg'
+  if (intake === 'gotas' || intake === otherMass) {
+    // AC6.4b: a unidade está errada; [Usar X] só quando, trocada a unidade, fica coerente.
+    return { status: 'incoerente', reason: 'unidade', box, doseMass: null, probableSide: 'dose', fixAvailable: fits(dose), multidose }
+  }
+  const doseMass = intake === 'ml' ? cleanFloat(dose * box.perMl) : intake === unit ? dose : null
+  if (doseMass === null) return INDET
+  if (fits(doseMass)) return { status: 'coerente' }
+  const probableSide = !multidose && (box.dose as number) > doseMass ? 'caixa' : 'dose'
+  return { status: 'incoerente', reason: 'dose', box, doseMass, probableSide, fixAvailable: false, multidose }
+}
+
+function keyNumber(v: number | string | null | undefined): string {
+  const n = toNumber(v)
+  return n === null ? '' : String(cleanFloat(n))
+}
+
+/** AC6.4a: a confirmação vale para a combinação (registro, concentração, volume, dose, unidades). */
+export function coherenceKey(t: CoherenceTreatmentInput, med: CoherenceMedicineInput): string {
+  return [
+    (med.anvisa_registration ?? '').trim(),
+    keyNumber(med.dosage_per_pill),
+    med.dosage_unit ?? '',
+    keyNumber(med.concentration_volume_ml),
+    keyNumber(t.dosage_per_intake),
+    t.intake_unit ?? '',
+  ].join('|')
+}
+
+// ── Fila de setup da Hoje (AC6.1 · AC6.3 · AC6.6 · FR-024) ─────────────────────────────────────
+
+/** Janela do "1º uso": tratamento/remédio criado há até 14 dias (= janela de logs da Hoje). */
+export const SETUP_WINDOW_DAYS = 14
+
+export type SetupCardPick =
+  | { kind: 'confira'; protocolId: string; verdict: Extract<CoherenceVerdict, { status: 'incoerente' }> }
+  | { kind: 'falta'; medicineId: string }
+  | { kind: 'cadastrado'; protocolId: string }
+
+export interface PickSetupCardInput {
+  /** Tratamentos ativos (em uso e agendados), na ordem de exibição. */
+  protocols: Array<{ id: string; created_at?: string | null }>
+  /** Tratamentos com algum registro na janela carregada. */
+  loggedProtocolIds: Iterable<string>
+  /** Veredito por tratamento já SEM os confirmados neste aparelho. */
+  verdicts: Record<string, CoherenceVerdict | undefined>
+  /** Remédios do dono sem tratamento ativo. */
+  orphanMedicines: Array<{ id: string; created_at?: string | null }>
+  /** YYYY-MM-DD local (R-020). */
+  today: string
+}
+
+/** Dias desde a criação (dia local do instante); null quando ausente/inválido ⇒ não elegível (cache antigo). */
+function daysSinceCreated(createdAt: string | null | undefined, today: string): number | null {
+  if (!createdAt) return null
+  const instant = parseISO(createdAt) // instante absoluto (timestamptz); o dia civil vem de formatLocalDate
+  if (Number.isNaN(instant.getTime())) return null
+  const day = parseLocalDate(formatLocalDate(instant))
+  return Math.round((parseLocalDate(today).getTime() - day.getTime()) / 86_400_000)
+}
+
+function isRecent(createdAt: string | null | undefined, today: string): boolean {
+  const days = daysSinceCreated(createdAt, today)
+  return days !== null && days >= 0 && days <= SETUP_WINDOW_DAYS
+}
+
+/** Um card por vez: Confira > Falta 1 passo > Tratamento cadastrado (AC6.6). Confira não tem limite de idade. */
+export function pickSetupCard(i: PickSetupCardInput): SetupCardPick | null {
+  for (const p of i.protocols) {
+    const v = i.verdicts[p.id]
+    if (v && v.status === 'incoerente') return { kind: 'confira', protocolId: p.id, verdict: v }
+  }
+  const orphan = i.orphanMedicines.find((m) => isRecent(m.created_at, i.today))
+  if (orphan) return { kind: 'falta', medicineId: orphan.id }
+  const logged = new Set(i.loggedProtocolIds)
+  const fresh = i.protocols.find((p) => !logged.has(p.id) && isRecent(p.created_at, i.today))
+  return fresh ? { kind: 'cadastrado', protocolId: fresh.id } : null
 }

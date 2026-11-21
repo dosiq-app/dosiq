@@ -30,7 +30,7 @@ const NATURE: Record<AlertKind, AlertNature> = {
   ota: 'technical',
 }
 
-const HOME: Record<AlertKind, AlertHome | null> = {
+export const ALERT_HOME: Record<AlertKind, AlertHome | null> = {
   stock_zero: 'stock_tab',
   push: 'profile_notifications',
   stock_urgent: 'stock_tab',
@@ -52,6 +52,11 @@ export interface AlertCandidate<P = unknown> {
   order?: number
   /** Dado da superfície (o árbitro não lê). */
   payload?: P
+  /**
+   * Só `oem` (PO smoke 125, 20/11): o motivo muda o degrau — 2º plano restrito (alarme/push podem não
+   * chegar) = 3; bateria "Otimizado" em Xiaomi/Samsung (atraso) = 4; sem motivo = 7.
+   */
+  oemReason?: 'restricted' | 'battery' | null
 }
 
 export interface TodaySurfacesInput<P = unknown> {
@@ -90,7 +95,29 @@ export interface TodaySurfaces<P = unknown> {
 
 const rankOf = (kind: AlertKind) => ALERT_RANK.indexOf(kind)
 
+/** Degrau na régua única da Hoje (TODAY_SURFACES §2 · ADR-129 E-7): 1–2 vermelhos, 3 acima do widget. */
+export type CardTier = 1 | 2 | 3 | 4 | 5 | 6 | 7
+
+const ALERT_TIER: Record<AlertKind, CardTier> = {
+  stock_zero: 1,
+  push: 2,
+  stock_urgent: 4,
+  supply: 4,
+  stock_low: 7,
+  oem: 7,
+  ota: 7,
+}
+
+export function tierOfCandidate(a: Pick<AlertCandidate, 'kind' | 'oemReason'>): CardTier {
+  if (a.kind === 'oem' && a.oemReason === 'restricted') return 3
+  if (a.kind === 'oem' && a.oemReason === 'battery') return 4
+  return ALERT_TIER[a.kind]
+}
+
 function compareCandidates(a: AlertCandidate, b: AlertCandidate): number {
+  // Degrau primeiro (bateria muda pelo motivo); no mesmo degrau, a ordem histórica da régua.
+  const byTier = tierOfCandidate(a) - tierOfCandidate(b)
+  if (byTier !== 0) return byTier
   const byRank = rankOf(a.kind) - rankOf(b.kind)
   if (byRank !== 0) return byRank
   const byOrder = (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY)
@@ -103,14 +130,18 @@ export function pickTodaySurfaces<P = unknown>({ hasHero, alerts, stockUpsell, n
   const sorted = [...valid].sort(compareCandidates)
   const alert = sorted.find((a) => !a.dismissed && (!quiet || a.kind === 'stock_zero')) ?? null
 
-  const companion = !hasHero && alert?.kind === 'stock_zero'
-    ? sorted.find((a) => a !== alert && !a.dismissed && (a.kind === 'push' || a.kind === 'oem')) ?? null
+  // PO smoke 125 (20/11, revê S-23): sempre há um 2º candidato — o próximo da régua, com ou sem hero e
+  // qualquer que seja o 1º. Quem decide se ele aparece (orçamento, acima/abaixo do widget) é o
+  // `composeTodayCards`; o que ele não mostrar acende a casa por lá. Na espera da sessão (`quiet`) só
+  // `stock_zero` passa, aqui também.
+  const companion = alert
+    ? sorted.find((a) => a !== alert && !a.dismissed && (!quiet || a.kind === 'stock_zero')) ?? null
     : null
 
   const suppressed: SuppressedAlert[] = []
   for (const a of sorted) {
     if (a === alert || a === companion) continue
-    const home = HOME[a.kind]
+    const home = ALERT_HOME[a.kind]
     if (!home) continue
     suppressed.push({ kind: a.kind, key: a.key, home, reason: a.dismissed ? 'dismissed' : 'rank' })
   }

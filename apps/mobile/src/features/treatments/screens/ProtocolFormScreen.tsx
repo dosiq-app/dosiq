@@ -3,6 +3,7 @@
 //
 // Modo: route.params.id presente → EDIT; ausente → CREATE.
 // route.params.treatment_plan_id (create only) → pré-seleciona plano.
+// route.params.medicine_id (create only) → pré-seleciona o remédio (125 fatia 2, AC6.3).
 //
 // State/lógica delegados a useProtocolFormState + useProtocolFormSubmit.
 // Render das 6 seções delegado a ProtocolFormBody.
@@ -37,6 +38,7 @@ import ProtocolFormBody from '@treatments/components/ProtocolFormBody'
 import { useProtocolMutation } from '@treatments/hooks/useProtocolMutation'
 import { useProtocolFormState } from '@treatments/hooks/useProtocolFormState'
 import { useProtocolFormSubmit } from '@treatments/hooks/useProtocolFormSubmit'
+import { usePresetMedicine } from '@treatments/hooks/usePresetMedicine'
 import { useTitrationTimeline } from '@treatments/hooks/useTitrationTimeline'
 import { ROUTES } from '@navigation/routes'
 
@@ -47,6 +49,8 @@ export default function ProtocolFormScreen() {
   const editId = route.params?.id ?? null
   const isEdit = !!editId
   const presetPlanId = isEdit ? null : (route.params?.treatment_plan_id ?? null)
+  // 125 fatia 2 (AC6.3): "Falta 1 passo" da Hoje chega com o remédio já escolhido.
+  const presetMedicineId = isEdit ? null : (route.params?.medicine_id ?? null)
   const scrollRef = useRef(null)
   const { show } = useToast()
   const todayIso = useMemo(() => getTodayLocal(), [])
@@ -66,6 +70,7 @@ export default function ProtocolFormScreen() {
     existingLoading,
     existingError,
   } = useProtocolFormState({ editId, todayIso, presetPlanId })
+  usePresetMedicine(presetMedicineId, selectMedicine)
 
   const mutation = useProtocolMutation()
 
