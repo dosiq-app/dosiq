@@ -532,7 +532,8 @@ function TodayPrioritySection({
   const anyCard = composition.upper.length + composition.lower.length > 0
   // Promo (já liberado pelo árbitro: sem técnico pendente, fora da espera de sessão) só sem card de ação —
   // ou, no wedge sem Agenda de Hoje, ocupando a vaga que sobrou na faixa de baixo (PO smoke 20/11).
-  const promoFits = !anyCard || (roomBelow && composition.lower.length < LOWER_MAX_WITH_ROOM)
+  // RC6 #971: promo espera o estoque como os cards — sem piscar antes de um card ocupar a vaga.
+  const promoFits = stockReady && (!anyCard || (roomBelow && composition.lower.length < LOWER_MAX_WITH_ROOM))
   return (
     <>
       {stockTrackingEnabled && <TodayStockSource refreshKey={data?.capturedAt} onChange={setStockSource} protocols={protocols} />}

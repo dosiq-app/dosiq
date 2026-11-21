@@ -10,7 +10,7 @@
 //     dosiq:setup-schedule:<id>:<agenda>     ("Sim" do dia/hora — agenda mudou ⇒ pergunta de novo)
 // - Snapshot offline (stale): sem card (falha fechada — o cache não prova "sem dose registrada").
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { classifyCoherence, coherenceKey, pickSetupCard, strengthEntriesFor, SETUP_WINDOW_DAYS, getTodayLocal } from '@dosiq/core'
 import type { CoherenceVerdict, SetupCardPick, StrengthEntry } from '@dosiq/core'
 import { nativeStorageAdapter } from '@platform/storage/nativeStorageAdapter'
@@ -68,6 +68,8 @@ export function useTodaySetup({ data, stale, onScreenProtocolIds = EMPTY }: {
   const [stored, setStored] = useState<Record<string, boolean> | null>(null)
   const [recent, setRecent] = useState<any[] | null>(null)
   const [timedOut, setTimedOut] = useState(false)
+  // RC6 #971: confirmações desta sessão — a releitura do storage não pode desfazer um toque já dado.
+  const touched = useRef(new Set<string>())
 
   // Memos
   const protocols = useMemo(
@@ -139,7 +141,7 @@ export function useTodaySetup({ data, stale, onScreenProtocolIds = EMPTY }: {
     Promise.all(list.map((k) => nativeStorageAdapter.getItem(k).catch(() => null)))
       .then((values) => {
         if (cancelled) return
-        setStored(Object.fromEntries(list.map((k, i) => [k, values[i] === '1'])))
+        setStored(Object.fromEntries(list.map((k, i) => [k, values[i] === '1' || touched.current.has(k)])))
       })
     return () => {
       cancelled = true
@@ -172,6 +174,7 @@ export function useTodaySetup({ data, stale, onScreenProtocolIds = EMPTY }: {
   // Handlers
 
   const remember = useCallback(async (key: string) => {
+    touched.current.add(key)
     setStored((prev) => ({ ...(prev ?? {}), [key]: true }))
     try {
       await nativeStorageAdapter.setItem(key, '1')

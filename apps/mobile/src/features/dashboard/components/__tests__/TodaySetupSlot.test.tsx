@@ -72,6 +72,29 @@ describe('TodaySetupSlot', () => {
     expect(mockMedicineUpdate).not.toHaveBeenCalled()
   })
 
+  it('RC6 #971: toque duplo grava uma vez só', async () => {
+    let release: (v: any) => void = () => {}
+    mockProtocolUpdate.mockImplementationOnce(() => new Promise((res) => { release = res }))
+    const r = renderSlot(setup())
+    fireEvent.press(r.getByTestId('setup-check'))
+    fireEvent.press(r.getByTestId('confira-row-dose'))
+    fireEvent.press(r.getByTestId('confira-dose-confirm'))
+    fireEvent.press(r.getByTestId('confira-dose-confirm'))
+    release({ id: 'p1' })
+    await waitFor(() => expect(r.refresh).toHaveBeenCalledTimes(1))
+    expect(mockProtocolUpdate).toHaveBeenCalledTimes(1)
+  })
+
+  it('RC6 #971: caixa sem volume (multidose) limpa o volume anterior', async () => {
+    const pen = [{ d: 5, u: 'mg/ml', lv: 0.5, dd: [] }, { d: 1.34, u: 'mg/ml', lv: null, dd: [0.25, 0.5, 1] }] as any
+    const r = renderSlot(setup({ entries: pen }))
+    fireEvent.press(r.getByTestId('setup-check'))
+    fireEvent.press(r.getByTestId('confira-row-box'))
+    fireEvent.press(r.getByTestId('confira-box-1'))
+    fireEvent.press(r.getByTestId('confira-box-confirm'))
+    await waitFor(() => expect(mockMedicineUpdate).toHaveBeenCalledWith('m1', { dosage_per_pill: 1.34, dosage_unit: 'mg/ml', concentration_volume_ml: null }))
+  })
+
   it('mutação falhou (undefined) ⇒ não recarrega, folha e card ficam', async () => {
     mockProtocolUpdate.mockResolvedValueOnce(undefined)
     const r = renderSlot(setup())

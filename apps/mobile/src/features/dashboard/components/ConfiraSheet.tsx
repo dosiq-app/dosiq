@@ -46,7 +46,11 @@ export default function ConfiraSheet(props: ConfiraSheetProps) {
   // States
   const [step, setStep] = useState<Step>(initialStep)
   // Uma opção só ⇒ já marcada (smoke 20/11); a gravação continua exigindo [Confirmar] (INV-2).
-  const [picked, setPicked] = useState<number | null>(() => (props.entries.filter((e) => typeof e.d === 'number' && (e.d as number) > 0).length === 1 ? 0 : null))
+  const [choice, setPicked] = useState<number | null>(null)
+  // RC6 #971: derivado a cada render (não no inicializador) — lista que muda com a folha aberta não deixa
+  // seleção velha nem perde o "uma opção só ⇒ já marcada". A gravação segue exigindo o botão (INV-2).
+  const validCount = props.entries.filter((e) => typeof e.d === 'number' && (e.d as number) > 0).length
+  const picked = choice !== null && choice < validCount ? choice : validCount === 1 ? 0 : null
   if (!open) return null
   const close = () => {
     setStep(initialStep)

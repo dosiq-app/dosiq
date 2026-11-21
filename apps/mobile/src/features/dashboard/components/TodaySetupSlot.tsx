@@ -6,7 +6,7 @@
 // (`useProtocolMutation`/`useMedicineMutation`): invalidam caches e reagendam alarmes (FR-006) — o
 // serviço cru pularia isso (RC5). Erro ⇒ toast da mutação e o card fica.
 
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { StrengthEntry } from '@dosiq/core'
 import SetupCard from '@dashboard/components/SetupCard'
 import ConfiraSheet from '@dashboard/components/ConfiraSheet'
@@ -33,6 +33,8 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
   // States
   const [sheet, setSheet] = useState<null | 'confira' | 'box' | 'schedule'>(null)
   const [busy, setBusy] = useState(false)
+  // RC6 #971: trava síncrona — `busy` (estado) só chega no próximo render e o "Usar 2,5 mg" do card não o lê.
+  const inFlight = useRef(false)
   const protocolMutation = useProtocolMutation()
   const medicineMutation = useMedicineMutation()
   const { card, protocol, medicine } = setup
@@ -40,6 +42,8 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
   // Handlers
   // `undefined` = a mutação falhou (já mostrou o toast): a folha e o card ficam.
   const run = useCallback(async (work: () => Promise<unknown>) => {
+    if (inFlight.current) return
+    inFlight.current = true
     setBusy(true)
     try {
       const result = await work()
@@ -47,6 +51,7 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
       setSheet(null)
       refresh()
     } finally {
+      inFlight.current = false
       setBusy(false)
     }
   }, [refresh])
@@ -68,7 +73,8 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
   const pickBox = (entry: StrengthEntry) => run(() => medicineMutation.update(medicine.id, {
     dosage_per_pill: entry.d,
     dosage_unit: entry.u,
-    concentration_volume_ml: entry.lv ?? medicine.concentration_volume_ml ?? null,
+    // RC6 #971: a entrada do registro é a fonte — sem volume (multidose) limpa o da caixa anterior.
+    concentration_volume_ml: entry.lv ?? null,
   }))
   const saveSchedule = (change: ScheduleChange) => run(async () => {
     const row = await protocolMutation.update(protocol.id, change, { previous: protocol })
@@ -100,6 +106,8 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
       />
       {sheet === 'confira' || sheet === 'box' ? (
         <ConfiraSheet
+          // RC6 #971 (R-273/AP-222): outra entidade ⇒ folha nova, sem passo/seleção da anterior.
+          key={`${sheet}:${protocol?.id ?? medicine?.id}`}
           open
           initialStep={sheet === 'box' ? 'box' : 'ask'}
           protocol={protocol}
@@ -120,7 +128,7 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
         />
       ) : null}
       {sheet === 'schedule' && protocol ? (
-        <SetupScheduleSheet protocol={protocol} busy={busy} onClose={() => setSheet(null)} onSave={saveSchedule} />
+        <SetupScheduleSheet key={protocol.id} protocol={protocol} busy={busy} onClose={() => setSheet(null)} onSave={saveSchedule} />
       ) : null}
     </>
   )

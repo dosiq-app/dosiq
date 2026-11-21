@@ -69,6 +69,20 @@ describe('useTodaySetup', () => {
     await waitFor(() => expect(r2.result.current.card?.kind).toBe('confira'))
   })
 
+  it('RC6 #971: releitura do storage não desfaz confirmação da sessão', async () => {
+    const pillP = proto({ medicine: pill, medicine_id: 'm2' })
+    const { result, rerender } = renderHook(({ d }) => useTodaySetup({ data: d, stale: false }), { initialProps: { d: data([pillP]) } })
+    await waitFor(() => expect(result.current.card?.kind).toBe('cadastrado'))
+    // storage falha na escrita (nada persiste) e a lista de chaves muda ⇒ releitura
+    const { nativeStorageAdapter } = jest.requireMock('@platform/storage/nativeStorageAdapter')
+    nativeStorageAdapter.setItem.mockImplementationOnce(() => Promise.reject(new Error('disk')))
+    await act(async () => { await result.current.confirmSchedule() })
+    expect(result.current.scheduleConfirmed).toBe(true)
+    rerender({ d: data([pillP, proto({ id: 'p9', medicine: pill, medicine_id: 'm9', created_at: iso('2026-01-01') })]) })
+    await act(async () => {})
+    expect(result.current.scheduleConfirmed).toBe(true)
+  })
+
   it('remédio do card leva o id do tratamento (o mapa da Hoje não traz id — smoke 20/11)', async () => {
     mockStrengths.current = readyStrengths()
     const { result } = renderHook(() => useTodaySetup({ data: data([proto()]), stale: false }))
