@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -174,4 +174,43 @@ test('--id devolve o arquivo inteiro da regra, ignorando scoring', () => {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /^---\nid: R-900/);
   assert.match(result.stdout, /hot_reason:/);
+});
+
+test('funciona sem node_modules (worktree isolado fora do repo)', () => {
+  const iso = fs.mkdtempSync(path.join(os.tmpdir(), 'select-rules-isolated-'));
+  try {
+    const isoScripts = path.join(iso, 'scripts');
+    const isoSchemas = path.join(isoScripts, 'schemas');
+    fs.mkdirSync(isoSchemas, { recursive: true });
+    fs.copyFileSync(selectScript, path.join(isoScripts, 'select-rules.mjs'));
+    fs.copyFileSync(
+      path.join(scriptsDir, 'schemas', 'memory-constants.mjs'),
+      path.join(isoSchemas, 'memory-constants.mjs')
+    );
+
+    const res = spawnSync(
+      'node',
+      [
+        path.join(isoScripts, 'select-rules.mjs'),
+        '--root',
+        fixturesRoot,
+        '--index',
+        indexPath,
+        '--diff-fixture',
+        path.join(diffsDir, 'sql-drop-column.diff'),
+        '--json'
+      ],
+      { cwd: iso, encoding: 'utf-8' }
+    );
+    assert.equal(res.status, 0, `esperado status 0 sem node_modules; stderr=${res.stderr}`);
+    assert.equal(res.stderr, '', `stderr deveria ser vazio; recebido=${res.stderr}`);
+    const out = JSON.parse(res.stdout);
+    assert.ok(out.selected.length > 0, 'deveria selecionar ao menos uma regra sem node_modules');
+    assert.ok(
+      out.hot.some((r) => r.id === 'R-900'),
+      'hot deveria incluir R-900 sem node_modules'
+    );
+  } finally {
+    fs.rmSync(iso, { recursive: true, force: true });
+  }
 });

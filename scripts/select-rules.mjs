@@ -8,7 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath , pathToFileURL } from 'url';
-import { DOMAIN_PATH_MARKERS } from './schemas/memory-frontmatter.schema.mjs';
+import { DOMAIN_PATH_MARKERS } from './schemas/memory-constants.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -410,7 +410,16 @@ function main() {
 // Só executa a CLI quando o arquivo é o entrypoint. Sem esta guarda, `import` de
 // qualquer helper daqui roda o CLI inteiro como efeito colateral (medido: importar
 // select-rules.mjs imprimia "fail-safe 056 ativado" e a seleção completa).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function isEntrypoint(argv1) {
+  if (!argv1) return false;
+  try {
+    return import.meta.url === pathToFileURL(fs.realpathSync(argv1)).href;
+  } catch {
+    return import.meta.url === pathToFileURL(argv1).href;
+  }
+}
+
+if (isEntrypoint(process.argv[1])) {
   main();
 }
 
