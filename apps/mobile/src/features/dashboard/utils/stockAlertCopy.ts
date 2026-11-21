@@ -40,9 +40,11 @@ function leftLabel(item): string {
 
 function zeroSubtitle(level, nextDose, now: Date): string {
   const when = whenLabel(nextDose, now)
-  return when && level === 'stock_zero'
+  if (!when) return 'Registre a compra antes da próxima dose.'
+  // Smoke 125 fatia 2 (20/11): sem a data, "antes da próxima dose" soava urgente com a dose a 6 dias.
+  return level === 'stock_zero'
     ? `A próxima dose é ${when}. Registre a compra para não faltar.`
-    : 'Registre a compra antes da próxima dose.'
+    : `A próxima dose é ${when}. Registre a compra até lá.`
 }
 
 /** Texto por situação. Sem possessivo e sem "protocolo" (INV-3). */

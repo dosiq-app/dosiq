@@ -21,6 +21,7 @@ import { useMutation } from '@shared/hooks/useMutation'
 import { useToast } from '@shared/components/feedback/Toast'
 import { useAuth } from '@platform/auth/hooks/useAuth'
 import { stockService } from '../services/stockService'
+import { emitStockChanged } from '../state/stockChangedBus'
 import { SURFACES } from '@platform/analytics/analyticsEvents'
 
 const STOCK_CACHE_KEY = '@dosiq/stock-snapshot'
@@ -49,7 +50,10 @@ export function useStockMutation() {
       TREATMENTS_CACHE_KEY,
       TODAY_CACHE_KEY,
     ],
-    onSuccess: () => show('Compra registrada', { variant: 'success' }),
+    onSuccess: () => {
+      show('Compra registrada', { variant: 'success' })
+      emitStockChanged() // aba Estoque e Hoje releem sem a trava de 10 s (smoke 125, 20/11)
+    },
     onError: (err: any) => show(err?.message ?? 'Erro ao registrar compra', { variant: 'error' }),
   })
 
@@ -68,7 +72,10 @@ export function useStockMutation() {
       TREATMENTS_CACHE_KEY,
       TODAY_CACHE_KEY,
     ],
-    onSuccess: () => show('Compra atualizada', { variant: 'success' }),
+    onSuccess: () => {
+      show('Compra atualizada', { variant: 'success' })
+      emitStockChanged()
+    },
     onError: (err: any) => show(err?.message ?? 'Erro ao atualizar compra', { variant: 'error' }),
   })
 

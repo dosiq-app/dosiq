@@ -5,6 +5,7 @@ import { getTodayLocal, getNow, parseISO, addDays, describeLoadFailure } from '@
 import { supabase } from '../../../platform/supabase/nativeSupabaseClient'
 import { stockService } from '../services/stockService'
 import { debugLog } from '@shared/utils/debugLog'
+import { onStockChanged } from '../state/stockChangedBus'
 import { supplyRunwayService } from '../services/supplyRunwayService'
 import { transformStockData, splitStockItems, attachSupplyRunway, supplyEligibleMedicineIds, supplyBuyIdsMissing, attachSupplyBuyNames } from './_stockDataTransformer'
 
@@ -233,6 +234,8 @@ export function useStock() {
   useEffect(() => { loadStock() }, [loadStock])
 
   useEffect(() => _setupMidnightAndAppState(loadStock, dataRef), [loadStock])
+  // Escrita de estoque (compra criada/editada) ⇒ relê já, sem a trava de foco (smoke 125, 20/11).
+  useEffect(() => onStockChanged(() => { loadStock(true, true) }), [loadStock])
 
   return result
 }

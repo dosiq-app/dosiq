@@ -35,7 +35,9 @@ export async function getActiveProtocols(userId, dateStr) {
     // exatamente como web+mobile+cron caíram no #750 (AP-300 / R-295).
     // 100 B (RC3 E-1): `tracked_measure` alimenta o pedido pós-dose (single, hero, deeplink). Sem ela
     // `effectiveMeasure` devolve `missing` e o pedido falha fechado. R-295: 200 em QA e prod 2026-10-30.
-    .select('id, name, medicine_id, active, frequency, interval_days, time_schedule, dosage_per_intake, intake_unit, start_date, end_date, weekdays, critical_alarm, tracked_measure, treatment_plan_id, treatment_plan:treatment_plans(id, name, emoji, color), titration_steps(id, position, dose, duration_days, status, started_at, medicine_id)')
+    // 125 fatia 2 (AC6.1): `created_at` define o "1º uso" do card de setup. R-295: timestamptz com SELECT de
+    // `authenticated` em prod e QA (MCP information_schema 2026-11-19).
+    .select('id, name, medicine_id, active, frequency, interval_days, time_schedule, dosage_per_intake, intake_unit, start_date, end_date, weekdays, critical_alarm, tracked_measure, treatment_plan_id, created_at, treatment_plan:treatment_plans(id, name, emoji, color), titration_steps(id, position, dose, duration_days, status, started_at, medicine_id)')
     .eq('user_id', userId)
     .eq('active', true)
     .lte('start_date', dateStr)
@@ -72,7 +74,9 @@ export async function getScheduledProtocols(userId, dateStr) {
   z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(dateStr) // R-121 (RC6 #845)
   const { data, error } = await supabase
     .from('protocols')
-    .select('id, name, medicine_id, active, frequency, interval_days, time_schedule, start_date, end_date, weekdays')
+    // 125 fatia 2 (C-2-1): tratamento com início futuro também recebe card de setup — dose e `created_at`
+    // entram. R-295: colunas com SELECT de `authenticated` em prod e QA (MCP 2026-11-19).
+    .select('id, name, medicine_id, active, frequency, interval_days, time_schedule, dosage_per_intake, intake_unit, start_date, end_date, weekdays, created_at')
     .eq('user_id', userId)
     .eq('active', true)
     .gt('start_date', dateStr)
@@ -122,7 +126,8 @@ export async function getMedicinesData(medicineIds) {
     .from('medicines')
     // 121 A (FR-001, RC3 E-3): `therapeutic_class_code` classifica o perfil wedge/misto da Hoje.
     // R-295: coluna `text` com SELECT de `authenticated` em prod e QA (MCP 2026-11-15).
-    .select('id, name, type, presentation, dosage_per_pill, dosage_unit, concentration_volume_ml, units_per_ml, therapeutic_class_code')
+    // 125 fatia 2 (FR-019): `anvisa_registration` busca as forças do registro no sidecar 127. R-295: prod e QA 2026-11-19.
+    .select('id, name, type, presentation, dosage_per_pill, dosage_unit, concentration_volume_ml, units_per_ml, therapeutic_class_code, anvisa_registration')
     .in('id', medicineIds)
 
   if (error) throw error
@@ -137,7 +142,8 @@ export async function getMedicinesData(medicineIds) {
       dosage_unit: m.dosage_unit,
       concentration_volume_ml: m.concentration_volume_ml,
       units_per_ml: m.units_per_ml,
-      therapeutic_class_code: m.therapeutic_class_code ?? null
+      therapeutic_class_code: m.therapeutic_class_code ?? null,
+      anvisa_registration: m.anvisa_registration ?? null
     }
     return acc
   }, {})
@@ -263,4 +269,35 @@ export async function getGlp1JourneyStart(userId) {
     .map((p) => p.start_date)
     .sort()
   return starts[0] ?? null
+}
+
+/**
+ * 125 fatia 2 (AC6.3 · Q-2): remédios criados nos últimos `days` dias, com os tratamentos (ativos ou
+ * pausados) embutidos — o card "Falta 1 passo" só entra para quem não tem nenhum. Best-effort no chamador (`.catch(() => [])`). R-295: `created_at`
+ * timestamptz com SELECT de `authenticated` em prod e QA (MCP 2026-11-19).
+ * @param {string} userId
+ * @param {number} days
+ */
+export async function getRecentMedicines(userId, days) {
+  z.string().uuid().parse(userId)
+  z.number().int().positive().parse(days)
+  const since = addDays(parseLocalDate(getTodayLocal()), -days).toISOString()
+  const { data, error } = await supabase
+    .from('medicines')
+    // Smoke 20/11: tratamento PAUSADO também conta — "Falta 1 passo" é só para remédio sem NENHUM tratamento
+    // (a Hoje só carrega os ativos). Embed pela FK única protocols.medicine_id → medicines.id (prod e QA
+    // 2026-11-20, pg_constraint); `protocols.id` com SELECT de `authenticated`.
+    // Smoke 20/11: excluir é ARQUIVAR (`archived_at`) — remédio e tratamento. Remédio arquivado sai; tratamento
+    // arquivado não conta como "tem tratamento". Colunas e SELECT de `authenticated` conferidos em prod e QA.
+    .select('id, name, presentation, created_at, protocols(id, archived_at)')
+    .eq('user_id', userId)
+    .is('archived_at', null)
+    .gte('created_at', since)
+    .order('created_at')
+
+  if (error) throw error
+  return (data ?? []).map((m: any) => ({
+    ...m,
+    protocols: Array.isArray(m.protocols) ? m.protocols.filter((p: any) => p?.archived_at == null) : m.protocols,
+  }))
 }

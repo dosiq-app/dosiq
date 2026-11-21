@@ -46,6 +46,20 @@ jest.mock('@navigation/navigateToDose', () => ({
   },
 }))
 
+// 125 fatia 2: estado do setup controlado pelo teste; o slot vira um marcador de posição.
+let mockSetupCard: any = null
+jest.mock('@dashboard/hooks/useTodaySetup', () => ({
+  useTodaySetup: () => ({ card: mockSetupCard, protocol: null, medicine: null, scheduleConfirmed: false, entries: [], confirmCoherence: jest.fn(), confirmSchedule: jest.fn() }),
+}))
+jest.mock('../../components/TodaySetupSlot', () => (props: any) => (props.setup.card ? <MockView testID="setup-slot" /> : null))
+
+// 125 (promo na vaga livre do wedge): nudge controlado pelo teste.
+let mockNudge: any = null
+jest.mock('@profile/hooks/useNudges', () => ({
+  useNudges: () => ({ nudge: mockNudge, handleAction: jest.fn(), dismiss: jest.fn(), refresh: jest.fn() }),
+}))
+jest.mock('@shared/components/ui/NudgeBanner', () => () => <MockView testID="nudge-banner" />)
+
 // 090 D-5: o banner lê a aba Estoque. Controle de estoque LIGADO para o banner montar.
 const mockStockRefresh = jest.fn()
 let mockStockActive: unknown[] = []
@@ -478,6 +492,121 @@ describe('TodayScreen', () => {
       setData([proto('p1', med('Sem código', null))])
       const s = render(<TodayScreen route={{} as any} navigation={{} as any} />)
       expect(s.queryByTestId('treatment-week-module')).toBeNull()
+    })
+  })
+
+  // ── 125 fatia 2 · PO-125-16: superfície SETUP ─────────────────────────────────────────────────
+  describe('125 — superfície SETUP (PO-125-16)', () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage')
+    const HERO = [{ id: 'd1', scheduledTime: '08:00', timelineStatus: 'PROXIMA' }]
+    const WEDGE = [{ id: 'p1', name: 'p1', medicine_id: 'm-p1', start_date: '2026-10-01', medicine: { name: 'Mounjaro', therapeutic_class_code: 'A10S1' } }]
+    function setData(timeline: any[] = [], protocols: any[] = WEDGE) {
+      jest.mocked(useTodayData).mockReturnValue({
+        data: { ...baseMockData, user: { id: 'u1', name: 'T' }, timezone: 'America/Sao_Paulo', capturedAt: '2026-11-19T12:00:00.000Z', protocols, timeline },
+        loading: false, error: null, refresh: mockRefresh,
+      } as any)
+    }
+    function order(json: any, ids: string[]): string[] {
+      const out: string[] = []
+      const walk = (n: any) => {
+        if (!n || typeof n !== 'object') return
+        if (Array.isArray(n)) return n.forEach(walk)
+        if (ids.includes(n.props?.testID) && !out.includes(n.props.testID)) out.push(n.props.testID)
+        walk(n.children)
+      }
+      walk(json)
+      return out
+    }
+    const IDS = ['adherence-card', 'hero-card', 'today-alert', 'setup-slot', 'treatment-week-module']
+
+    beforeEach(async () => {
+      mockWeights.length = 0
+      await AsyncStorage.clear()
+    })
+    afterEach(() => {
+      mockSetupCard = null
+      mockStockActive = []
+      mockNudge = null
+    })
+
+    it('emenda PO 20/11: estoque baixo (7) × Cadastrado (6) ABAIXO da Semana do tratamento, Cadastrado primeiro', async () => {
+      mockSetupCard = { kind: 'cadastrado', protocolId: 'p1' }
+      mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }]
+      setData()
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      await act(async () => {})
+      // Wedge sem dose hoje ⇒ sem Agenda ⇒ cabem os dois abaixo do widget.
+      expect(order(s.toJSON(), IDS)).toEqual(['treatment-week-module', 'setup-slot', 'today-alert'])
+    })
+
+    it('Confira (3) fica ACIMA da Semana do tratamento; com hero, a dose vem antes', async () => {
+      mockSetupCard = { kind: 'confira', protocolId: 'p1', verdict: {} }
+      mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }]
+      setData(HERO)
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      await act(async () => {})
+      expect(order(s.toJSON(), IDS)).toEqual(['hero-card', 'setup-slot', 'treatment-week-module'])
+      expect(s.queryByTestId('today-alert')).toBeNull()
+    })
+
+    it('sem setup, o alerta abaixo do widget (degrau 7) e sem promo junto', async () => {
+      mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }]
+      setData()
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      await act(async () => {})
+      expect(order(s.toJSON(), IDS)).toEqual(['treatment-week-module', 'today-alert'])
+    })
+
+    it('wedge sem Agenda de Hoje: até 2 cards abaixo do widget (Falta 5 → estoque baixo 7)', async () => {
+      mockSetupCard = { kind: 'falta', medicineId: 'm9' }
+      mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }]
+      setData()
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      await act(async () => {})
+      expect(s.queryByText('Agenda de Hoje')).toBeNull()
+      expect(order(s.toJSON(), IDS)).toEqual(['treatment-week-module', 'setup-slot', 'today-alert'])
+    })
+
+    it('wedge COM dose hoje (Agenda visível) volta ao orçamento de 1', async () => {
+      mockSetupCard = { kind: 'falta', medicineId: 'm9' }
+      mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }]
+      setData(HERO)
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      await act(async () => {})
+      expect(s.getByText('Agenda de Hoje')).toBeTruthy()
+      expect(order(s.toJSON(), IDS)).toEqual(['hero-card', 'treatment-week-module', 'setup-slot'])
+    })
+
+    it('wedge sem Agenda: Confira acima + estoque baixo abaixo ⇒ promo ocupa a vaga livre de baixo', async () => {
+      mockSetupCard = { kind: 'confira', protocolId: 'p1', verdict: {} }
+      mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }]
+      mockNudge = { id: 'n1' }
+      setData()
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      await act(async () => {})
+      expect(order(s.toJSON(), [...IDS, 'nudge-banner'])).toEqual(['setup-slot', 'treatment-week-module', 'today-alert', 'nudge-banner'])
+    })
+
+    it('com Agenda (dose hoje) o promo não entra junto de card', async () => {
+      mockSetupCard = { kind: 'confira', protocolId: 'p1', verdict: {} }
+      mockNudge = { id: 'n1' }
+      setData(HERO)
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      await act(async () => {})
+      expect(s.queryByTestId('nudge-banner')).toBeNull()
+    })
+
+    it('Adesão some enquanto há setup (AC6.7) e volta sem ele', async () => {
+      const NENHUM = [{ id: 'p2', name: 'p2', medicine_id: 'm2', start_date: '2026-10-01', medicine: { name: 'Losartana', therapeutic_class_code: 'C9C' } }]
+      mockSetupCard = { kind: 'falta', medicineId: 'm9' }
+      setData(HERO, NENHUM)
+      const s = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      expect(s.queryByTestId('adherence-card')).toBeNull()
+      expect(s.getByTestId('setup-slot')).toBeTruthy()
+      mockSetupCard = null
+      s.rerender(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
+      expect(s.getByTestId('adherence-card')).toBeTruthy()
+      expect(s.queryByTestId('setup-slot')).toBeNull()
     })
   })
 });

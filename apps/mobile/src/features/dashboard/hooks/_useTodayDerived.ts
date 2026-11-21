@@ -126,6 +126,35 @@ export function deriveSupplyNotices(stockItems, today: string, protocols: any[] 
 }
 
 /**
+ * 125 fatia 2 · FR-034 (emenda PO smoke 18/11): tratamento ativo que COMEÇA adiante (seção `scheduled`,
+ * `future_start`) sem estoque para a 1ª dose avisa como a próxima etapa da titulação — mesmo aviso neutro
+ * de compra (`supplyNoticeCopy` default), na mesma janela (0..7 dias). Etapa de escada fica fora (já tem
+ * `step_switch`); sem data de início ou sem previsão (cache antigo) ⇒ nada (falha fechada).
+ */
+export function deriveScheduledStartNotices(scheduledItems, today: string) {
+  if (!Array.isArray(scheduledItems)) return []
+  return scheduledItems
+    .filter((it) => it?.scheduled?.kind === 'future_start' && !!it.scheduled.startsOn && !!it.forecast)
+    .filter((it) => it.forecast.isZero === true || (Number.isFinite(it.dosesRemaining) && it.dosesRemaining < 1))
+    .map((it) => {
+      const origin = it.scheduled.countingProtocols?.[0] ?? null
+      return {
+        medicineId: it.id,
+        medicineName: it.name,
+        reason: 'future_start',
+        date: it.scheduled.startsOn,
+        buyMedicineId: it.id,
+        buyMedicineName: it.name,
+        daysUntil: calendarDaysBetween(today, it.scheduled.startsOn),
+        frequency: origin?.frequency ?? null,
+        intervalDays: origin?.interval_days ?? null,
+      }
+    })
+    .filter((n) => n.daysUntil !== null && n.daysUntil >= 0 && n.daysUntil <= SUPPLY_NOTICE_MAX_DAYS)
+    .sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/**
  * @param data  snapshot carregado por `useTodayData`
  * @param now   "agora" do relógio do Hoje (103 A, FR-A2). Ausente ⇒ `getRawNow()` no cálculo.
  *

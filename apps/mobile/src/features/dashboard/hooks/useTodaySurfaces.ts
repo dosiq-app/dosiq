@@ -18,7 +18,7 @@ export interface TodaySurfacesArgs {
   hasHero: boolean
   push: { usable: boolean | null; snoozed: boolean | null; remindable: boolean }
   /** Bateria (068): elegível ignora o dismiss; dispensada ⇒ não aparece, mas sinaliza a casa (S-11). */
-  oem: { eligible: boolean; dismissed: boolean }
+  oem: { eligible: boolean; dismissed: boolean; reason?: 'restricted' | 'battery' | null }
   otaReady: boolean
   stockUpsellVisible: boolean
   nudge: unknown
@@ -56,7 +56,7 @@ export function useTodaySurfaces({
   const alerts: Array<AlertCandidate<StockAlertPayload | null>> = [
     ...stockCandidates,
     ...(pushEligible ? [{ kind: 'push' as const, key: 'push', dismissed: push.snoozed === true }] : []),
-    ...(oem.eligible ? [{ kind: 'oem' as const, key: 'oem', dismissed: oem.dismissed }] : []),
+    ...(oem.eligible ? [{ kind: 'oem' as const, key: 'oem', dismissed: oem.dismissed, oemReason: oem.reason ?? null }] : []),
     ...(otaReady ? [{ kind: 'ota' as const, key: 'ota' }] : []),
   ]
 

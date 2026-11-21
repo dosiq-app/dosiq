@@ -38,6 +38,11 @@ type Props = {
   injectable?: boolean
   /** 121 C: L1 diária — semana resumida + copy pronta. Presente ⇒ variante diária. */
   daily?: { week: DailyWindowSummary; copy: { primary: string; secondary: string | null } } | null
+  /**
+   * 125 fatia 2 (PO smoke 20/11): antes da 1ª dose registrada o miolo mostra o tratamento como foi
+   * cadastrado, com um CTA só — "Ajustar". Depois da 1ª dose volta a ser local + histórico.
+   */
+  setup?: { rows: Array<{ label: string; value: string }>; onAdjust: () => void } | null
 }
 
 /** Lista das últimas (só semanal) — a da B, com o título pelo verbo. */
@@ -115,9 +120,36 @@ function RecentList({ shown, timezone, injectable }: { shown: RecentApplicationR
 }
 
 /** Aberta: diário = faixa (+ mapa); semanal = mapa + lista (B). Mapa só com local na ÚLTIMA (RC5/INV-2). */
-function DoseRowBody({ daily, recent, timezone, injectable }: {
-  daily: Props['daily']; recent: RecentApplicationRow[]; timezone: string; injectable: boolean
+function SetupSummary({ setup, injectable }: { setup: NonNullable<Props['setup']>; injectable: boolean }) {
+  return (
+    <View style={styles.setupBox} testID="dose-row-setup">
+      <Text style={[styles.listTitle, styles.setupEyebrow]}>CONFIRA O TRATAMENTO</Text>
+      <Text style={styles.setupIntro}>{`Antes da 1ª ${injectable ? 'aplicação' : 'dose'}, veja se está como na receita.`}</Text>
+      <View style={styles.setupRows}>
+        {setup.rows.map((r) => (
+          <View key={r.label} style={styles.setupRow} testID={`dose-row-setup-row-${r.label}`}>
+            <Text style={styles.setupLabel}>{r.label}</Text>
+            <Text style={styles.setupValue}>{r.value}</Text>
+          </View>
+        ))}
+      </View>
+      <Pressable onPress={setup.onAdjust} accessibilityRole="button" style={styles.setupLink} testID="dose-row-setup-adjust">
+        <Text style={styles.actionText}>Ajustar</Text>
+      </Pressable>
+    </View>
+  )
+}
+
+function DoseRowBody({ daily, recent, timezone, injectable, setup }: {
+  daily: Props['daily']; recent: RecentApplicationRow[]; timezone: string; injectable: boolean; setup: Props['setup']
 }) {
+  if (setup && recent.length === 0) {
+    return (
+      <View style={styles.body} testID="dose-row-body">
+        <SetupSummary setup={setup} injectable={injectable} />
+      </View>
+    )
+  }
   const shown = recent.slice(0, LIST_MAX)
   const sites = shown.map((r) => r.injection_site)
   const hasKnownSite = !!getKnownInjectionSiteLabel(sites[0] ?? null)
@@ -136,7 +168,7 @@ function DoseRowBody({ daily, recent, timezone, injectable }: {
 
 export default function DoseRow({
   open, onToggle, summary, recent, nextDoseLabel, timezone, loading, error, onRetry, canRegisterEarly, onRegisterEarly,
-  injectable = true, daily = null,
+  injectable = true, daily = null, setup = null,
 }: Props) {
   const isDaily = !!daily
   const ready = isDaily || !!summary
@@ -168,7 +200,7 @@ export default function DoseRow({
         </Pressable>
         <HeadAction error={!!error} onRetry={onRetry} canRegisterEarly={canRegisterEarly && !isDaily} onRegisterEarly={onRegisterEarly} injectable={injectable} />
       </View>
-      {open && !error && ready ? <DoseRowBody daily={daily} recent={recent} timezone={timezone} injectable={injectable} /> : null}
+      {open && !error && ready ? <DoseRowBody daily={daily} recent={recent} timezone={timezone} injectable={injectable} setup={setup} /> : null}
     </View>
   )
 }
@@ -187,6 +219,16 @@ const styles = StyleSheet.create({
   actionText: { fontSize: 14, fontWeight: '700', color: colors.brand.primary },
   body: { marginTop: spacing[3], gap: spacing[3] },
   placeholder: { minHeight: 96, borderRadius: borderRadius.md, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.border.light, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing[4] },
+  // Sem borda (não é card dentro de card): fundo tingido, o mesmo da pergunta do card de setup.
+  setupBox: { borderRadius: borderRadius.md, backgroundColor: colors.brand.mint, padding: spacing[3], gap: spacing[2] },
+  setupIntro: { fontSize: 14, lineHeight: 20, color: colors.text.secondary },
+  setupRows: { gap: spacing[1] },
+  setupRow: { flexDirection: 'row', gap: spacing[3] },
+  // PO smoke 20/11: sobretítulo no verde do card de setup; negrito no rótulo, valor regular.
+  setupEyebrow: { color: colors.brand.primary },
+  setupLabel: { width: 96, fontSize: 14, lineHeight: 20, fontWeight: '700', color: colors.text.primary },
+  setupValue: { flex: 1, fontSize: 15, lineHeight: 20, color: colors.text.primary },
+  setupLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   placeholderText: { fontSize: 14, color: colors.text.secondary, textAlign: 'center' },
   mapCard: { borderWidth: 1, borderColor: colors.border.light, borderRadius: borderRadius.md, paddingVertical: spacing[2], backgroundColor: colors.bg.card },
   listWrap: { gap: spacing[1] },

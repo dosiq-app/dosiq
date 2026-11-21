@@ -112,6 +112,10 @@ export {
   anchorFromApplication,
   derivePenDose,
   dialDosesFromText,
+  classifyCoherence,
+  coherenceKey,
+  pickSetupCard,
+  SETUP_WINDOW_DAYS,
 } from './treatmentSetup'
 export type {
   SetupPresentation,
@@ -125,6 +129,13 @@ export type {
   ApplicationAnchorInput,
   PenDoseInput,
   PenDose,
+  CoherenceVerdict,
+  CoherenceBox,
+  CoherenceReason,
+  CoherenceTreatmentInput,
+  CoherenceMedicineInput,
+  SetupCardPick,
+  PickSetupCardInput,
 } from './treatmentSetup'
 
 // Medida × etapa do tratamento (contrato 069 FR-010/FR-012; criado pela 097 DS-7)

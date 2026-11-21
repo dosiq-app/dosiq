@@ -34,7 +34,8 @@ describe('pickTodaySurfaces — régua (US7 cenário 1)', () => {
       alerts: [a('stock_low', { key: 'b', order: 6 }), a('stock_low', { key: 'a', order: 4 }), a('stock_low', { key: 'c', order: 4 })],
     })
     expect(r.alert?.key).toBe('stock_low:a')
-    expect(r.suppressed.map((s) => s.key)).toEqual(['stock_low:c', 'stock_low:b'])
+    expect(r.companion?.key).toBe('stock_low:c')
+    expect(r.suppressed.map((s) => s.key)).toEqual(['stock_low:b'])
   })
 })
 
@@ -61,8 +62,10 @@ describe('pickTodaySurfaces — casos de uso (proposta §6)', () => {
     expect(r.alert?.kind).toBe('stock_zero')
     expect(r.companion?.kind).toBe('push')
     expect(r.suppressed).toEqual([])
+    // PO 20/11: com hero o push também segue como 2º candidato; a régua (compose) decide se aparece.
     const h = pickTodaySurfaces({ ...base, hasHero: true, alerts: [a('push'), a('stock_zero')] })
-    expect(h.suppressed).toEqual([{ kind: 'push', key: 'push:x', home: 'profile_notifications', reason: 'rank' }])
+    expect(h.companion?.kind).toBe('push')
+    expect(h.suppressed).toEqual([])
   })
 
   it('UC-5 estoque baixo 5 d + push ⇒ push', () => {
@@ -205,7 +208,7 @@ describe('S-22 — técnico suprimido também cala o promo', () => {
   })
 })
 
-describe('S-23 — 2º aviso: vermelho + técnico, sem hero', () => {
+describe('2º candidato (S-23 revisto, PO smoke 125 20/11): sempre o próximo da régua', () => {
   const zero = { kind: 'stock_zero' as const, key: 'z' }
   const push = { kind: 'push' as const, key: 'push' }
   it('sem hero ⇒ estoque zerado + lembretes, ambos visíveis; push não vira sinal', () => {
@@ -214,16 +217,44 @@ describe('S-23 — 2º aviso: vermelho + técnico, sem hero', () => {
     expect(r.companion?.key).toBe('push')
     expect(r.suppressed.map((s) => s.key)).toEqual(['l'])
   })
-  it('com hero ⇒ só 1 aviso', () => {
+  it('com hero ⇒ o 2º segue (a régua decide)', () => {
     const r = pickTodaySurfaces({ hasHero: true, alerts: [zero, push], stockUpsell: false, nudge: false })
+    expect(r.companion?.key).toBe('push')
+  })
+  it('print do smoke 20/11: lembretes (1º) + Ozivy acabando ⇒ Ozivy é o 2º, sem sinal', () => {
+    const r = pickTodaySurfaces({ hasHero: false, alerts: [{ kind: 'stock_urgent', key: 'u' }, push], stockUpsell: false, nudge: false })
+    expect(r.alert?.key).toBe('push')
+    expect(r.companion?.key).toBe('u')
+    expect(r.suppressed).toEqual([])
+  })
+  it('espera da sessão (quiet) ⇒ 2º só se for stock_zero', () => {
+    const r = pickTodaySurfaces({ hasHero: false, alerts: [zero, push], stockUpsell: false, nudge: false, quiet: true })
     expect(r.companion).toBeNull()
   })
-  it('1º não vermelho ⇒ sem 2º', () => {
-    const r = pickTodaySurfaces({ hasHero: false, alerts: [{ kind: 'stock_urgent', key: 'u' }, { kind: 'oem', key: 'oem' }], stockUpsell: false, nudge: false })
-    expect(r.companion).toBeNull()
-  })
-  it('técnico dispensado ⇒ sem 2º', () => {
+  it('dispensado não vira 2º', () => {
     const r = pickTodaySurfaces({ hasHero: false, alerts: [zero, { ...push, dismissed: true }], stockUpsell: false, nudge: false })
     expect(r.companion).toBeNull()
+  })
+
+  it('2º plano restrito passa à frente de "acabando" (degrau 3 × 4, PO smoke 125 20/11)', () => {
+    const r = pickTodaySurfaces({
+      hasHero: false,
+      alerts: [{ kind: 'stock_urgent', key: 'stock_urgent:m1' }, { kind: 'oem', key: 'oem', oemReason: 'restricted' }],
+      stockUpsell: false,
+      nudge: null,
+    } as any)
+    expect(r.alert?.kind).toBe('oem')
+  })
+
+  it('bateria Xiaomi/Samsung empata com "acabando" (4) e fica depois dele; sem motivo segue no fim', () => {
+    const r = pickTodaySurfaces({
+      hasHero: false,
+      alerts: [{ kind: 'oem', key: 'oem', oemReason: 'battery' }, { kind: 'stock_low', key: 'stock_low:m1' }, { kind: 'supply', key: 'supply:m1' }],
+      stockUpsell: false,
+      nudge: null,
+    } as any)
+    expect(r.alert?.kind).toBe('supply')
+    expect(r.companion?.kind).toBe('oem')
+    expect(r.suppressed.map((x: any) => x.kind)).toEqual(['stock_low'])
   })
 })

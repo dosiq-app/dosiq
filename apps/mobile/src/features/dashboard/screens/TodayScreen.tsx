@@ -47,12 +47,16 @@ import { useAlarmScreenActive } from '@platform/versionGate/useAlarmScreenActive
 import { useStockTracking } from '@shared/hooks/useStockTracking'
 import { useStock } from '@stock/hooks/useStock'
 import { navigateToTreatmentDetail, subscribePendingDose } from '@navigation/navigateToDose'
-import { deriveStockAlerts, deriveSupplyNotices } from '@dashboard/hooks/_useTodayDerived'
+import { deriveStockAlerts, deriveSupplyNotices, deriveScheduledStartNotices } from '@dashboard/hooks/_useTodayDerived'
 import { navigateCrossTab } from '@navigation/navigateCrossTab'
 import { useStockUpsell } from '@dashboard/hooks/useStockUpsell'
 import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatteryAssistant'
 import OemBatteryAssistantCard from '@features/oemAssistant/components/OemBatteryAssistantCard'
 import { useTodaySurfaces } from '@dashboard/hooks/useTodaySurfaces'
+import { useTodaySetup } from '@dashboard/hooks/useTodaySetup'
+import TodaySetupSlot from '@dashboard/components/TodaySetupSlot'
+import { openTreatmentEdit } from '@dashboard/utils/setupCopy'
+import { composeTodayCards, LOWER_MAX_WITH_ROOM, type TodayCard } from '@dashboard/utils/composeTodayCards'
 import { useLateDoseActions } from '@dashboard/hooks/useLateDoseActions'
 import { disarmRegisteredAlarms, earlyRegisterModal } from '@dashboard/utils/earlyRegister'
 import { cancelAlarm } from '@platform/alarms/alarmService'
@@ -368,10 +372,14 @@ function TodayStockSource({ refreshKey, onChange, protocols }) {
   const focusedOnce = useRef(false)
   const alerts = useMemo(() => deriveStockAlerts(stockData?.active), [stockData])
   // 105 G-B5: próxima compra (mensal / etapa de passagem), ≤ 7 dias.
-  const supplyNotices = useMemo(
-    () => deriveSupplyNotices(stockData?.active, stockData?.localDay ?? getTodayLocal(), protocols),
-    [stockData, protocols],
-  )
+  // 125 FR-034: + início futuro sem estoque para a 1ª dose (mesmo aviso, mesma janela).
+  const supplyNotices = useMemo(() => {
+    const today = stockData?.localDay ?? getTodayLocal()
+    return [
+      ...deriveSupplyNotices(stockData?.active, today, protocols),
+      ...deriveScheduledStartNotices(stockData?.scheduled, today),
+    ]
+  }, [stockData, protocols])
   useEffect(() => {
     if (refreshKey === firstKey.current) return
     refresh(true)
@@ -399,30 +407,20 @@ function TodayStockSource({ refreshKey, onChange, protocols }) {
 
 const EMPTY_STOCK = { alerts: [], supplyNotices: [], ready: false }
 
-// 120 C · ADR-129: o slot de ALERTA renderiza só o que o árbitro escolheu (≤ 1).
-function TodayAlertSlot(props: any) {
-  // S-23: até 2 avisos (o 2º só no caso do árbitro: vermelho + técnico, sem hero).
-  return (
-    <>
-      <TodayAlertView {...props} alert={props.surfaces.alert} />
-      <TodayAlertView {...props} alert={props.surfaces.companion} />
-    </>
-  )
-}
-
-function TodayAlertView({ alert, surfaces, pushReach, remindableProtocols, oemReason, onOemAdjust, onOemDismiss, applyUpdate }: any) {
+function TodayAlertView({ alert, surfaces, pushReach, remindableProtocols, oemReason, onOemAdjust, onOemDismiss, applyUpdate, emphasis = true }: any) {
   if (!alert) return null
   switch (alert.kind) {
     case 'push':
-      return <TodayPushPermission reach={pushReach} protocols={remindableProtocols} />
+      return <TodayPushPermission reach={pushReach} protocols={remindableProtocols} emphasis={emphasis} />
     case 'oem':
-      return <OemBatteryAssistantCard reason={oemReason as 'restricted' | 'battery'} onAdjust={onOemAdjust} onDismiss={onOemDismiss} />
+      return <OemBatteryAssistantCard reason={oemReason as 'restricted' | 'battery'} onAdjust={onOemAdjust} onDismiss={onOemDismiss} emphasis={emphasis} />
     case 'ota':
       return <TodayOtaCard onApply={applyUpdate} />
     default:
       return (
         <TodayAlertCard
           payload={alert.payload}
+          emphasis={emphasis}
           stockCount={surfaces.stockCount}
           onDismiss={() => surfaces.dismissAlert(alert.key)}
         />
@@ -433,6 +431,7 @@ function TodayAlertView({ alert, surfaces, pushReach, remindableProtocols, oemRe
 // 120 C (FR-013): bloco de doses — hero (com carry-over; a seção "Doses pendentes" saiu: repetia os
 // mesmos itens, A-6) · troca de etapa · "doses de hoje sem registro" (só sem hero).
 function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evoRefreshTick, unloggedGroups, onSeeAgenda, weekProtocolId }: any) {
+  // 125 fatia 2 (emenda PO 20/11): sem hero, a dose de hoje sem registro é o foco da tela.
   return (
     <>
       {priorityDoses.length > 0 && (
@@ -440,7 +439,7 @@ function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evo
       )}
       <EvolutionSwitchSection timezone={timezone} refreshToken={evoRefreshTick} coveredProtocolId={weekProtocolId} />
       {priorityDoses.length === 0 && (
-        <UnloggedDosesCard groups={unloggedGroups} onSeeAgenda={onSeeAgenda} />
+        <UnloggedDosesCard groups={unloggedGroups} onSeeAgenda={onSeeAgenda} emphasis />
       )}
     </>
   )
@@ -451,6 +450,9 @@ function TodayDosesBlock({ priorityDoses, heroItems, setBulkModal, timezone, evo
 function TodayPrioritySection({
   data, protocols, scheduledProtocols, priorityDoses, heroItems, timeline, setBulkModal,
   otaIdle, nudgeApi, navigation, evoRefreshTick, onSeeAgenda, afterDoses = null, weekProtocolId = null,
+  renderSetup = null,
+  setupCard = null,
+  roomBelow = false,
 }: any) {
   // States
   const [stockSource, setStockSource] = useState(EMPTY_STOCK)
@@ -467,16 +469,32 @@ function TodayPrioritySection({
     userId: data?.user?.id ?? null,
     hasHero: priorityDoses.length > 0,
     push: { usable: pushReach.usable, snoozed: pushReach.snoozed, remindable: hasRemindableTreatment(remindableProtocols) },
-    oem: { eligible: oemEligible, dismissed: oemDismissed },
+    oem: { eligible: oemEligible, dismissed: oemDismissed, reason: oemReason ?? null },
     // 120 C (C-4): OTA pronto é alerta TÉCNICO #7 (não mais nudge); espera ocioso como antes (E-8).
     otaReady: !!updateReady && otaIdle,
     stockUpsellVisible,
     nudge: nudgeApi.nudge,
     stockAlerts: stockTrackingEnabled ? stockSource.alerts : [],
     supplyNotices: stockTrackingEnabled ? stockSource.supplyNotices : [],
-    protocols,
+    // 125 (smoke 20/11): agendados entram — a 1ª dose de quem começa adiante dá a data do aviso.
+    protocols: [...(protocols ?? []), ...(scheduledProtocols ?? [])],
   })
-  useTodaySurfaceSignal(surfaces)
+  // 125 fatia 2 (emenda PO 20/11): alerta e setup numa régua única com orçamento de cards — 1, ou 2 só
+  // com vermelho; degraus 1–3 acima da Semana do tratamento, 4–7 abaixo (composeTodayCards). Espera a 1ª
+  // carga do estoque para não trocar o card depois (S-23).
+  const stockReady = !stockTrackingEnabled || stockSource.ready
+  const composition = useMemo(
+    () => (stockReady
+      ? composeTodayCards({ alert: surfaces.alert, companion: surfaces.companion, setup: setupCard, roomBelow })
+      : { upper: [], lower: [], dropped: [] }),
+    [stockReady, surfaces.alert, surfaces.companion, setupCard, roomBelow],
+  )
+  const signalSurfaces = useMemo(() => ({
+    ...surfaces,
+    suppressed: [...surfaces.suppressed, ...composition.dropped],
+    signature: `${surfaces.signature}|${composition.dropped.map((d) => d.key).join(',')}`,
+  }), [surfaces, composition])
+  useTodaySurfaceSignal(signalSurfaces)
 
   const dosesBlock = (
     <TodayDosesBlock
@@ -490,32 +508,51 @@ function TodayPrioritySection({
       weekProtocolId={weekProtocolId}
     />
   )
+  // Foco único: a dose (hero ou sem registro) quando há; senão o 1º card.
+  const dosesFocus = priorityDoses.length > 0 || unloggedGroups.length > 0
+  const firstKey = composition.upper[0]?.key ?? composition.lower[0]?.key ?? null
+  const renderCard = (card: TodayCard) => {
+    const emphasis = !dosesFocus && card.key === firstKey
+    if (card.source === 'setup') return renderSetup ? <View key={card.key}>{renderSetup(emphasis)}</View> : null
+    return (
+      <TodayAlertView
+        key={card.key}
+        alert={card.alert}
+        emphasis={emphasis}
+        surfaces={surfaces}
+        pushReach={pushReach}
+        remindableProtocols={remindableProtocols}
+        oemReason={oemReason}
+        onOemAdjust={() => navigation?.navigate?.(ROUTES.OEM_BATTERY_ASSISTANT)}
+        onOemDismiss={dismissOem}
+        applyUpdate={applyUpdate}
+      />
+    )
+  }
+  const anyCard = composition.upper.length + composition.lower.length > 0
+  // Promo (já liberado pelo árbitro: sem técnico pendente, fora da espera de sessão) só sem card de ação —
+  // ou, no wedge sem Agenda de Hoje, ocupando a vaga que sobrou na faixa de baixo (PO smoke 20/11).
+  // RC6 #971: promo espera o estoque como os cards — sem piscar antes de um card ocupar a vaga.
+  const promoFits = stockReady && (!anyCard || (roomBelow && composition.lower.length < LOWER_MAX_WITH_ROOM))
   return (
     <>
       {stockTrackingEnabled && <TodayStockSource refreshKey={data?.capturedAt} onChange={setStockSource} protocols={protocols} />}
-      {surfaces.dosesFirst && dosesBlock}
-      {(!stockTrackingEnabled || stockSource.ready) && (
-        <TodayAlertSlot
-          surfaces={surfaces}
-          pushReach={pushReach}
-          remindableProtocols={remindableProtocols}
-          oemReason={oemReason}
-          onOemAdjust={() => navigation?.navigate?.(ROUTES.OEM_BATTERY_ASSISTANT)}
-          onOemDismiss={dismissOem}
-          applyUpdate={applyUpdate}
-        />
-      )}
-      {!surfaces.dosesFirst && dosesBlock}
-      {/* 121 A (H-2): superfície de dose/medida entre o bloco de doses e a promo — fora do árbitro (H-1). */}
+      {/* Emenda PO 20/11: a dose do dia manda — bloco de doses sempre no topo. */}
+      {dosesBlock}
+      {/* Degraus 1–3 (vermelhos e Confira): acima da Semana do tratamento. */}
+      {composition.upper.map(renderCard)}
+      {/* 121 A (H-2): Semana do tratamento — posição fixa; fora do árbitro (H-1). */}
       {afterDoses}
-      {/* 120 C (D-8): no máximo 1 promo, entre o bloco de doses e a agenda; some com alerta técnico. */}
-      {surfaces.promo === 'stock_upsell' && (
+      {/* Degraus 4–7: abaixo do widget. */}
+      {composition.lower.map(renderCard)}
+      {/* 120 C (D-8): no máximo 1 promo; com card de ação, só na vaga livre do wedge sem Agenda (125). */}
+      {promoFits && surfaces.promo === 'stock_upsell' && (
         <StockUpsellCard
           onActivate={() => navigation?.navigate?.(ROUTES.STOCK_INITIAL_BALANCE, { source: 'upsell' })}
           onDismiss={dismissStockUpsell}
         />
       )}
-      {surfaces.promo === 'nudge' && (
+      {promoFits && surfaces.promo === 'nudge' && (
         <NudgeBanner nudge={nudgeApi.nudge} onAction={nudgeApi.handleAction} onDismiss={nudgeApi.dismiss} />
       )}
     </>
@@ -540,6 +577,7 @@ function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal }
       protocol={wedgeProtocol}
       onRegisterEarly={(instance: any) => setBulkModal(earlyRegisterModal(instance, wedgeProtocol, data?.timezone || DEFAULT_TZ))}
       onOpenTreatment={navigateToTreatmentDetail}
+      onAdjustTreatment={openTreatmentEdit}
     />
   )
   // Smoke 121 B: tratamento cuja escada a L3 já mostra — o card neutro da 029 dele sai da Hoje.
@@ -603,6 +641,25 @@ function TodayScreenContent({
   const lastTodayMeasure = todayMeasures?.[0] ?? null
 
   const { isWedge, showAgenda, weekModule, weekProtocolId } = useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal })
+  // 125 fatia 2: um card de setup por vez; enquanto houver, a Adesão some (AC6.7 — nada de "0%" no dia 1).
+  // "Tratamento cadastrado" só do que NÃO está na tela (PO smoke 20/11): o tratamento do widget (setup no
+  // miolo da L1) e quem tem dose na agenda de hoje ficam fora; o Confira não (incoerência é aviso).
+  const onScreenProtocolIds = useMemo(
+    () => [weekProtocolId, ...timeline.map((d: any) => d?.protocol?.id)].filter(Boolean) as string[],
+    [weekProtocolId, timeline],
+  )
+  const setup = useTodaySetup({ data, stale, onScreenProtocolIds })
+  const setupTime = getNow()
+  const renderSetup = (emphasis: boolean) => (
+    <TodaySetupSlot
+      setup={setup}
+      protocols={[...(protocols ?? []), ...(scheduledProtocols ?? [])]}
+      today={data?.localDay ?? getTodayLocal()}
+      nowTime={`${String(setupTime.getHours()).padStart(2, '0')}:${String(setupTime.getMinutes()).padStart(2, '0')}`}
+      refresh={refresh}
+      emphasis={emphasis}
+    />
+  )
 
   const late = useLateDoseActions({ setBulkModal, refresh })
   // SEM_REGISTRO na agenda ⇒ registro tardio (lote c/ hora prevista); na janela ⇒ modal de sempre.
@@ -637,14 +694,17 @@ function TodayScreenContent({
         refreshControl={<RefreshControl refreshing={loading && !!data} onRefresh={() => { refresh(); nudgeApi.refresh(); setEvoRefreshTick((t) => t + 1) }} tintColor={colors.status.success} />}
       >
         <TodayHeader greeting={greeting} todayFormatted={todayFormatted} />
-        {/* 121 A (FR-003): wedge sem card de adesão. */}
-        {!isWedge && <AdherenceDayCard score={stats.score} trend={adherenceTrend} />}
+        {/* 121 A (FR-003): wedge sem card de adesão · 125 fatia 2 (AC6.7): nem com card de setup. */}
+        {!isWedge && !setup.card && <AdherenceDayCard score={stats.score} trend={adherenceTrend} />}
         <TodayPrioritySection
           data={data} protocols={protocols} scheduledProtocols={scheduledProtocols}
           priorityDoses={priorityDoses} heroItems={heroItems} timeline={timeline}
           setBulkModal={setBulkModal} otaIdle={isIdleForOtaBanner} nudgeApi={nudgeApi}
           navigation={navigation} evoRefreshTick={evoRefreshTick} onSeeAgenda={scrollToAgenda}
           afterDoses={weekModule} weekProtocolId={weekProtocolId}
+          renderSetup={renderSetup} setupCard={setup.card}
+          // Wedge sem Agenda de Hoje: espaço livre abaixo do widget ⇒ até 2 cards ali (PO smoke 20/11).
+          roomBelow={!showAgenda}
         />
         {/* 121 A (G-A2/H-4): no wedge a Agenda fica enquanto há dose hoje — é o caminho de correção
             do dia da 120 C. Só o dia sem dose troca o vazio "Nenhuma dose hoje" pelo módulo. */}

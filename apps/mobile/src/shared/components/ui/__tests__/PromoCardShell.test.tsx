@@ -101,3 +101,27 @@ describe('OemBatteryAssistantCard sobre a casca (guard PO-120-9)', () => {
     expect(getByText(/economia de bateria/)).toBeTruthy()
   })
 })
+
+describe('foco da Hoje (emenda PO smoke 125, 20/11)', () => {
+  const bgOf = (el: any) => Object.assign({}, ...[el.props.style].flat(Infinity).filter(Boolean)).backgroundColor
+  const shell = (props: any) => render(<PromoCardShell testID="s" icon={<Text>i</Text>} title="t" subtitle="s" primary={{ label: 'a', accessibilityLabel: 'a', onPress: jest.fn() }} {...props} />)
+  it('fora do foco: aviso fica branco (tom vai para a borda)', () => {
+    const { colors } = jest.requireActual('@shared/styles/tokens')
+    expect(bgOf(shell({ tone: 'warning', emphasis: false }).getByTestId('s'))).toBe(colors.bg.card)
+    expect(bgOf(shell({ tone: 'warning', emphasis: true }).getByTestId('s'))).toBe(colors.status.warningLight)
+  })
+  it('erro mantém o fundo mesmo fora do foco', () => {
+    const { colors } = jest.requireActual('@shared/styles/tokens')
+    expect(bgOf(shell({ tone: 'error', emphasis: false }).getByTestId('s'))).toBe(colors.status.errorLight)
+  })
+})
+
+describe('botão fora do foco segue o tom (PO 20/11)', () => {
+  it('aviso: contorno âmbar; neutro: verde', () => {
+    const { colors } = jest.requireActual('@shared/styles/tokens')
+    const flat = (el: any) => Object.assign({}, ...[el.props.style].flat(Infinity).filter(Boolean))
+    const mk = (tone: any) => render(<PromoCardShell icon={<Text>i</Text>} title="t" subtitle="s" tone={tone} emphasis={false} primary={{ label: 'Registrar compra', accessibilityLabel: 'a', onPress: jest.fn() }} />)
+    expect(flat(mk('warning').getByText('Registrar compra')).color).toBe(colors.status.warning)
+    expect(flat(mk('neutral').getByText('Registrar compra')).color).toBe(colors.brand.primary)
+  })
+})

@@ -83,6 +83,22 @@ describe('DoseRow', () => {
     expect(s.getByText('ÚLTIMA APLICAÇÃO')).toBeTruthy()
   })
 
+  it('125 fatia 2: antes da 1ª dose o miolo mostra o setup com só "Ajustar"', () => {
+    const onAdjust = jest.fn()
+    const s = render(<DoseRow {...base} open summary={{ ...summary, state: 'first_dose', last: null }} recent={[]} setup={{ rows: [{ label: 'Dose', value: '0,5 mg por aplicação' }, { label: 'Quando', value: 'toda segunda às 15:00' }], onAdjust }} />)
+    expect(s.getByText('CONFIRA O TRATAMENTO')).toBeTruthy()
+    expect(s.getByText('Antes da 1ª aplicação, veja se está como na receita.')).toBeTruthy()
+    expect(s.getByText('toda segunda às 15:00')).toBeTruthy()
+    expect(s.queryByTestId('dose-row-empty')).toBeNull()
+    fireEvent.press(s.getByTestId('dose-row-setup-adjust'))
+    expect(onAdjust).toHaveBeenCalledTimes(1)
+  })
+
+  it('125 fatia 2: com dose registrada o setup sai e volta o histórico', () => {
+    const s = render(<DoseRow {...base} open recent={recent} setup={{ rows: [{ label: 'Dose', value: 'x' }], onAdjust: jest.fn() }} />)
+    expect(s.queryByTestId('dose-row-setup')).toBeNull()
+  })
+
   it('1ª aplicação aberta: quadro tracejado de vazio (mesmo padrão da L2)', () => {
     const s = render(<DoseRow {...base} open summary={{ ...summary, state: 'first_dose', last: null }} recent={[]} />)
     expect(s.getByTestId('dose-row-empty')).toBeTruthy()

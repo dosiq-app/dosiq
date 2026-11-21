@@ -28,6 +28,8 @@ interface PushPermissionCardProps {
   loading: boolean
   onEnable: () => void
   onSnooze: () => void
+  /** Foco da Hoje: fundo âmbar e botão cheio só quando é o foco (emenda PO 20/11). */
+  emphasis?: boolean
 }
 
 export default function PushPermissionCard(props: PushPermissionCardProps) {
@@ -38,6 +40,7 @@ export default function PushPermissionCard(props: PushPermissionCardProps) {
   const secondaryLabel = lastChance ? 'Não mostrar de novo' : 'Agora não'
   return (
     <PromoCardShell
+      emphasis={props.emphasis ?? true}
       testID="push-permission-card"
       icon={<BellOff size={22} color={colors.status.warning} strokeWidth={2} />}
       title={copy.title}

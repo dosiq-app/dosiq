@@ -15,9 +15,11 @@ const { ClipboardCheck } = LucideIcons as any
 interface Props {
   groups: UnloggedGroup[]
   onSeeAgenda: () => void
+  /** 125 fatia 2 (emenda PO 20/11): dose de hoje sem registro é o foco da Hoje ⇒ botão cheio. */
+  emphasis?: boolean
 }
 
-export default function UnloggedDosesCard({ groups, onSeeAgenda }: Props) {
+export default function UnloggedDosesCard({ groups, onSeeAgenda, emphasis = false }: Props) {
   if (!groups || groups.length === 0) return null
   const total = groups.reduce((n, g) => n + g.doses.length, 0)
   const title = total === 1 ? '1 dose de hoje sem registro' : `${total} doses de hoje sem registro`
@@ -36,13 +38,13 @@ export default function UnloggedDosesCard({ groups, onSeeAgenda }: Props) {
       </View>
       <Pressable
         onPress={onSeeAgenda}
-        style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.cta, emphasis && styles.ctaEmphasis, pressed && styles.pressed]}
         hitSlop={{ top: 6, bottom: 6, left: 0, right: 0 }}
         accessibilityRole="button"
         accessibilityLabel="Ver na agenda e registrar"
         testID="unlogged-see-agenda"
       >
-        <Text style={styles.ctaText}>Ver na agenda</Text>
+        <Text style={[styles.ctaText, emphasis && styles.ctaTextEmphasis]}>Ver na agenda</Text>
       </Pressable>
     </View>
   )
@@ -81,10 +83,12 @@ const styles = StyleSheet.create({
     marginLeft: 48,
     borderWidth: 1.5,
     borderColor: colors.brand.primary,
-    borderRadius: borderRadius.full,
+    borderRadius: borderRadius.md, // CTA = retângulo arredondado; pílula só p/ chips de seleção (PO 20/11)
     paddingHorizontal: spacing[4],
     paddingVertical: 6,
   },
   pressed: { opacity: 0.7 },
   ctaText: { fontSize: 13, fontWeight: '700', color: colors.brand.primary },
+  ctaEmphasis: { backgroundColor: colors.brand.primary },
+  ctaTextEmphasis: { color: colors.text.inverse },
 })
