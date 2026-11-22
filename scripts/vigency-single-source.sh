@@ -31,6 +31,8 @@ HITS=$(grep -rEn "\.(filter|find|some|every)\((\([^)]*\)|[A-Za-z_]+) =>[^)]*\b[A
   apps/web/src/features/stock apps/web/src/features/dashboard \
   apps/web/src/features/emergency apps/web/src/features/consultation \
   apps/web/src/views/Stock.tsx \
+  apps/mobile/src/features/*/services apps/mobile/src/features/*/utils \
+  apps/mobile/src/features/dashboard/hooks \
   server/bot/commands \
   --include='*.ts' --include='*.tsx' 2>/dev/null \
   | grep -v __tests__ | grep -v '\.test\.')
@@ -41,8 +43,11 @@ HITS=$(grep -rEn "\.(filter|find|some|every)\((\([^)]*\)|[A-Za-z_]+) =>[^)]*\b[A
 #   - refillPredictionService.ts: previsão de recompra do card de tratamento; filtra
 #     `p.active === true` (perde o eixo end_date E descarta `active NULL`). Reportado como
 #     candidato a 9º sítio; corrigir exige tocar `_treatmentListUtils`, fora do PR 2.
+#   - useTodayPushPermission.ts: dívida pré-existente mapeada ao expandir o gate para mobile
+#     (RC6 Step 1.3c); verifica `p?.active !== false && p?.critical_alarm === true` na Hoje.
 PENDING_064=(
   "apps/web/src/features/stock/services/refillPredictionService.ts"
+  "apps/mobile/src/features/dashboard/hooks/useTodayPushPermission.ts"
 )
 
 is_pending() {

@@ -5,9 +5,9 @@ on:
     branches: [main, develop]
     paths-ignore:
       - 'docs/**'
+      - '!docs/migrations/**'
       - '.agent/**'
       - '*.md'
-      - 'scripts/**'
       - 'scratches/**'
   pull_request:
     # Inclui feat/** para suportar estratégia de "branch de branch":
@@ -16,9 +16,9 @@ on:
     branches: [main, develop, "feat/**"]
     paths-ignore:
       - 'docs/**'
+      - '!docs/migrations/**'
       - '.agent/**'
       - '*.md'
-      - 'scripts/**'
       - 'scratches/**'
 
 concurrency:
@@ -55,7 +55,7 @@ jobs:
       - name: Get changed files
         id: changed-files
         run: |
-          FILES=$(git diff --name-only --diff-filter=ACMRT origin/${{ github.event.pull_request.base.ref || 'main' }}...HEAD -- '*.js' '*.jsx' '*.ts' '*.tsx' | tr '\n' ' ')
+          FILES=$(git diff --name-only --diff-filter=ACMRT origin/${{ github.event.pull_request.base.ref || 'main' }}...HEAD -- '*.js' '*.jsx' '*.mjs' '*.ts' '*.tsx' | tr '\n' ' ')
           echo "all_changed_files=$FILES" >> $GITHUB_OUTPUT
           if [ -n "$FILES" ]; then
             echo "any_changed=true" >> $GITHUB_OUTPUT

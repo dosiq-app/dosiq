@@ -9,6 +9,86 @@ import reactNative from 'eslint-plugin-react-native'
 import tsParser from '@typescript-eslint/parser'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 
+// Guardrails AST base compartilhados entre blocos (preservados ao estender por domínio em Flat Config)
+const BASE_RESTRICTED_SYNTAX = [
+  // R-020: Timezone Safe Dates
+  {
+    selector: 'NewExpression[callee.name="Date"]',
+    message: 'Não use "new Date()". Use "parseLocalDate()" de @utils/dateUtils para evitar bugs de timezone (R-020).'
+  },
+  // R-020/AP-342 (spec 077): dia/hora a partir do corte de uma string ISO é a leitura UTC.
+  // Sobre Date de parede só coincide com SP num runtime UTC; sobre instante dá o dia UTC.
+  {
+    selector: 'CallExpression[callee.property.name=/^(split|slice|substring|substr)$/][callee.object.callee.property.name="toISOString"]',
+    message: 'toISOString() recortado devolve dia/hora UTC, não o de SP. Use formatLocalDate(getUserTime(...)) / getTodayLocal() de @dosiq/core (R-020, AP-342). Caso legítimo (instante UTC de propósito): eslint-disable-next-line com o motivo.'
+  },
+  {
+    selector: 'CallExpression[callee.property.name="split"][arguments.0.value="T"]',
+    message: 'split("T") corta uma data ISO e devolve o dia UTC do instante. Use formatLocalDate(getUserTime(parseISO(x), tz)) de @dosiq/core (R-020, AP-342).'
+  },
+  // R-020: Proibir bibliotecas de data externas sem centralização
+  {
+    selector: 'ImportDeclaration[source.value="dayjs"], ImportDeclaration[source.value="moment"]',
+    message: 'Não use dayjs/moment diretamente. Centralize lógica de data em @utils/dateUtils (R-020).'
+  },
+  // R-204: Acessibilidade (Botões sobre Divs)
+  {
+    selector: 'JSXOpeningElement[name.name="div"] > JSXAttribute[name.name="onClick"]',
+    message: 'Não use <div> com onClick. Use <button> ou o componente <Button> para acessibilidade (R-204).'
+  },
+  // ADR-008: Design System hardcoded colors detection
+  {
+    selector: 'JSXAttribute[name.name="style"] Literal[value=/^#|^rgb|^hsl/]',
+    message: 'Não use cores hardcoded em estilos inline. Use variáveis CSS do Design System (--color-*).'
+  },
+  // R-010: Hook Order — States antes de Memos, Effects, Handlers
+  {
+    selector: 'BlockStatement > :matches(VariableDeclaration:has(CallExpression[callee.name=/^(useMemo|useCallback)$/]), ExpressionStatement:has(CallExpression[callee.name=/^(useEffect|useLayoutEffect|useFocusEffect|useInsertionEffect)$/])) ~ VariableDeclaration:has(CallExpression[callee.name=/^(useState|useRef|useReducer|useContext)$/])',
+    message: 'R-010: Ordem dos hooks incorreta. Declare States/Refs/Context (useState, useRef, etc.) antes de Memos, Effects e Handlers.'
+  },
+  // R-010: Hook Order — Memos antes de Effects e Handlers
+  {
+    selector: 'BlockStatement > :matches(VariableDeclaration:has(CallExpression[callee.name="useCallback"]), ExpressionStatement:has(CallExpression[callee.name=/^(useEffect|useLayoutEffect|useFocusEffect|useInsertionEffect)$/])) ~ VariableDeclaration:has(CallExpression[callee.name="useMemo"])',
+    message: 'R-010: Ordem dos hooks incorreta. Declare Memos (useMemo) antes de Effects e Handlers.'
+  },
+  // 034-A/AP-299: enum de DB em z.enum() DEVE ser pt-BR COM acento (o CHECK do banco
+  // rejeita a versão sem — 23514). Só literais DIRETOS no z.enum(); constantes tolerantes
+  // de leitura (mapas de normalização) ficam fora de propósito. 'cp' só existe em
+  // titration_steps (TITRATION_INTAKE_UNITS compõe via [...INTAKE_UNITS, 'cp'], não aqui).
+  {
+    selector: 'CallExpression[callee.object.name="z"][callee.property.name="enum"] Literal[value=/^(daily|weekly|monthly|biweekly|as_needed|when_needed|diario|quando_necessario|cp)$/]',
+    message: 'Enum de DB em inglês ou sem acento dentro de z.enum(). Os CHECKs do banco exigem pt-BR verbatim (ex.: "diário", "quando_necessário"; comprimido = NULL, não "cp"). Ver CLAUDE.md §Schemas — enums (AP-299).'
+  },
+  // 034-A/R-090 (lição Sprint 7): res.json(body) sem res.status() quebra no Vercel.
+  // [arguments.length>0] distingue do res.json() de fetch Response (0 args).
+  {
+    selector: 'CallExpression[callee.object.name="res"][callee.property.name="json"][arguments.length>0]',
+    message: 'res.json(body) direto quebra no Vercel. Use SEMPRE res.status(code).json(body) (R-090 / lição Sprint 7).'
+  },
+]
+
+const ASI_MOCK_CAST_SELECTOR = {
+  selector: 'MemberExpression[object.type="CallExpression"][object.arguments.length=1][object.arguments.0.type="TSAsExpression"][property.name=/^mock/] TSTypeReference[typeName.right.name=/Mock$/], MemberExpression[object.type="CallExpression"][object.arguments.length=1][object.arguments.0.type="TSAsExpression"][property.name=/^mock/] TSTypeReference[typeName.name=/Mock$/]',
+  message: 'ASI bug: (x as jest.Mock) sem ";" inicial encadeou como argumento da linha anterior. Use jest.mocked(x) ou ";" inicial (RC6 Ext #6).'
+}
+
+const R305_UPDATE_SELECT_SELECTOR = {
+  selector: 'CallExpression[callee.property.name="eq"][callee.object.type="CallExpression"][callee.object.callee.property.name="update"]:not(CallExpression[callee.property.name="select"] *)',
+  message: 'R-305: .update().eq() em tabela com RLS falha em silêncio (0 linhas) sem .select(). Encadeie .select() e valide o retorno.'
+}
+
+const AP366_USEMEMO_NOW_SELECTOR = {
+  selector: 'CallExpression[callee.name="useMemo"] CallExpression[callee.name=/^(getNow|getRawNow|nowInSP)$/]',
+  message: 'AP-366: getNow()/getRawNow()/nowInSP() dentro de useMemo congela o "agora" no instante da última carga. Use useMinuteClock() ou passe o instante nas deps.'
+}
+
+// Testes são isolados dos blocos de produção por whitelist (evita falsos bloqueios de regras de app)
+const TEST_FILE_PATTERNS = [
+  '**/__tests__/**/*.{js,jsx,ts,tsx}',
+  '**/*.test.{js,jsx,ts,tsx}',
+  '**/*.spec.{js,jsx,ts,tsx}',
+]
+
 export default [
   { ignores: [
     '**/dist/**',
@@ -21,16 +101,14 @@ export default [
     '**/build/**',
     '**/.expo/**',
     '**/.vercel/**',
-    '**/scripts/**',
     '**/scratch/**',
-    '**/__tests__/**',
     '**/.agent/**',
     '**/.claude/**',
     '**/plans/**',
   ] },
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
-    ignores: ['**/*.config.{js,jsx}', '**/vite.config.js', '**/vitest.config.js'],
+    ignores: ['**/*.config.{js,jsx}', '**/vite.config.js', '**/vitest.config.js', ...TEST_FILE_PATTERNS],
     languageOptions: {
       ecmaVersion: 2020,
       globals: {
@@ -105,63 +183,7 @@ export default [
       'no-unused-vars': ['error', { varsIgnorePattern: '^(motion|AnimatePresence|[A-Z_])' }],
 
       // AI Agent Guardrails & DevFlow Rules
-      'no-restricted-syntax': [
-        'error',
-        // R-020: Timezone Safe Dates
-        {
-          selector: 'NewExpression[callee.name="Date"]',
-          message: 'Não use "new Date()". Use "parseLocalDate()" de @utils/dateUtils para evitar bugs de timezone (R-020).'
-        },
-        // R-020/AP-342 (spec 077): dia/hora a partir do corte de uma string ISO é a leitura UTC.
-        // Sobre Date de parede só coincide com SP num runtime UTC; sobre instante dá o dia UTC.
-        {
-          selector: 'CallExpression[callee.property.name=/^(split|slice|substring|substr)$/][callee.object.callee.property.name="toISOString"]',
-          message: 'toISOString() recortado devolve dia/hora UTC, não o de SP. Use formatLocalDate(getUserTime(...)) / getTodayLocal() de @dosiq/core (R-020, AP-342). Caso legítimo (instante UTC de propósito): eslint-disable-next-line com o motivo.'
-        },
-        {
-          selector: 'CallExpression[callee.property.name="split"][arguments.0.value="T"]',
-          message: 'split("T") corta uma data ISO e devolve o dia UTC do instante. Use formatLocalDate(getUserTime(parseISO(x), tz)) de @dosiq/core (R-020, AP-342).'
-        },
-        // R-020: Proibir bibliotecas de data externas sem centralização
-        {
-          selector: 'ImportDeclaration[source.value="dayjs"], ImportDeclaration[source.value="moment"]',
-          message: 'Não use dayjs/moment diretamente. Centralize lógica de data em @utils/dateUtils (R-020).'
-        },
-        // R-204: Acessibilidade (Botões sobre Divs)
-        {
-          selector: 'JSXOpeningElement[name.name="div"] > JSXAttribute[name.name="onClick"]',
-          message: 'Não use <div> com onClick. Use <button> ou o componente <Button> para acessibilidade (R-204).'
-        },
-        // ADR-008: Design System hardcoded colors detection
-        {
-          selector: 'JSXAttribute[name.name="style"] Literal[value=/^#|^rgb|^hsl/]',
-          message: 'Não use cores hardcoded em estilos inline. Use variáveis CSS do Design System (--color-*).'
-        },
-        // R-010: Hook Order — States antes de Memos, Effects, Handlers
-        {
-          selector: 'BlockStatement > :matches(VariableDeclaration:has(CallExpression[callee.name=/^(useMemo|useCallback)$/]), ExpressionStatement:has(CallExpression[callee.name=/^(useEffect|useLayoutEffect|useFocusEffect|useInsertionEffect)$/])) ~ VariableDeclaration:has(CallExpression[callee.name=/^(useState|useRef|useReducer|useContext)$/])',
-          message: 'R-010: Ordem dos hooks incorreta. Declare States/Refs/Context (useState, useRef, etc.) antes de Memos, Effects e Handlers.'
-        },
-        // R-010: Hook Order — Memos antes de Effects e Handlers
-        {
-          selector: 'BlockStatement > :matches(VariableDeclaration:has(CallExpression[callee.name="useCallback"]), ExpressionStatement:has(CallExpression[callee.name=/^(useEffect|useLayoutEffect|useFocusEffect|useInsertionEffect)$/])) ~ VariableDeclaration:has(CallExpression[callee.name="useMemo"])',
-          message: 'R-010: Ordem dos hooks incorreta. Declare Memos (useMemo) antes de Effects e Handlers.'
-        },
-        // 034-A/AP-299: enum de DB em z.enum() DEVE ser pt-BR COM acento (o CHECK do banco
-        // rejeita a versão sem — 23514). Só literais DIRETOS no z.enum(); constantes tolerantes
-        // de leitura (mapas de normalização) ficam fora de propósito. 'cp' só existe em
-        // titration_steps (TITRATION_INTAKE_UNITS compõe via [...INTAKE_UNITS, 'cp'], não aqui).
-        {
-          selector: 'CallExpression[callee.object.name="z"][callee.property.name="enum"] Literal[value=/^(daily|weekly|monthly|biweekly|as_needed|when_needed|diario|quando_necessario|cp)$/]',
-          message: 'Enum de DB em inglês ou sem acento dentro de z.enum(). Os CHECKs do banco exigem pt-BR verbatim (ex.: "diário", "quando_necessário"; comprimido = NULL, não "cp"). Ver CLAUDE.md §Schemas — enums (AP-299).'
-        },
-        // 034-A/R-090 (lição Sprint 7): res.json(body) sem res.status() quebra no Vercel.
-        // [arguments.length>0] distingue do res.json() de fetch Response (0 args).
-        {
-          selector: 'CallExpression[callee.object.name="res"][callee.property.name="json"][arguments.length>0]',
-          message: 'res.json(body) direto quebra no Vercel. Use SEMPRE res.status(code).json(body) (R-090 / lição Sprint 7).'
-        }
-      ],
+      'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX],
 
       'no-restricted-imports': ['error', {
         patterns: [
@@ -208,6 +230,7 @@ export default [
   {
     // Bloco TS/TSX — parser dedicado; regras herdadas do bloco principal acima
     files: ['**/*.{ts,tsx}'],
+    ignores: TEST_FILE_PATTERNS,
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -234,16 +257,21 @@ export default [
       '**/metro.config.js',
       '**/babel.config.js',
       '**/app.config.js',
-      '**/scripts/**/*.js',
+      '**/scripts/**/*.{js,mjs,ts,tsx}',
       '**/scratch/**/*.cjs'
     ],
     languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
       globals: {
         ...globals.node,
       },
     },
     rules: {
       'import-x/no-unresolved': 'off',
+      'no-console': 'off',
+      'no-restricted-syntax': 'off',
+      'no-restricted-imports': 'off',
     },
   },
   {
@@ -251,6 +279,7 @@ export default [
     // (padrão nodenext — exigido pela cadeia de .d.ts do core na Vercel, 040/F6 D1).
     // O resolver node do import-x não mapeia .js→.ts; tsc/strict-island cobrem resolução.
     files: ['packages/*/src/**/*.{ts,tsx}'],
+    ignores: TEST_FILE_PATTERNS,
     rules: {
       'import-x/no-unresolved': 'off',
     },
@@ -259,6 +288,7 @@ export default [
   {
     // Server & API (Node.js Strict)
     files: ['server/**/*.{js,ts}', 'api/**/*.{js,ts}'],
+    ignores: TEST_FILE_PATTERNS,
     plugins: {
       n,
     },
@@ -294,6 +324,7 @@ export default [
   {
     // Mobile (React Native)
     files: ['apps/mobile/**/*.{js,jsx,ts,tsx}'],
+    ignores: TEST_FILE_PATTERNS,
     plugins: {
       'react-native': reactNative,
     },
@@ -343,6 +374,7 @@ export default [
   // Override 0: API handlers têm complexidade estrutural legítima (parse/validate/respond)
   {
     files: ['api/**/*.{js,ts}', 'api/**/_handlers/**/*.{js,ts}'],
+    ignores: TEST_FILE_PATTERNS,
     rules: {
       'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
       'complexity': ['warn', { max: 20 }],
@@ -351,6 +383,7 @@ export default [
   // Override 1: Componentes React (.jsx/.tsx)
   {
     files: ['**/*.{jsx,tsx}'],
+    ignores: TEST_FILE_PATTERNS,
     rules: {
       'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
       'complexity': ['warn', { max: 20 }],
@@ -364,6 +397,7 @@ export default [
       '**/*Modal*.{jsx,tsx}',
       '**/*Sheet*.{jsx,tsx}',
     ],
+    ignores: TEST_FILE_PATTERNS,
     rules: {
       'max-lines-per-function': ['warn', { max: 200, skipBlankLines: true, skipComments: true }],
       'complexity': ['warn', { max: 25 }],
@@ -379,17 +413,84 @@ export default [
       '**/hooks/**/*.{js,ts}',
       '**/_use*.{js,ts}',
     ],
+    ignores: TEST_FILE_PATTERNS,
     rules: {
       'max-lines-per-function': ['warn', { max: 250, skipBlankLines: true, skipComments: true }],
       'complexity': ['warn', { max: 25 }],
     }
   },
-  // Override 3: Arquivos de teste — describe/it são "funções" para o ESLint
+  // A4 / AP-216: Proibir `any` explícito nos domínios core já 100% tipados
   {
-    files: ['**/*.test.{js,jsx,ts,tsx}', '**/*.spec.{js,jsx,ts,tsx}'],
+    files: ['packages/core/src/types/**/*.ts', 'packages/core/src/schemas/**/*.ts'],
+    ignores: TEST_FILE_PATTERNS,
     rules: {
-      'max-lines-per-function': 'off',
-      'complexity': 'off',
-    }
+      '@typescript-eslint/no-explicit-any': 'error',
+    },
+  },
+  // A4 / R-305: .update().eq() sem .select() em repositórios core (falha silenciosa de RLS)
+  {
+    files: ['packages/core/src/repositories/**/*.ts'],
+    ignores: [
+      ...TEST_FILE_PATTERNS,
+      // Dívida legada pré-existente mapeada em 1.3c
+      'packages/core/src/repositories/createDoseInstanceRepository.ts',
+      'packages/core/src/repositories/createPurchaseRepository.ts',
+      'packages/core/src/repositories/createTitrationRepository.ts',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX, R305_UPDATE_SELECT_SELECTOR],
+    },
+  },
+  // A4 / AP-366: getNow()/getRawNow()/nowInSP() dentro de useMemo (congela relógio da UI)
+  {
+    files: [
+      'apps/mobile/src/features/**/*.{ts,tsx}',
+      'apps/web/src/features/**/*.{ts,tsx}',
+    ],
+    ignores: [
+      ...TEST_FILE_PATTERNS,
+      // Dívida legada pré-existente mapeada em 1.3c
+      'apps/mobile/src/features/dashboard/components/TreatmentWeekModule.tsx',
+      'apps/mobile/src/features/dashboard/hooks/_useTodayDerived.ts',
+      'apps/mobile/src/features/dashboard/screens/TodayScreen.tsx',
+      'apps/mobile/src/features/measures/components/ScatterTrend.tsx',
+      'apps/mobile/src/features/treatments/components/NextDoseField.tsx',
+      'apps/mobile/src/features/treatments/components/TreatmentSentenceCard.tsx',
+      'apps/web/src/features/calendar/components/DoseCalendar.tsx',
+      'apps/web/src/features/dashboard/hooks/useDashboardContext.tsx',
+      'apps/web/src/features/dashboard/hooks/useSparklineData.ts',
+      'apps/web/src/features/measures/components/ScatterTrend.tsx',
+    ],
+    rules: {
+      'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX, AP366_USEMEMO_NOW_SELECTOR],
+    },
+  },
+  // Override 3: Bloco isolado para testes por whitelist — zero regras de app; só parser TS + 3 guardrails sintáticas
+  {
+    files: TEST_FILE_PATTERNS,
+    plugins: {
+      '@typescript-eslint': tsPlugin,
+    },
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        ecmaFeatures: { jsx: true },
+        sourceType: 'module',
+      },
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+        ...globals.jest,
+      },
+    },
+    linterOptions: {
+      reportUnusedDisableDirectives: 'off',
+    },
+    rules: {
+      'no-unexpected-multiline': 'error',
+      'no-dupe-keys': 'error',
+      'no-restricted-syntax': ['error', ASI_MOCK_CAST_SELECTOR],
+    },
   },
 ]

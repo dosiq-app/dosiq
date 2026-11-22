@@ -36,6 +36,14 @@ export default {
     "eslint --fix"
   ],
 
+  // Migration GRANTs gate (Spec 108 / R-305: todo objeto novo em public exige GRANT explícito)
+  "docs/migrations/*.sql": (files) =>
+    `node scripts/migration-grants-gate.mjs ${files.map((f) => JSON.stringify(f)).join(' ')}`,
+
+  // Scripts ESM/JS alterados no commit (inclui .mjs fora do glob JS padrão)
+  "scripts/**/*.{js,mjs}": (files) =>
+    `eslint --max-warnings=0 --no-warn-ignored ${files.map((f) => JSON.stringify(f)).join(' ')}`,
+
   // Prettier SÓ em estilo. Markdown ficou de fora de propósito: `docs/`, `CLAUDE.md` e
   // `.agent/memory/**` são escritos à mão com quebra de linha e tabelas densas intencionais —
   // `prettier --write` reflui tudo e polui o diff de conhecimento. Reativar isto foi o que

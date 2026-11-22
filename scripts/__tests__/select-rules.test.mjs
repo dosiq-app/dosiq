@@ -6,6 +6,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  scoreRule,
+  selectRules,
+  isValidTrigger,
+  tokenizeCode,
+  domainsForPaths,
+  loadMemoryGraph,
+  formatCardBlock,
+  formatHotCardBlock
+} from '../select-rules.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const scriptsDir = path.resolve(__dirname, '..');
@@ -212,5 +223,381 @@ test('funciona sem node_modules (worktree isolado fora do repo)', () => {
     );
   } finally {
     fs.rmSync(iso, { recursive: true, force: true });
+  }
+});
+
+test('filtro de trigger degenerado bloqueia "*" mas aceita triggers curtos válidos', () => {
+  assert.equal(isValidTrigger('*'), false);
+  assert.equal(isValidTrigger('***'), false);
+  assert.equal(isValidTrigger('---'), false);
+  assert.equal(isValidTrigger('RC3'), true);
+  assert.equal(isValidTrigger('.select('), true);
+  assert.equal(isValidTrigger('${unit}'), true);
+
+  const deg = scoreRule(
+    'AP-DEG',
+    { domain: 'react_and_ui', title: 'T', summary: 'S', paths: [], diff_triggers: ['*'], keywords: [] },
+    { changedPaths: [], addedLines: ['/** * comentário JSDoc */'], changedDomains: new Set() }
+  );
+  assert.equal(deg.score, 0, 'trigger "*" não deve pontuar');
+
+  const okShort = scoreRule(
+    'AP-RC3',
+    { domain: 'process_and_testing', title: 'T', summary: 'S', paths: [], diff_triggers: ['RC3'], keywords: [] },
+    { changedPaths: [], addedLines: ['// gate RC3'], changedDomains: new Set() }
+  );
+  assert.ok(okShort.score > 0, 'trigger alfanumérico curto "RC3" deve pontuar');
+});
+
+test('desconto de glob boilerplate e multi-trigger superam regra spec=5 sem trigger', () => {
+  const rules = {};
+  for (let i = 1; i <= 22; i++) {
+    rules[`AP-${String(i).padStart(3, '0')}`] = {
+      title: `Boilerplate ${i}`,
+      summary: 'S',
+      domain: 'react_and_ui',
+      layer: 'warm',
+      paths: ['apps/web/**'],
+      diff_triggers: [],
+      keywords: []
+    };
+  }
+  rules['R-DEEP'] = {
+    title: 'Deep 0-trigger',
+    summary: 'S',
+    domain: 'react_and_ui',
+    layer: 'warm',
+    paths: ['apps/mobile/src/features/a/b/**'],
+    diff_triggers: [],
+    keywords: []
+  };
+  rules['R-UNCR'] = {
+    title: 'Uncrowded web glob',
+    summary: 'S',
+    domain: 'react_and_ui',
+    layer: 'warm',
+    paths: ['apps/web/src/**'],
+    diff_triggers: [],
+    keywords: []
+  };
+  rules['R-CUR'] = {
+    title: 'Curated trigger',
+    summary: 'S',
+    domain: 'data_and_schema',
+    layer: 'warm',
+    paths: ['apps/mobile/src/utils/**'],
+    diff_triggers: ['parseLocalDate'],
+    keywords: []
+  };
+
+  const changedPaths = [
+    'apps/web/src/Page.tsx',
+    'apps/mobile/src/utils/date.ts',
+    'apps/mobile/src/features/a/b/View.tsx'
+  ];
+  const out = selectRules(
+    { rules },
+    { changedPaths, addedLines: ['const d = parseLocalDate(raw);'], changedDomains: domainsForPaths(changedPaths) },
+    5
+  );
+  const rank = Object.fromEntries(out.map((r, i) => [r.id, r]));
+  assert.equal(out[0].id, 'R-CUR', 'glob curado + trigger deve vencer spec=5 sem trigger');
+  assert.ok(rank['R-UNCR'].score > rank['AP-001'].score, 'glob curado sem crowd deve vencer glob boilerplate >=20x');
+});
+
+test('keywords code-aware e sem acento casam camelCase e acentos sem falso positivo em <=3 chars', () => {
+  const toks = tokenizeCode('parseLocalDate useState vínculo');
+  assert.ok(toks.has('parse') && toks.has('local') && toks.has('date'));
+  assert.ok(toks.has('use') && toks.has('state'));
+  assert.ok(toks.has('vinculo'));
+
+  const htmlVsMl = scoreRule(
+    'AP-ML',
+    { domain: 'react_and_ui', title: 'T', summary: 'S', paths: [], diff_triggers: [], keywords: ['ml'] },
+    { changedPaths: [], addedLines: ['return <html><body>ok</body></html>;'], changedDomains: new Set() }
+  );
+  assert.equal(htmlVsMl.score, 0, 'keyword <=3 chars "ml" não deve casar substring de "html"');
+
+  const accentAndCamel = scoreRule(
+    'AP-TOK',
+    { domain: 'data_and_schema', title: 'T', summary: 'S', paths: [], diff_triggers: [], keywords: ['vinculo', 'local'] },
+    { changedPaths: [], addedLines: ['// vínculo do parseLocalDate'], changedDomains: new Set() }
+  );
+  assert.ok(accentAndCamel.score > 2, 'multi-hit acento + camelCase deve somar acima de um hit único');
+});
+
+test('consistência por prefixo e segurança contra Object.prototype (toString/constructor)', () => {
+  const rules = {};
+  for (let i = 1; i <= 8; i++) {
+    rules[`R-${String(100 + i)}`] = {
+      title: `Rule ${i}`,
+      summary: 'S',
+      domain: 'data_and_schema',
+      layer: 'warm',
+      paths: ['packages/core/src/repositories/**'],
+      diff_triggers: i <= 2 ? ['toString', 'constructor'] : ['.select('],
+      keywords: ['valueOf', 'hasOwnProperty']
+    };
+  }
+  const idx = { rules };
+  const ctx = {
+    changedPaths: ['packages/core/src/repositories/repo.ts'],
+    addedLines: ['x.toString(); x.constructor(); valueOf();'],
+    changedDomains: new Set(['data_and_schema'])
+  };
+  const top5 = selectRules(idx, ctx, 5).map((r) => r.id);
+  const top20 = selectRules(idx, ctx, 20).map((r) => r.id);
+  assert.deepEqual(top5, top20.slice(0, 5), 'top-5 deve ser prefixo exato de top-20');
+});
+
+test('--format card emite review_card quando presente e faz fallback para full/summary quando ausente', () => {
+  const cardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'select-rules-card-'));
+  try {
+    const idxFile = path.join(cardDir, 'compiled_rules_index.json');
+    const cardRule = {
+      title: 'Card Rule',
+      summary: 'Summary Card',
+      domain: 'data_and_schema',
+      layer: 'warm',
+      paths: ['packages/core/src/repositories/**'],
+      diff_triggers: ['.update('],
+      keywords: [],
+      review_card: 'Verifique `.update().select()`.\n(exc: tabela pública)'
+    };
+    const fallbackRule = {
+      title: 'Fallback Rule',
+      summary: 'Summary Fallback Only',
+      domain: 'data_and_schema',
+      layer: 'warm',
+      paths: ['packages/core/src/repositories/**'],
+      diff_triggers: ['.select('],
+      keywords: []
+    };
+    const hotCardRule = {
+      title: 'Hot Card',
+      summary: 'Hot Summary',
+      domain: 'data_and_schema',
+      layer: 'hot',
+      paths: [],
+      diff_triggers: [],
+      keywords: [],
+      review_card: 'Regra HOT em review_card.'
+    };
+    fs.writeFileSync(
+      idxFile,
+      JSON.stringify({
+        hot: ['R-HOT1'],
+        rules: {
+          'R-HOT1': hotCardRule,
+          'R-CARD': cardRule,
+          'R-FBK': fallbackRule
+        }
+      })
+    );
+    const diffFile = path.join(cardDir, 'test.diff');
+    fs.writeFileSync(
+      diffFile,
+      [
+        'diff --git a/packages/core/src/repositories/x.ts b/packages/core/src/repositories/x.ts',
+        '--- a/packages/core/src/repositories/x.ts',
+        '+++ b/packages/core/src/repositories/x.ts',
+        '@@ -1 +1,2 @@',
+        '+await db.from("t").update({ a: 1 }).select()',
+        ''
+      ].join('\n')
+    );
+
+    const cardOut = run(selectScript, ['--root', cardDir, '--index', idxFile, '--diff-file', diffFile, '--format', 'card', '--limit', '5']);
+    assert.equal(cardOut.status, 0, cardOut.stderr);
+    assert.ok(cardOut.stdout.includes('## [HOT] R-HOT1 — Hot Card\n\nRegra HOT em review_card.'));
+    assert.ok(cardOut.stdout.includes('## R-CARD — Card Rule'));
+    assert.ok(cardOut.stdout.includes('Verifique `.update().select()`.'));
+    assert.ok(cardOut.stdout.includes('## R-FBK — Fallback Rule'));
+    assert.ok(cardOut.stdout.includes('Summary Fallback Only'));
+
+    const jsonOut = run(selectScript, ['--root', cardDir, '--index', idxFile, '--diff-file', diffFile, '--json', '--limit', '5']);
+    assert.equal(jsonOut.status, 0, jsonOut.stderr);
+    const parsed = JSON.parse(jsonOut.stdout);
+    const selectedById = Object.fromEntries(parsed.selected.map((s) => [s.id, s]));
+    assert.equal(selectedById['R-CARD'].review_card, cardRule.review_card);
+    assert.equal(selectedById['R-FBK'].review_card, undefined);
+
+    const directHot = formatHotCardBlock('R-HOT1', hotCardRule, cardDir);
+    assert.ok(directHot.includes('Regra HOT em review_card.'));
+    const directFallback = formatCardBlock(
+      { id: 'R-FBK', score: 1, reasons: [{ type: 'domain', domain: 'data_and_schema', score: 1 }] },
+      fallbackRule,
+      cardDir
+    );
+    assert.ok(directFallback.includes('Summary Fallback Only'));
+  } finally {
+    fs.rmSync(cardDir, { recursive: true, force: true });
+  }
+});
+
+test('--related-paths ativa adj_path somente com triggerScore > 0 e glob spec >= 2', () => {
+  const relRule = {
+    domain: 'data_and_schema',
+    title: 'Callee contract',
+    summary: 'S',
+    paths: ['packages/core/src/utils/**'],
+    diff_triggers: ['formatDose('],
+    keywords: []
+  };
+  const shallowGlobRule = {
+    ...relRule,
+    paths: ['packages/**']
+  };
+  const noTrigRule = {
+    ...relRule,
+    diff_triggers: []
+  };
+
+  const baseCtx = {
+    changedPaths: ['apps/mobile/src/features/dashboard/components/Card.tsx'],
+    relatedPaths: ['packages/core/src/utils/doseUnit.ts'],
+    addedLines: ['const s = formatDose(10, "mg");'],
+    changedDomains: domainsForPaths(['apps/mobile/src/features/dashboard/components/Card.tsx'])
+  };
+
+  const withAdj = scoreRule('R-ADJ', relRule, baseCtx);
+  const withoutAdj = scoreRule('R-ADJ', relRule, { ...baseCtx, relatedPaths: [] });
+  assert.ok(withAdj.reasons.some((r) => r.type === 'adj_path'), 'deveria registrar reason adj_path');
+  assert.ok(withAdj.score > withoutAdj.score, 'adj_path deve somar score quando glob spec >= 2 e há trigger');
+
+  const shallow = scoreRule('R-SHW', shallowGlobRule, baseCtx);
+  assert.equal(shallow.reasons.some((r) => r.type === 'adj_path'), false, 'glob raso (spec < 2) não ativa adj_path');
+
+  const noTrig = scoreRule('R-NTG', noTrigRule, baseCtx);
+  assert.equal(noTrig.reasons.some((r) => r.type === 'adj_path'), false, 'sem trigger no diff não ativa adj_path');
+});
+
+test('A5 loadMemoryGraph e boost graph_1hop/episodic respeitam excludePr, files numérico e guarda anti-Mateus', () => {
+  const gDir = fs.mkdtempSync(path.join(os.tmpdir(), 'select-rules-a5-'));
+  try {
+    fs.mkdirSync(path.join(gDir, 'rules', 'data_and_schema'), { recursive: true });
+    fs.writeFileSync(
+      path.join(gDir, 'rules', 'data_and_schema', 'R-SEED.md'),
+      '# R-SEED\nRelacionada com [[R-COUPLED]] no mesmo fluxo.\n'
+    );
+    fs.writeFileSync(
+      path.join(gDir, 'rules', 'data_and_schema', 'R-COUPLED.md'),
+      '# R-COUPLED\nRegra acoplada.\n'
+    );
+    fs.writeFileSync(
+      path.join(gDir, 'events.jsonl'),
+      [
+        '{"event":"coding_complete","pr":10,"files":3,"rules_applied":["R-BOILER","R-COUPLED"]}',
+        '{"event":"ai_review_complete","pr":11,"files":["packages/core/src/repositories/repo.ts"],"rules_cited":["R-COUPLED","R-PEER"]}',
+        '{"event":"ai_review_complete","pr":999,"files":["packages/core/src/repositories/repo.ts"],"rules_cited":["R-LEAK"]}'
+      ].join('\n') + '\n'
+    );
+
+    const index = {
+      rules: {
+        'R-SEED': {
+          title: 'Seed Rule',
+          summary: 'S',
+          domain: 'data_and_schema',
+          layer: 'warm',
+          paths: ['packages/core/src/repositories/**'],
+          diff_triggers: ['.update(', '.select('],
+          keywords: []
+        },
+        'R-COUPLED': {
+          title: 'Coupled Rule',
+          summary: 'S',
+          domain: 'data_and_schema',
+          layer: 'warm',
+          paths: ['packages/core/src/repositories/**'],
+          diff_triggers: ['.eq('],
+          keywords: []
+        },
+        'R-PEER': {
+          title: 'Peer Rule',
+          summary: 'S',
+          domain: 'data_and_schema',
+          layer: 'warm',
+          paths: ['packages/core/src/repositories/**'],
+          diff_triggers: ['.eq('],
+          keywords: []
+        },
+        'R-BOILER': {
+          title: 'Boilerplate Only',
+          summary: 'S',
+          domain: 'data_and_schema',
+          layer: 'warm',
+          paths: ['packages/**'],
+          diff_triggers: [],
+          keywords: []
+        },
+        'R-LEAK': {
+          title: 'Excluded PR Rule',
+          summary: 'S',
+          domain: 'data_and_schema',
+          layer: 'warm',
+          paths: ['packages/core/src/repositories/**'],
+          diff_triggers: ['.eq('],
+          keywords: []
+        },
+        'R-ZERO': {
+          title: 'Zero Diff Match',
+          summary: 'S',
+          domain: 'react_and_ui',
+          layer: 'warm',
+          paths: ['apps/web/**'],
+          diff_triggers: ['unusedToken'],
+          keywords: []
+        }
+      }
+    };
+
+    const graphFiltered = loadMemoryGraph(index, gDir, { excludePr: 999 });
+    assert.ok(graphFiltered.docNeighbors['R-SEED'].has('R-COUPLED'));
+    assert.equal(graphFiltered.ruleCitations['R-LEAK'] || 0, 0, 'excludePr deve ignorar eventos do próprio PR');
+
+    const selectedDefault = selectRules(
+      index,
+      {
+        changedPaths: ['packages/core/src/repositories/repo.ts'],
+        addedLines: ['await db.from("t").update({ a: 1 }).select().eq("id", id);'],
+        changedDomains: new Set(['data_and_schema']),
+        memoryRoot: gDir,
+        excludePr: 999
+      },
+      10
+    );
+    const byIdDefault = Object.fromEntries(selectedDefault.map((s) => [s.id, s]));
+    assert.equal(
+      byIdDefault['R-COUPLED'].reasons.some((r) => r.type === 'graph_1hop' || r.type === 'episodic'),
+      false,
+      'boost graph/episodic deve ficar desligado por padrão (opt-in via enableGraph/RC6_RULE_GRAPH=1)'
+    );
+
+    const selected = selectRules(
+      index,
+      {
+        changedPaths: ['packages/core/src/repositories/repo.ts'],
+        addedLines: ['await db.from("t").update({ a: 1 }).select().eq("id", id);'],
+        changedDomains: new Set(['data_and_schema']),
+        memoryRoot: gDir,
+        enableGraph: true,
+        excludePr: 999
+      },
+      10
+    );
+
+    const byId = Object.fromEntries(selected.map((s) => [s.id, s]));
+    assert.ok(byId['R-COUPLED'].reasons.some((r) => r.type === 'graph_1hop'), 'R-COUPLED deve ganhar graph_1hop via R-SEED');
+    assert.ok(byId['R-COUPLED'].reasons.some((r) => r.type === 'episodic'), 'R-COUPLED deve ganhar episodic');
+    assert.ok(byId['R-COUPLED'].score > byId['R-PEER'].score, 'R-COUPLED conectado em grafo deve superar R-PEER de mesmo trigger');
+    assert.equal(
+      byId['R-BOILER'].reasons.some((r) => r.type === 'graph_1hop' || r.type === 'episodic'),
+      false,
+      'glob boilerplate sem trigger/keyword/file-hit não deve receber boost episódico/grafo'
+    );
+    assert.equal(byId['R-ZERO'], undefined, 'regra com score 0 no diff nunca entra via grafo');
+  } finally {
+    fs.rmSync(gDir, { recursive: true, force: true });
   }
 });
