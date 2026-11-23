@@ -43,6 +43,8 @@ type Props = {
    * cadastrado, com um CTA só — "Ajustar". Depois da 1ª dose volta a ser local + histórico.
    */
   setup?: { rows: Array<{ label: string; value: string }>; onAdjust: () => void } | null
+  /** 124 A (FR-010): abre o sheet da dose na última registrada. Só cadência ≥ 7 d com registro. */
+  onOpenHistory?: (() => void) | null
 }
 
 /** Lista das últimas (só semanal) — a da B, com o título pelo verbo. */
@@ -140,8 +142,17 @@ function SetupSummary({ setup, injectable }: { setup: NonNullable<Props['setup']
   )
 }
 
-function DoseRowBody({ daily, recent, timezone, injectable, setup }: {
+function HistoryLink({ injectable, onPress }: { injectable: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={styles.historyLink} testID="dose-row-history">
+      <Text style={styles.actionText}>{injectable ? 'Ver aplicações anteriores' : 'Ver doses anteriores'}</Text>
+    </Pressable>
+  )
+}
+
+function DoseRowBody({ daily, recent, timezone, injectable, setup, onOpenHistory }: {
   daily: Props['daily']; recent: RecentApplicationRow[]; timezone: string; injectable: boolean; setup: Props['setup']
+  onOpenHistory: Props['onOpenHistory']
 }) {
   if (setup && recent.length === 0) {
     return (
@@ -152,7 +163,8 @@ function DoseRowBody({ daily, recent, timezone, injectable, setup }: {
   }
   const shown = recent.slice(0, LIST_MAX)
   const sites = shown.map((r) => r.injection_site)
-  const hasKnownSite = !!getKnownInjectionSiteLabel(sites[0] ?? null)
+  // 124 A (FR-009): local só no injetável — nas demais formas a L1 mostra só datas.
+  const hasKnownSite = injectable && !!getKnownInjectionSiteLabel(sites[0] ?? null)
   return (
     <View style={styles.body} testID="dose-row-body">
       {daily ? <WeekStrip days={daily.week.days} injectable={injectable} /> : null}
@@ -162,13 +174,14 @@ function DoseRowBody({ daily, recent, timezone, injectable, setup }: {
         </View>
       ) : null}
       {daily ? null : <RecentList shown={shown} timezone={timezone} injectable={injectable} />}
+      {!daily && onOpenHistory && shown.length > 0 ? <HistoryLink injectable={injectable} onPress={onOpenHistory} /> : null}
     </View>
   )
 }
 
 export default function DoseRow({
   open, onToggle, summary, recent, nextDoseLabel, timezone, loading, error, onRetry, canRegisterEarly, onRegisterEarly,
-  injectable = true, daily = null, setup = null,
+  injectable = true, daily = null, setup = null, onOpenHistory = null,
 }: Props) {
   const isDaily = !!daily
   const ready = isDaily || !!summary
@@ -200,7 +213,7 @@ export default function DoseRow({
         </Pressable>
         <HeadAction error={!!error} onRetry={onRetry} canRegisterEarly={canRegisterEarly && !isDaily} onRegisterEarly={onRegisterEarly} injectable={injectable} />
       </View>
-      {open && !error && ready ? <DoseRowBody daily={daily} recent={recent} timezone={timezone} injectable={injectable} setup={setup} /> : null}
+      {open && !error && ready ? <DoseRowBody daily={daily} recent={recent} timezone={timezone} injectable={injectable} setup={setup} onOpenHistory={onOpenHistory} /> : null}
     </View>
   )
 }
@@ -228,6 +241,7 @@ const styles = StyleSheet.create({
   setupEyebrow: { color: colors.brand.primary },
   setupLabel: { width: 96, fontSize: 14, lineHeight: 20, fontWeight: '700', color: colors.text.primary },
   setupValue: { flex: 1, fontSize: 15, lineHeight: 20, color: colors.text.primary },
+  historyLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   setupLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   placeholderText: { fontSize: 14, color: colors.text.secondary, textAlign: 'center' },
   mapCard: { borderWidth: 1, borderColor: colors.border.light, borderRadius: borderRadius.md, paddingVertical: spacing[2], backgroundColor: colors.bg.card },
