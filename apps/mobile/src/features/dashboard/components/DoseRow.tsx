@@ -82,8 +82,8 @@ function HeadAction({ error, onRetry, canRegisterEarly, onRegisterEarly, injecta
 }
 
 function listTitle(n: number, injectable: boolean): string {
-  if (n === 1) return injectable ? 'ÚLTIMA APLICAÇÃO' : 'ÚLTIMO REGISTRO'
-  return injectable ? `ÚLTIMAS ${n} APLICAÇÕES` : `ÚLTIMOS ${n} REGISTROS`
+  if (n === 1) return injectable ? 'ÚLTIMA APLICAÇÃO' : 'ÚLTIMA DOSE'
+  return injectable ? `ÚLTIMAS ${n} APLICAÇÕES` : `ÚLTIMAS ${n} DOSES`
 }
 
 function RecentList({ shown, timezone, injectable }: { shown: RecentApplicationRow[]; timezone: string; injectable: boolean }) {
@@ -93,7 +93,7 @@ function RecentList({ shown, timezone, injectable }: { shown: RecentApplicationR
         <Text style={styles.placeholderText}>
           {injectable
             ? 'Nenhuma aplicação registrada ainda. Com a primeira, o histórico e o local aparecem aqui.'
-            : 'Nenhum registro ainda. Com o primeiro, o histórico aparece aqui.'}
+            : 'Nenhuma dose registrada ainda. Com a primeira, o histórico aparece aqui.'}
         </Text>
       </View>
     )
@@ -192,7 +192,7 @@ export default function DoseRow({
           <View style={styles.flex}>
             <Text style={styles.title}>Dose</Text>
             {loading && !ready ? <View style={styles.skeletonLine} testID="dose-row-loading" /> : null}
-            {error ? <Text style={styles.neutral}>{`Não foi possível carregar ${injectable ? 'as aplicações' : 'os registros'}.`}</Text> : null}
+            {error ? <Text style={styles.neutral}>{`Não foi possível carregar ${injectable ? 'as aplicações' : 'as doses'}.`}</Text> : null}
             {copy?.primary ? <Text style={styles.value} testID="dose-row-primary">{copy.primary}</Text> : null}
             {copy?.secondary ? <Text style={styles.neutral} testID="dose-row-secondary">{copy.secondary}</Text> : null}
           </View>

@@ -105,7 +105,8 @@ export function doseRowCopy(
   if (s.state === 'first_dose' || !last) return firstDoseCopy(s, nextDoseLabel, injectable)
   if (s.state === 'gap') {
     return {
-      primary: `${injectable ? 'Última aplicação registrada' : 'Último registro'} · ${weekdayDate(last.day)}`,
+      // 124 A (PO 23/11): "aplicação" só no injetável; o resto diz "dose".
+      primary: `${injectable ? 'Última aplicação registrada' : 'Última dose registrada'} · ${weekdayDate(last.day)}`,
       secondary: s.next ? `Próxima prevista: ${weekdayDate(s.next.day)}` : null,
     }
   }

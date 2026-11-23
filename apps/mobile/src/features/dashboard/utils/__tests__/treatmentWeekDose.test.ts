@@ -1,5 +1,6 @@
 // 121 B — copy da L1 (AC-11..AC-13, G-B3) e da L3 (AC-15, PO-14). Pura.
 import { describe, it, expect, afterEach } from '@jest/globals'
+import { summarizeWeeklyDose } from '@dosiq/core'
 import { dailyRowCopy, doseCadence, doseRowCopy, evolutionDetail, evolutionRowCopy, firstScheduledTime, siteShort, weekdayDate, weeklyCadenceDays } from '../treatmentWeek'
 
 const TZ = 'America/Sao_Paulo'
@@ -162,7 +163,8 @@ describe('doseRowCopy não injetável (AC-18) — verbo neutro', () => {
     expect(c.secondary).toBe('Próxima em 4 dias · sex, 20/11')
   })
   it('lacuna e 1ª dose neutras', () => {
-    expect(doseRowCopy({ state: 'gap', last, next: null }, null, false).primary).toBe('Último registro · sex, 13/11')
+    // Emenda 124 A (PO 23/11): "dose" no não injetável — antes "Último registro".
+    expect(doseRowCopy({ state: 'gap', last, next: null }, null, false).primary).toBe('Última dose registrada · sex, 13/11')
     expect(doseRowCopy({ state: 'first_dose', last: null, next: { day: '2026-11-18', daysUntil: 2 } }, null, false).primary).toBe('Primeira dose · qua, 18/11')
   })
   it('injetável mantém a copy da B', () => {
@@ -228,5 +230,65 @@ describe('evolutionDetail diário (AC-19, PO-19)', () => {
   })
   it('semanal não ganha stageCalendar', () => {
     expect(evolutionDetail(ladder, '2026-11-19', 7, TZ, '2026-11-18')!.stageCalendar).toBeNull()
+  })
+})
+
+// ─── 124 A · L1 fora do wedge (PO-4/PO-5, FR-006/FR-008) ─────────────────────────
+describe('124 A — L1 com intervalo do tratamento (dias desde / até)', () => {
+  const l1 = (taken_at: string | null, nextDay: string | null, intervalDays: number, today: string, injectable = true, site: string | null = null) => {
+    const s = summarizeWeeklyDose({
+      applications: taken_at ? [{ taken_at, injection_site: site }] : [],
+      nextDay, intervalDays, todayLocal: today, tz: TZ,
+    })
+    return { s, c: doseRowCopy(s, null, injectable) }
+  }
+
+  it('AC-5 mensal: "Aplicada há 12 dias · local" / "Próxima em 18 dias"', () => {
+    const { s, c } = l1('2026-11-01T12:20:00Z', '2026-12-01', 30, '2026-11-13', true, 'gluteo_d')
+    expect(s.state).toBe('on_track')
+    expect(c).toEqual({ primary: 'Aplicada há 12 dias · glúteo direito', secondary: 'Próxima em 18 dias · ter, 01/12' })
+  })
+
+  it('AC-6 mensal sem registro há > 30 dias ⇒ lacuna neutra (G-B3)', () => {
+    const { s, c } = l1('2026-10-01T12:00:00Z', '2026-11-15', 30, '2026-11-13')
+    expect(s.state).toBe('gap')
+    expect(c.primary).toBe('Última aplicação registrada · qui, 01/10')
+  })
+
+  it('30 dias exatos ainda é em dia; 31 vira lacuna (borda do intervalo)', () => {
+    expect(l1('2026-10-14T12:00:00Z', null, 30, '2026-11-13').s.state).toBe('on_track')
+    expect(l1('2026-10-13T12:00:00Z', null, 30, '2026-11-13').s.state).toBe('gap')
+  })
+
+  it('quinzenal (14 d): 10 dias = em dia, 15 = lacuna', () => {
+    expect(l1('2026-11-03T12:00:00Z', '2026-11-17', 14, '2026-11-13').c.secondary).toBe('Próxima em 4 dias · ter, 17/11')
+    expect(l1('2026-10-29T12:00:00Z', null, 14, '2026-11-13').s.state).toBe('gap')
+  })
+
+  it('AC-7 mensal sem dose ⇒ 1ª dose', () => {
+    expect(l1(null, '2026-11-17', 30, '2026-11-13').c.primary).toBe('Primeira aplicação · ter, 17/11')
+  })
+
+  it('AC-10 oral semanal: dias, sem local, "dose" (PO 23/11)', () => {
+    const on = l1('2026-11-10T11:00:00Z', '2026-11-17', 7, '2026-11-13', false)
+    expect(on.c).toEqual({ primary: 'Registrada há 3 dias · ter, 10/11', secondary: 'Próxima em 4 dias · ter, 17/11' })
+    expect(l1('2026-10-30T11:00:00Z', null, 7, '2026-11-13', false).c.primary).toBe('Última dose registrada · sex, 30/10')
+    expect(l1(null, '2026-11-17', 7, '2026-11-13', false).c.primary).toBe('Primeira dose · ter, 17/11')
+  })
+
+  it('R-020: dose 23:30 de domingo em GMT-3 (= segunda 02:30Z) conta do domingo local', () => {
+    const { s, c } = l1('2026-11-09T02:30:00Z', null, 30, '2026-11-13')
+    expect(s.last?.day).toBe('2026-11-08')
+    expect(c.primary).toBe('Aplicada há 5 dias · dom, 08/11')
+  })
+
+  it('PO-5: nenhuma copy fala de risco/atraso/janela', () => {
+    const all = [
+      l1('2026-10-01T12:00:00Z', '2026-11-15', 30, '2026-11-13'),
+      l1('2026-10-01T12:00:00Z', null, 30, '2026-11-13', false),
+      l1(null, '2026-11-17', 30, '2026-11-13'),
+      l1('2026-11-01T12:00:00Z', '2026-12-01', 30, '2026-11-13'),
+    ].map(({ c }) => `${c.primary} ${c.secondary ?? ''}`.toLowerCase())
+    for (const t of all) expect(t).not.toMatch(/atrasad|risco|proteç|janela|eficáci|perdeu|sem registro/)
   })
 })

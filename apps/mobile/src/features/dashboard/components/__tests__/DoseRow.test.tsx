@@ -163,7 +163,7 @@ describe('DoseRow', () => {
     expect(s.getByText('Registrada há 3 dias · sex, 13/11')).toBeTruthy()
     expect(s.getByText('Registrar')).toBeTruthy()
     expect(s.queryByText('Já apliquei')).toBeNull()
-    expect(s.getByText('ÚLTIMOS 2 REGISTROS')).toBeTruthy()
+    expect(s.getByText('ÚLTIMAS 2 DOSES')).toBeTruthy()
     expect(s.queryByTestId('bodymap-view-mock')).toBeNull()
   })
 })
