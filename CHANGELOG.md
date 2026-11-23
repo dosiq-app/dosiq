@@ -7,6 +7,12 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Correções do trem v0.35 (spec 128, Fatia B)
+
+- **Web** (`Fixed`, **patch** `apps/web` 4.41.0 → **4.41.1**; canal: deploy web, independente do corte do app):
+  - **Cadastro de remédio:** o campo "Princípio ativo" não trava mais na primeira letra digitada. Antes, qualquer valor no campo (inclusive o digitado) o deixava somente leitura e acendia o selo "Fonte: ANVISA". Agora só fica somente leitura, com o selo, quando o valor veio da seleção na base ANVISA; digitar outro nome no campo do remédio libera o campo de novo. Editar um remédio já cadastrado segue editável.
+- **Mobile:** sem mudança nesta fatia (a Fatia A, tela cheia do alarme crítico, entra em seguida).
+
 ### Remédio fora da lista (spec 125, Fatia 2a)
 
 - **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.34 → **0.34.35**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — fluxo novo na Hoje e mudança de comportamento do vínculo, R-314):

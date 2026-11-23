@@ -17,6 +17,8 @@ export default function MedicineFormBasicInfo({
   setSaveSuccess,
   handleChange,
   handleMedicineSelect,
+  activeIngredientFromAnvisa,
+  setActiveIngredientFromAnvisa,
   medicine,
 }: any) {
   return (
@@ -38,6 +40,8 @@ export default function MedicineFormBasicInfo({
             value={formData.name}
             onChange={(value) => {
               setFormData((prev) => ({ ...prev, name: value }))
+              // Trocou o nome na mão: o princípio ativo deixa de ser o da seleção.
+              setActiveIngredientFromAnvisa(false)
               if (errors.name) setErrors((prev) => ({ ...prev, name: '' }))
               if (saveSuccess) setSaveSuccess(false)
             }}
@@ -59,7 +63,7 @@ export default function MedicineFormBasicInfo({
       <div className="form-group">
         <label htmlFor="active_ingredient">
           Princípio Ativo
-          {formData.active_ingredient && !medicine?.active_ingredient && (
+          {activeIngredientFromAnvisa && (
             <span className="autocomplete-badge" title="Preenchido via Base ANVISA">
               Fonte: ANVISA
             </span>
@@ -73,7 +77,7 @@ export default function MedicineFormBasicInfo({
           onChange={handleChange}
           placeholder="Ex: Paracetamol"
           disabled={isSubmitting}
-          readOnly={formData.active_ingredient && !medicine?.active_ingredient}
+          readOnly={Boolean(activeIngredientFromAnvisa)}
           aria-describedby="active_ingredient-hint"
         />
         <small id="active_ingredient-hint" className="field-hint">

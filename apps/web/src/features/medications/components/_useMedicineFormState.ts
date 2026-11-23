@@ -18,6 +18,10 @@ export function useMedicineFormState({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [shakeFields, setShakeFields] = useState<Record<string, boolean>>({})
   const [saveSuccess, setSaveSuccess] = useState(false)
+  // Origem explícita do princípio ativo (spec 128 B): só a seleção da base ANVISA
+  // trava o campo. Nunca inferir pelo valor — digitar já preenche o valor (bug).
+  // Fica fora de formData para não vazar ao payload.
+  const [activeIngredientFromAnvisa, setActiveIngredientFromAnvisa] = useState(false)
 
   const handleChange = (e: any) => {
     const { name, value } = e.target
@@ -35,6 +39,7 @@ export function useMedicineFormState({
       ...prev,
       ...formatSelectedMedicine(selectedMedicine),
     }))
+    setActiveIngredientFromAnvisa(Boolean(selectedMedicine?.activeIngredient))
     if (saveSuccess) setSaveSuccess(false)
   }
 
@@ -89,6 +94,8 @@ export function useMedicineFormState({
     shakeFields,
     saveSuccess,
     setSaveSuccess,
+    activeIngredientFromAnvisa,
+    setActiveIngredientFromAnvisa,
     handleChange,
     handleMedicineSelect,
     handleLaboratorySelect,
