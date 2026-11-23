@@ -7,6 +7,14 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Dose a cada 7 dias ou mais na Hoje (spec 124, Fatia A)
+
+- **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.35 → **0.34.36**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — superfície nova na Hoje, R-314):
+  - **"Acompanhamento" na Hoje** para tratamento semanal, quinzenal, mensal (qualquer intervalo de 7 dias ou mais) que não é do grupo GLP-1: a linha Dose mostra quando foi a última, onde foi aplicada (só injetável) e quando é a próxima, em dias ("Aplicada há 12 dias · glúteo direito" · "Próxima em 18 dias"). Sem registro há mais de um intervalo, a linha diz "Última aplicação registrada · {dia}", sem falar em atraso. Antes da 1ª dose, "Primeira aplicação · {dia}". Peso e evolução continuam só na Semana do tratamento. Quem tem GLP-1 e outro tratamento assim continua vendo a Semana do tratamento. Tratamento diário não muda nada.
+  - **"Ver aplicações anteriores"** (ou "Ver doses anteriores") na linha Dose aberta abre a dose com data, hora e o local registrado **naquela** dose, e navega com "Anterior" / "Seguinte" por todas as doses registradas do tratamento, sem limite de data. Na mais antiga: "Primeira dose registrada deste tratamento."; sem local: "Local não informado nesta dose."
+  - **"Dose" no lugar de "aplicação"** para o que não é injetável: "Última dose registrada", "Últimas N doses", "Nenhuma dose registrada ainda" (antes "Último registro", "Últimos N registros"). Mapa do corpo só para injetável.
+- **Core** (`Added`): `listRecentApplications` aceita cursor `before`/`after` (`taken_at`, `id`) com `limit`; `summarizeTrackedProfile`/`trackableCadence`; `doseCadence`/`weeklyCadenceDays` movidos para o core.
+
 ### Correções do trem v0.35 (spec 128, Fatia B)
 
 - **Web** (`Fixed`, **patch** `apps/web` 4.41.0 → **4.41.1**; canal: deploy web, independente do corte do app):
