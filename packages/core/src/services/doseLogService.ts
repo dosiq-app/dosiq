@@ -293,24 +293,61 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * 2026-11-16). IDs validados como UUID antes de entrar no filtro `or()` (string do PostgREST).
  *
  * Lança em erro de rede/banco — o chamador mostra estado de erro, NUNCA "1ª dose".
+ *
+ * 124 A (sheet da dose): cursor keyset `(taken_at, id)` opcional — `before` = doses ANTERIORES
+ * (desc), `after` = SEGUINTES (asc); `id` desempata registros no mesmo instante (RC3 E-5). O
+ * `takenAt` é a string CRUA devolvida pelo banco (E-8: passar por `Date` perde microssegundos e o
+ * `taken_at.eq` nunca casa). R-295: as duas formas do filtro testadas por curl no QA (analysis-A §1a);
+ * dois `.or()` = dois `or=` = AND. Sem cursor: chamada idêntica à 121 B.
  */
+export interface ApplicationCursor {
+  takenAt: string
+  id: string
+}
+
+const TAKEN_AT_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}(:?\d{2})?)$/
+
+/** Cursor validado antes de entrar no filtro `or()` (string do PostgREST) — nunca interpola cru. */
+function cursorFilter(before?: ApplicationCursor | null, after?: ApplicationCursor | null): { clause: string; ascending: boolean } | null {
+  if (before && after) throw new Error('listRecentApplications: cursor before E after juntos')
+  const cur = before ?? after
+  if (!cur) return null
+  if (!UUID_RE.test(cur.id ?? '') || !TAKEN_AT_RE.test(cur.takenAt ?? '')) {
+    throw new Error('listRecentApplications: cursor inválido')
+  }
+  const op = before ? 'lt' : 'gt'
+  return {
+    clause: `taken_at.${op}.${cur.takenAt},and(taken_at.eq.${cur.takenAt},id.${op}.${cur.id})`,
+    ascending: !before,
+  }
+}
+
 async function listRecentApplications(
   { client, getUserId }: Pick<DoseLogDeps, 'client' | 'getUserId'>,
-  { protocolId, medicineId, limit = 4 }: { protocolId?: string | null; medicineId?: string | null; limit?: number }
+  { protocolId, medicineId, limit = 4, before = null, after = null }: {
+    protocolId?: string | null
+    medicineId?: string | null
+    limit?: number
+    before?: ApplicationCursor | null
+    after?: ApplicationCursor | null
+  }
 ): Promise<RecentApplication[]> {
+  const cursor = cursorFilter(before, after)
   const clauses = [
     protocolId && UUID_RE.test(protocolId) ? `protocol_id.eq.${protocolId}` : null,
     medicineId && UUID_RE.test(medicineId) ? `medicine_id.eq.${medicineId}` : null,
   ].filter(Boolean)
   if (clauses.length === 0) return []
   const userId = await getUserId()
-  const { data, error } = await client
+  let query = client
     .from('medicine_logs')
     .select('id, taken_at, injection_site, medicine_id, protocol_id')
     .eq('user_id', userId)
     .or(clauses.join(','))
-    .order('taken_at', { ascending: false, nullsFirst: false })
-    .limit(Math.max(1, Math.min(limit, 20)))
+  if (cursor) query = query.or(cursor.clause)
+  query = query.order('taken_at', { ascending: cursor?.ascending ?? false, nullsFirst: false })
+  if (cursor) query = query.order('id', { ascending: cursor.ascending })
+  const { data, error } = await query.limit(Math.max(1, Math.min(limit, 20)))
   if (error) throw error
   return (data ?? []) as RecentApplication[]
 }
@@ -335,7 +372,13 @@ export function createDoseLogService({
   deleteOrphanLog(logId: string): Promise<{ success: boolean }>
   registerDoseMany(logsData: Record<string, unknown>[]): Promise<any[]>
   getLastInjectionSite(): Promise<string | null>
-  listRecentApplications(opts: { protocolId?: string | null; medicineId?: string | null; limit?: number }): Promise<RecentApplication[]>
+  listRecentApplications(opts: {
+    protocolId?: string | null
+    medicineId?: string | null
+    limit?: number
+    before?: ApplicationCursor | null
+    after?: ApplicationCursor | null
+  }): Promise<RecentApplication[]>
 } {
   if (!client) throw new Error('createDoseLogService: client é obrigatório')
   if (typeof getUserId !== 'function') {

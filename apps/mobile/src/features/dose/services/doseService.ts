@@ -16,7 +16,7 @@ import { triggerDoseActivityRefresh } from '@platform/doseActivity/doseActivityR
 import { dismissPushForResolvedDoses } from '@platform/notifications/pushTray'
 import { markDosesResolved, unmarkDoseResolved } from '@platform/doseActivity/resolvedDoseStore'
 import { clearSnoozeState } from '@platform/alarms/snoozeAnchorStore'
-import { logSchema, createDoseInstanceRepository, createDoseLogService, getRawNow } from '@dosiq/core'
+import { logSchema, createDoseInstanceRepository, createDoseLogService, getRawNow, type ApplicationCursor } from '@dosiq/core'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { getMedicinePresentations } from '@platform/analytics/medicineForm'
 import { EVENTS } from '@platform/analytics/analyticsEvents'
@@ -279,9 +279,16 @@ export async function getLastInjectionSite() {
 /**
  * Últimas aplicações do TRATAMENTO (121 B, T021): `protocol_id` do tratamento OU `medicine_id` do
  * remédio atual, mais recente primeiro. Regra/select no core (R-231). LANÇA em erro — a L1 mostra
- * erro, nunca "1ª dose" (falso vazio).
+ * erro, nunca "1ª dose" (falso vazio). 124 A: `before`/`after` = cursor keyset do sheet da dose
+ * (`takenAt` = string crua do banco, nunca via `Date` — E-8).
  */
-export async function listRecentApplications(opts: { protocolId?: string | null; medicineId?: string | null; limit?: number }) {
+export async function listRecentApplications(opts: {
+  protocolId?: string | null
+  medicineId?: string | null
+  limit?: number
+  before?: ApplicationCursor | null
+  after?: ApplicationCursor | null
+}) {
   return doseLogCore.listRecentApplications(opts)
 }
 

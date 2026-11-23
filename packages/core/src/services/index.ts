@@ -23,7 +23,7 @@ export {
 } from './timelineService'
 
 export { createDoseLogService } from './doseLogService'
-export type { RecentApplication } from './doseLogService'
+export type { RecentApplication, ApplicationCursor } from './doseLogService'
 
 // Caminho canônico do skip (spec 067 Slice B / ADR-092) — a guarda de janela vive na RPC
 export {
