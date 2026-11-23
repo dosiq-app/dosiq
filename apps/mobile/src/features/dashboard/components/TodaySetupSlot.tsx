@@ -10,6 +10,7 @@
 // proposta; só Salvar grava.
 
 import { useCallback, useRef, useState } from 'react'
+import { useIsFocused } from '@react-navigation/native'
 import type { StrengthEntry } from '@dosiq/core'
 import SetupCard from '@dashboard/components/SetupCard'
 import ConfiraSheet from '@dashboard/components/ConfiraSheet'
@@ -71,8 +72,15 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
   const linkFlow = useSetupLink({
     medicine, protocols, run, update: medicineMutation.update, refresh, openSheet: openLinkSheet, closeSheet, notify,
   })
+  const focused = useIsFocused()
 
-  if (!card) return null
+  // RC6 #973 (HIGH): "Revisar" navega para a aba Tratamentos e o Modal do PRÓXIMO item cobria o form. A folha
+  // só aparece com a Hoje em foco, e independe do card (o reload do foco pode zerá-lo com a fila ainda cheia).
+  const reviewSheet = linkFlow.reviewItem && focused ? (
+    <FormChangeSheet item={linkFlow.reviewItem} onReview={() => linkFlow.reviewNext(true)} onDismiss={() => linkFlow.reviewNext(false)} />
+  ) : null
+
+  if (!card) return reviewSheet
   const verdict = card.kind === 'confira' ? card.verdict : null
   const otherTreatments = medicine?.id
     ? protocols.filter((p) => p?.medicine_id === medicine.id && p.id !== protocol?.id).length
@@ -143,9 +151,7 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
           linkTarget={{ medicine, stockQty: linkFlow.stockQty }}
         />
       ) : null}
-      {linkFlow.reviewItem ? (
-        <FormChangeSheet item={linkFlow.reviewItem} onReview={() => linkFlow.reviewNext(true)} onDismiss={() => linkFlow.reviewNext(false)} />
-      ) : null}
+      {reviewSheet}
       {sheet === 'confira' || sheet === 'box' ? (
         <ConfiraSheet
           // RC6 #971 (R-273/AP-222): outra entidade ⇒ folha nova, sem passo/seleção da anterior.

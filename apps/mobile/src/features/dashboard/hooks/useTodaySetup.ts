@@ -203,7 +203,9 @@ export function useTodaySetup({ data, stale, onScreenProtocolIds = EMPTY }: {
 
   const onScreenKey = onScreenProtocolIds.join(',')
   const card = useMemo(() => {
-    if (!data || stale || !stored || recent === null || linkDismissed === null || !verdictSettled) return null
+    // RC6 #973: o mapa resolvido antes (ex.: {} com data nula) não vale para remédio sem código recém-chegado.
+    const linkReady = linkDismissed !== null && uncoded.every((m) => m.id in linkDismissed)
+    if (!data || stale || !stored || recent === null || !linkReady || !verdictSettled) return null
     const withTreatment = new Set(protocols.map((p) => p.medicine_id))
     const onScreen = new Set(onScreenKey ? onScreenKey.split(',') : [])
     const input = {

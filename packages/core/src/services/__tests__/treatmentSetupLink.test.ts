@@ -93,6 +93,12 @@ describe('diffCatalogBox — vínculo traz identidade, forma e força da caixa (
     const { payload } = diffCatalogBox(tizerpatida, { ...mounjaroBox, laboratory: undefined })
     expect(payload).not.toHaveProperty('laboratory')
   })
+
+  it('RC6 #973: genérico (laboratório e registro null) não apaga o que a pessoa cadastrou', () => {
+    const { payload } = diffCatalogBox(tizerpatida, { ...mounjaroBox, laboratory: null, anvisa_registration: null } as any)
+    expect(payload).not.toHaveProperty('laboratory')
+    expect(payload).not.toHaveProperty('anvisa_registration')
+  })
 })
 
 describe('formMismatch — forma divergente do catálogo ou do nome (FR-042)', () => {

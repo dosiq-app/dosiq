@@ -109,8 +109,11 @@ export function CmedPresentationStep({
 
   function handleConcentration(option: PickerConcentration) {
     selectionTap()
-    if (option.laboratories.length >= 2) setSelected(option)
-    else choose(option.rowIdx)
+    // RC6 #973: descer ao laboratório limpa a conferência pendente (senão o 1º "‹" só a apagava, invisível).
+    if (option.laboratories.length >= 2) {
+      setPending(null)
+      setSelected(option)
+    } else choose(option.rowIdx)
   }
 
   function handleLab(rowIdx: number) {

@@ -6,6 +6,8 @@ jest.mock('react-native-safe-area-context', () => {
   return { SafeAreaView: View }
 })
 jest.mock('@navigation/navigateCrossTab', () => ({ navigateCrossTab: jest.fn() }))
+const mockFocused = { value: true }
+jest.mock('@react-navigation/native', () => ({ ...jest.requireActual('@react-navigation/native'), useIsFocused: () => mockFocused.value }))
 // Mutações canônicas (cache + alarmes); `undefined` = falhou (a mutação já mostrou o toast).
 const mockProtocolUpdate = jest.fn((..._a: any[]): Promise<any> => Promise.resolve({ id: 'p1' }))
 const mockMedicineUpdate = jest.fn((..._a: any[]): Promise<any> => Promise.resolve({ id: 'm1' }))
@@ -214,6 +216,21 @@ describe('TodaySetupSlot — 2a', () => {
     fireEvent.press(getByText('Revisar tratamento'))
     expect(navigateCrossTab).toHaveBeenCalledWith(ROUTES.TREATMENTS, ROUTES.PROTOCOL_FORM, { id: 'p7' })
     expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('RC6 #973: fora de foco (form do tratamento aberto) a folha AC7.5 não cobre a tela', async () => {
+    ;(globalThis as any).__draft = mounjaroDraft
+    mockFocused.value = false
+    try {
+      const { getByTestId, queryByText } = renderLink(linkSetup())
+      fireEvent.press(getByTestId('setup-link'))
+      await waitFor(() => expect(mockSheetProps.current).not.toBeNull())
+      fireEvent.press(getByTestId('sheet-pick'))
+      await waitFor(() => expect(mockMedicineUpdate).toHaveBeenCalledTimes(1))
+      expect(queryByText(/A forma passou de comprimido para injetável/)).toBeNull()
+    } finally {
+      mockFocused.value = true
+    }
   })
 
   it('caixa da mesma forma e sem aviso ⇒ recarrega direto (a regra julga de novo — AC8.4)', async () => {

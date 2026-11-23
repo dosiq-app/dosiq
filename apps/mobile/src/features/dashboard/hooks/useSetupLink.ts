@@ -6,7 +6,7 @@
 // `useFormChangeReview` faz goBack, que a Hoje não tem; RC3 E-R5-3). A Hoje só recarrega quando a fila
 // acaba: recarregar antes tira o card (o remédio ganhou código) e desmonta o slot com a folha.
 
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { diffCatalogBox } from '@dosiq/core'
 import { reviewQueue, type FormChangeReviewItem } from '@medications/utils/formChangeReview'
 import { stockService } from '@stock/services/stockService'
@@ -32,10 +32,20 @@ export function useSetupLink({ medicine, protocols, run, update, refresh, openSh
   const [stockQty, setStockQty] = useState<number | null>(null)
   const [review, setReview] = useState<FormChangeReviewItem[]>([])
 
+  // RC6 #973 (AP-365): o remédio do card pode trocar (ou o card sumir) enquanto o estoque está em voo.
+  const currentId = useRef<string | null>(medicine?.id ?? null)
+
+  // Effects
+  useEffect(() => {
+    currentId.current = medicine?.id ?? null
+  }, [medicine?.id])
+
   // Handlers
   const open = useCallback(async () => {
-    if (!medicine?.id) return
-    const qty = await stockService.getTotalQuantity(medicine.id).catch(() => null)
+    const id = medicine?.id
+    if (!id) return
+    const qty = await stockService.getTotalQuantity(id).catch(() => null)
+    if (currentId.current !== id) return
     setStockQty(typeof qty === 'number' ? qty : null)
     openSheet()
   }, [medicine, openSheet])

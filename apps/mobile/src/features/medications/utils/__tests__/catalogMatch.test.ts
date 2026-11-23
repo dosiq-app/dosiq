@@ -67,4 +67,8 @@ describe('linkMatchesFor (125 2a)', () => {
   it('nome idêntico (no nome ou no princípio ativo cadastrado) vence a marca', () => {
     expect(linkMatchesFor(base, 'Escitalopram', 'Oxalato de Escitalopram').map((i) => i.name)).toEqual(['Oxalato De Escitalopram'])
   })
+
+  it('RC6 #973: exato pelo princípio ativo precisa cobrir o nome — "Aradois H" não vira o genérico', () => {
+    expect(linkMatchesFor(base, 'Aradois H', 'Losartana Potássica').map((i) => i.name)).not.toContain('Losartana Potássica')
+  })
 })

@@ -69,7 +69,8 @@ export function linkMatchesFor(items: any[] | null, name?: string | null, ingred
   for (const text of [name, ingredient]) {
     const key = normalizeText(text).trim()
     const same = key ? index.items.find((_: any, i: number) => index.nNames[i] === key) : null
-    if (same) return [same]
+    // RC6 #973: o exato pelo princípio ativo também precisa cobrir o nome ("Aradois H" não vira a Losartana).
+    if (same && (known.length === 0 || covers(same))) return [same]
   }
   const found = catalogMatchesFor(items, name, ingredient, 10)
   return known.length > 0 ? found.filter(covers) : found

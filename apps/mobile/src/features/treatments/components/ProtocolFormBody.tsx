@@ -213,6 +213,10 @@ function DensityField({ form, label, hint, defaultDensity }) {
   const [open, setOpen] = useState(false)
   const raw = form.values.units_per_ml
   const custom = raw != null && String(raw).trim() !== '' && Number(String(raw).replace(',', '.')) !== defaultDensity
+  // RC6 #973: valor salvo diferente do padrão abre o campo e TRAVA aberto — apagar para redigitar (ou passar
+  // pelo padrão, "20" a caminho de "200") não pode desmontar o input sob o dedo.
+  // Ajuste de estado no render (padrão React p/ estado derivado de prop), não em effect.
+  if (custom && !open) setOpen(true)
   if (!open && !custom) {
     // PO: sem número aqui — um "20" logo abaixo da dose parecia a dose. "Volume da gota" é como se pensa.
     const what = form.values.intake_unit === 'UI' ? 'Concentração' : 'Volume da gota'

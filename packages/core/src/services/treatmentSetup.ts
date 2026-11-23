@@ -862,11 +862,12 @@ function linkPayload(box: LinkBoxInput, takesStrength: boolean): Record<string, 
   const payload: Record<string, unknown> = {
     name: box.name,
     active_ingredient: box.active_ingredient,
-    laboratory: box.laboratory,
+    // RC6 #973: genérico da CMED não tem fabricante nem registro — null apagaria o que a pessoa cadastrou.
+    laboratory: box.laboratory || undefined,
     therapeutic_class: box.therapeutic_class,
     therapeutic_class_code: box.therapeutic_class_code,
     regulatory_category: box.regulatory_category === undefined ? undefined : normalizeRegulatoryCategory(box.regulatory_category),
-    anvisa_registration: box.anvisa_registration,
+    anvisa_registration: box.anvisa_registration || undefined,
     presentation: box.presentation || undefined,
   }
   if (takesStrength) {

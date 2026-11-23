@@ -212,14 +212,16 @@ function CheckCard({ card, protocol, medicine, onAdjust, onCheck, onUseUnit, onP
 // 132 px sobrava em "Cadastrado:/Pelo nome:" e afastava demais as respostas.
 function FactTable({ rows, children }: { rows: Array<[string, string]>; children?: any }) {
   const [widths, setWidths] = useState<Record<string, number>>({})
-  const labelWidth = Object.keys(widths).length === rows.length ? Math.ceil(Math.max(...Object.values(widths))) : undefined
+  // RC6 #973: mede só os rótulos ATUAIS — o mapa guarda os de cards anteriores (a fila troca o conteúdo sem remontar).
+  const measured = rows.map(([label]) => widths[label]).filter((w): w is number => w !== undefined)
+  const labelWidth = rows.length > 0 && measured.length === rows.length ? Math.ceil(Math.max(...measured)) : undefined
   return (
     <View style={styles.facts}>
       {rows.map(([label, value]) => (
         <View key={label} style={styles.factRow}>
           <Text
             style={[styles.line, styles.bold, labelWidth ? { width: labelWidth } : null]}
-            onLayout={labelWidth ? undefined : (e) => {
+            onLayout={widths[label] !== undefined ? undefined : (e) => {
               const w = e.nativeEvent.layout.width
               setWidths((prev) => (prev[label] === w ? prev : { ...prev, [label]: w }))
             }}
