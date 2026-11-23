@@ -1,7 +1,7 @@
 ---
 title: "AI Review (RC5/RC6) — operação pós-Gemini"
 description: "Protocolo de revisão de código por IA em 4 camadas após descontinuação do Gemini bot, incluindo RC5 (self-review) e RC6 (review independente)."
-version: "1.4.0"
+version: "1.4.1"
 status: active
 category: standard
 audience:
@@ -146,6 +146,7 @@ O preâmbulo (`CLAUDE.md` + `SELECTED MEMORIES` + índices `R`/`AP` + `DETAIL_FI
 | `RC6_CLAUDE_MODEL` | `sonnet` | Sobrescreve `--model` nas chamadas do `claude` (`sonnet`, `opus`, etc.). |
 | `RC6_PASSB_TIMEOUT` | `480` | Teto wall-clock (`s`) do `claude` no Pass B (também aceita `RC6_AGY_PASSB_MODEL=gemini-4-neon-high` e `RC6_AGY_PASSB_TIMEOUT=10m` no fallback `agy`). |
 | `RC6_JSON_OUT` | `${TMPDIR}/rc6-<PR>.json` | Caminho de escrita do veredito JSON (`--json-out=PATH`). Leia este arquivo (não stdout) para checar findings e `coverage`. |
+| `RC6_POST_RETRIES` / `RC6_POST_BACKOFF` | `2` / `5` | Só no `--post`: tentativas extras (backoff `BACKOFF×n` s) quando a API de reviews recusa uma review sem comentários inline (ex.: 422). Esgotadas, o corpo vai por `gh pr comment` (fallback) e só então exit 1. Rate limit 403 segue a regra própria (30/60/90 s). |
 | `RC6_MAIN` | **auto** (`baseRefName`) | Branch-base do diff (`gh pr view --json baseRefName`). Defina manualmente apenas ao comparar contra outra base ou offline. |
 | `RC6_PROBE_TIMEOUT` | `30s` | Teto do probe inicial de liveness do `agy` (`RC6_SKIP_PROBE=1` pula). |
 | `RC6_AGY_TIMEOUT` | `8m` | `--print-timeout` base do `agy` por chunk. |
@@ -380,6 +381,17 @@ sobre um diff não-confiável). Absorvemos as estratégias:
   com exit 1. Publicar manualmente ou re-rodar só o `--post` depois — **NUNCA re-rodar o review**
   (034-D.1). Caso original: #768, onde o loop antigo esvaziava os comentários um a um contra um
   endpoint já limitado.
+- **`--post` com 422 numa review SÓ DE CORPO (0 findings ou todos descartados) não é "linha inválida".**
+  Não há comentário inline para descartar, então o script antigo saía com exit 1 na 1ª falha, com o
+  veredito sem publicar e a causa invisível (#974: `gh: Unprocessable Entity (HTTP 422)`, não
+  reproduzível minutos depois). Hoje: o log traz o **motivo real** (o `gh api` põe `message`/`errors` em
+  **stdout** como JSON; só a linha curta vai para stderr), retenta com backoff
+  (`RC6_POST_RETRIES`/`RC6_POST_BACKOFF`) e, esgotado, publica o mesmo corpo via `gh pr comment`
+  (log diz `fallback`). Só se o comentário também falhar sai com exit 1, salvando o veredito em
+  `$TMPDIR/rc6_review_pr<N>.json` — publicar à mão, **NUNCA re-rodar o review** (034-D.1). Ao ler o
+  stderr, "posted … as comment (fallback)" significa veredito publicado como comentário, não como
+  review: o `ai-review-gate.yml` (soft) pode apontar RC6 ausente — conferir o comentário no PR.
+  Teste: `tests/rc6-post-fallback.test.sh` (no repo do devflow).
 
 ## Segurança (invariantes — NUNCA relaxar)
 
