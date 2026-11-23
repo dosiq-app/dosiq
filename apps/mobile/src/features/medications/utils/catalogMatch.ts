@@ -1,12 +1,10 @@
 // Utilitários puros das sugestões do catálogo (spec 119 fatia B), fora dos componentes (fast refresh).
 import {
   buildNameSuggestionIndex,
-  medicineDraftFromRow,
+  matchTokens,
   normalizeText,
-  rowsForAnvisaItem,
   setupDefaults,
   suggestByName,
-  type CmedIndex,
 } from '@dosiq/core'
 
 /** Rótulo completo de uma sugestão para leitor de tela (RC2 D-7). */
@@ -52,6 +50,32 @@ export function catalogMatchesFor(
 }
 
 /**
+ * Casamento para PROPOR vínculo (Hoje · spec 125 2a). Mais estrito que a sugestão: o ranking por raridade
+ * deixa uma palavra genérica rara vencer ("Losartana sem tratamento" → "Babymed Tratamento", smoke 22/11).
+ * Aqui o item precisa conter TODAS as palavras do cadastro que existem na base (as desconhecidas, como
+ * erro de digitação, seguem pelo fuzzy). Busca folgada (limite 10) para "um só" não ser efeito do corte.
+ */
+export function linkMatchesFor(items: any[] | null, name?: string | null, ingredient?: string | null): any[] {
+  if (!items || items.length === 0) return []
+  const index = suggestionIndexFor(items)
+  const known = matchTokens(name).filter((token) => index.tokenItems.has(token))
+  const covers = (item: any) => {
+    const own = new Set([...matchTokens(item?.name), ...matchTokens(item?.activeIngredient)])
+    return known.every((token) => own.has(token))
+  }
+  // Nome idêntico na base vence o colapso por princípio ativo (que prefere a marca): cadastro genérico
+  // "Succinato de Desvenlafaxina…" não vira proposta "Pristiq".
+  // Idem pelo princípio ativo cadastrado ("Escitalopram" + "Oxalato de Escitalopram" ⇒ o genérico, não "Esc Odt").
+  for (const text of [name, ingredient]) {
+    const key = normalizeText(text).trim()
+    const same = key ? index.items.find((_: any, i: number) => index.nNames[i] === key) : null
+    if (same) return [same]
+  }
+  const found = catalogMatchesFor(items, name, ingredient, 10)
+  return known.length > 0 ? found.filter(covers) : found
+}
+
+/**
  * Opções com o MESMO princípio ativo são o mesmo remédio (marca + genérico, ex.: Mounjaro e
  * Tirzepatida): vira uma só, preferindo a marca (item com laboratório). PO 2026-11-15 (smoke):
  * "Encontramos opções" sem nome era indecifrável quando as opções eram o mesmo remédio.
@@ -74,7 +98,7 @@ const STRENGTH_KEYS = ['dosage_per_pill', 'dosage_unit', 'presentation', 'concen
 
 /**
  * Edição (RC5 119 B): a caixa escolhida pela sugestão não troca força/forma já cadastradas — os valores
- * do medicamento salvo vencem os do rascunho (R-299, o mesmo critério do `catalogLinkPayload`).
+ * do medicamento salvo vencem os do rascunho (R-299, o mesmo critério do `boxKeepsSavedStrength`).
  */
 export function keepSavedStrength<T extends Record<string, any>>(saved: any, values: T): T {
   if (!saved) return values
@@ -118,42 +142,10 @@ function strengthPayload(medicine: any, draft: any): Record<string, unknown> | n
   return out
 }
 
-export function catalogLinkPayload(medicine: any, draft: any): Record<string, unknown> | null {
-  const strength = strengthPayload(medicine, draft)
-  if (!strength) return null
-  const payload: Record<string, unknown> = {
-    name: draft.name,
-    active_ingredient: draft.active_ingredient,
-    laboratory: draft.laboratory,
-    therapeutic_class: draft.therapeutic_class,
-    therapeutic_class_code: draft.therapeutic_class_code,
-    regulatory_category: draft.regulatory_category,
-    anvisa_registration: draft.anvisa_registration,
-    ...strength,
-  }
-  for (const key of Object.keys(payload)) if (payload[key] === undefined) delete payload[key]
-  return payload
-}
-
 /**
- * Smoke 1c (PO 19/11): o convite só oferece o que o "Sim, é esse" consegue aplicar. Item da lista
- * oficial é vinculável quando alguma caixa dele (CMED) tem código de classe e passa no
- * `catalogLinkPayload` deste remédio. Sem caixa vinculável, o item sai do convite.
+ * Trava do form em EDIÇÃO (RC5 119 B · E-R5-5): a caixa escolhida na busca não troca a força já salva.
+ * O vínculo da Hoje NÃO passa por aqui — ele usa `diffCatalogBox` do core (FR-039, a caixa vence).
  */
-export function linkableCatalogMatches(index: CmedIndex, items: any[], medicine: any): any[] {
-  return items.filter((item) =>
-    rowsForAnvisaItem(index, item).some((rowIdx) => {
-      const row = index.rows[rowIdx]
-      if (!row) return false
-      const draft = medicineDraftFromRow(row)
-      return !!draft.therapeutic_class_code && catalogLinkPayload(medicine, draft) !== null
-    })
-  )
-}
-
-/** Assinatura do que decide o veredito: muda a força/nome do remédio ⇒ recalcula. */
-export function catalogLinkSignature(medicine: any): string {
-  return [medicine?.name, medicine?.active_ingredient, medicine?.presentation, medicine?.dosage_per_pill, medicine?.dosage_unit]
-    .map((v) => String(v ?? ''))
-    .join('|')
+export function boxKeepsSavedStrength(medicine: any, draft: any): boolean {
+  return strengthPayload(medicine, draft) !== null
 }

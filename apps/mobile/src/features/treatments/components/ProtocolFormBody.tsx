@@ -138,6 +138,12 @@ function useProtocolFormDerived(form, medicine) {
             medicine.units_per_ml,
         }
       : medicine
+    // Smoke 2a (PO 22/11): com o aviso "Na caixa: … é bem menos" na tela, a equivalência validaria o
+    // número que o aviso questiona — some até a dose mudar.
+    const doubted = doseWarnings(medicine, form.values.dosage_per_intake, form.values.intake_unit ?? null).some(
+      (w) => w.kind === 'looks_like_ml',
+    )
+    if (doubted) return undefined
     const hint = formatDoseHint(form.values.dosage_per_intake, form.values.intake_unit, medForHint)
     return hint ? `✨ ${hint}` : fallback
   }, [form.values.dosage_per_intake, form.values.intake_unit, form.values.units_per_ml, medicine, isLiquid])
@@ -200,6 +206,40 @@ function useProtocolFormDerived(form, medicine) {
   }
 }
 
+// Smoke 125 2a (PO 22/11): densidade é info avançada (quase nenhum rótulo traz) — fica atrás de um link, como o
+// volume da concentração no cadastro do remédio. O default já vale (prefill do effect acima); o campo abre
+// sozinho quando o valor salvo/digitado difere do default.
+function DensityField({ form, label, hint, defaultDensity }) {
+  const [open, setOpen] = useState(false)
+  const raw = form.values.units_per_ml
+  const custom = raw != null && String(raw).trim() !== '' && Number(String(raw).replace(',', '.')) !== defaultDensity
+  if (!open && !custom) {
+    // PO: sem número aqui — um "20" logo abaixo da dose parecia a dose. "Volume da gota" é como se pensa.
+    const what = form.values.intake_unit === 'UI' ? 'Concentração' : 'Volume da gota'
+    return (
+      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" style={styles.densityLink} testID="density-shortcut">
+        {/* PO: afirmação no cinza do form; só "Ajustar" na cor de link. A linha toda segue tocável (alvo 44). */}
+        <Text style={styles.densityText}>
+          {`${what}: padrão · `}<Text style={styles.densityLinkText}>Ajustar</Text>
+        </Text>
+      </Pressable>
+    )
+  }
+  return (
+    <FormInput
+      name="units_per_ml"
+      label={label}
+      value={raw != null ? String(raw) : ''}
+      onChange={form.handleChange}
+      onBlur={form.handleBlur}
+      placeholder={String(defaultDensity)}
+      keyboardType="decimal-pad"
+      maxLength={6}
+      helperText={hint}
+    />
+  )
+}
+
 function DoseSection({
   label = 'Dose por tomada',
   isLiquid,
@@ -245,17 +285,7 @@ function DoseSection({
         </View>
         {!!helperText && <Text style={styles.doseHint}>{helperText}</Text>}
         {askDensity && (
-          <FormInput
-            name="units_per_ml"
-            label={densityLabel}
-            value={form.values.units_per_ml != null ? String(form.values.units_per_ml) : ''}
-            onChange={form.handleChange}
-            onBlur={form.handleBlur}
-            placeholder={String(defaultDensity)}
-            keyboardType="decimal-pad"
-            maxLength={6}
-            helperText={densityHint}
-          />
+          <DensityField form={form} label={densityLabel} hint={densityHint} defaultDensity={defaultDensity} />
         )}
       </>
     )
@@ -813,6 +843,9 @@ function Section({ title, children, required = false, spaced = false }) {
 }
 
 const styles = StyleSheet.create({
+  densityLink: { minHeight: 44, justifyContent: 'center' },
+  densityText: { fontSize: 14, color: colors.text.secondary },
+  densityLinkText: { fontWeight: '600', color: colors.brand.primary },
   flex: { flex: 1 },
   section: {
     gap: spacing[2],

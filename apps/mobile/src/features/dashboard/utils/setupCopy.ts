@@ -5,6 +5,7 @@ import { formatNumberPtBR, describeTreatment, formatConcentration, formatDose, t
 import type { StrengthEntry } from '@dosiq/core'
 import { navigateCrossTab } from '@navigation/navigateCrossTab'
 import { ROUTES } from '@navigation/routes'
+import { medicineService } from '@medications/services/medicineService'
 
 const FORM_LABEL: Record<string, string> = {
   comprimido: 'comprimido', capsula: 'cápsula', liquido: 'líquido', injetavel: 'injetável',
@@ -154,6 +155,22 @@ export function replaceFirstTime(times: string[] | null | undefined, next: strin
 /** "Ajustar" do card e "Editar o tratamento" da folha: um ponto só (matriz de caminhos, analysis-2). */
 export function openTreatmentEdit(protocolId: string) {
   navigateCrossTab(ROUTES.TREATMENTS, ROUTES.PROTOCOL_FORM, { id: protocolId })
+}
+
+/**
+ * "Corrigir forma" (125 2a, AC8.8): a edição do remédio mora na aba Tratamentos. Abre com o remédio
+ * COMPLETO (o mapa da Hoje é parcial — laboratório, validade… se perderiam ao salvar, RC3 E-R5-9) e a
+ * forma proposta marcada. Falha ao carregar ⇒ false (o card fica; a mutação não roda).
+ */
+export async function openMedicineEdit(medicineId: string, proposedPresentation: string | null): Promise<boolean> {
+  try {
+    const medicine = await medicineService.getById(medicineId)
+    if (!medicine) return false
+    navigateCrossTab(ROUTES.TREATMENTS, ROUTES.MEDICINE_EDIT, { medicine, proposedPresentation })
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** "Definir agora": criação do tratamento já com o remédio (AC6.3 — nunca o seletor vazio). */

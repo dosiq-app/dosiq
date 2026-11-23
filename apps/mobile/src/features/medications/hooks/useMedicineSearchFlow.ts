@@ -15,6 +15,8 @@ import {
   dialDosesForChoice,
   countConcentrationChoices,
   medicineDraftFromRow,
+  diffCatalogBox,
+  describeBoxChange,
   type CmedIndex,
   type CmedMedicineDraft,
   type PickerConcentration,
@@ -50,13 +52,30 @@ function singleChoiceRow(options: PickerConcentration[]): number | undefined {
   return countConcentrationChoices(options) === 1 ? options[0].rowIdx : undefined
 }
 
+/**
+ * 125 2a (AC8.2 · RC3 E-R5-1): vínculo de um remédio já salvo. Com ele, a caixa escolhida mostra o que
+ * muda (antes → depois, estoque) e só o [Usar …] devolve a escolha; concentração única só pula o passo 2
+ * quando nada muda. Opt-in: sem ele, o fluxo é o de sempre (form, onboarding, scanner, seletor).
+ */
+export interface LinkTarget {
+  medicine: any
+  stockQty?: number | null
+}
+
+/** Conferência de uma caixa: linhas antes → depois + linha de estoque. */
+export interface LinkConfirmView {
+  lines: string[]
+  stockLine: string | null
+}
+
 interface SearchFlowOptions {
   /** Busca visível (sheet aberto / tela montada). Desligar solta o índice da memória (FR-023). */
   active: boolean
   onSelect?: (selection: AnvisaSheetSelection) => void
+  linkTarget?: LinkTarget | null
 }
 
-export function useMedicineSearchFlow({ active, onSelect }: SearchFlowOptions) {
+export function useMedicineSearchFlow({ active, onSelect, linkTarget = null }: SearchFlowOptions) {
   // States (R-010 — States → Memos → Effects → Handlers)
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<any>(null)
@@ -79,6 +98,23 @@ export function useMedicineSearchFlow({ active, onSelect }: SearchFlowOptions) {
   // Memos
   const pickedOptions = useMemo(() => optionsForItem(cmed.index, picked), [cmed.index, picked])
 
+  // 125 2a: a conferência de uma linha (null = nada muda, ou fora do vínculo). Regra no core (INV-6).
+  const confirmFor = useMemo(() => {
+    if (!linkTarget || !cmed.index) return null
+    const index = cmed.index
+    return (rowIdx: number): LinkConfirmView | null => {
+      const row = index.rows[rowIdx]
+      if (!row) return null
+      const { changes, stockLine } = diffCatalogBox(linkTarget.medicine, medicineDraftFromRow(row), linkTarget.stockQty ?? null)
+      return changes.length > 0 ? { lines: describeBoxChange(changes), stockLine } : null
+    }
+  }, [linkTarget, cmed.index])
+  // Escolha única só pula o passo 2 quando não há o que conferir.
+  const autoPick = (options: PickerConcentration[]) => {
+    const single = singleChoiceRow(options)
+    return single !== undefined && !confirmFor?.(single) ? single : undefined
+  }
+
   const trimmed = query.trim()
   const results = useMemo(() => {
     if (!isReady || trimmed.length < MIN_SEARCH_CHARS) return []
@@ -97,7 +133,7 @@ export function useMedicineSearchFlow({ active, onSelect }: SearchFlowOptions) {
     if (!picked || cmed.status === 'idle' || cmed.status === 'preparing') return
     if (cmed.status !== 'ready' || pickedOptions.length === 0) finish(picked, 'unavailable')
     else {
-      const single = singleChoiceRow(pickedOptions)
+      const single = autoPick(pickedOptions)
       if (single !== undefined) finish(picked, 'single', single)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -157,7 +193,7 @@ export function useMedicineSearchFlow({ active, onSelect }: SearchFlowOptions) {
     if (cmed.status === 'ready') {
       const options = optionsForItem(cmed.index, item)
       if (options.length === 0) return finish(item, 'unavailable')
-      const single = singleChoiceRow(options)
+      const single = autoPick(options)
       if (single !== undefined) return finish(item, 'single', single)
     }
     setPicked(item)
@@ -173,6 +209,7 @@ export function useMedicineSearchFlow({ active, onSelect }: SearchFlowOptions) {
         options: pickedOptions,
         preparing: cmed.status === 'idle' || cmed.status === 'preparing',
         onPick: (rowIdx: number) => finish(picked, 'picked', rowIdx),
+        confirmFor,
         onSkip: () => finish(picked, 'not_listed'),
         onBack: handleBack,
       }

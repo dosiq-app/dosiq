@@ -116,6 +116,9 @@ export {
   coherenceKey,
   pickSetupCard,
   SETUP_WINDOW_DAYS,
+  diffCatalogBox,
+  describeBoxChange,
+  formMismatch,
 } from './treatmentSetup'
 export type {
   SetupPresentation,
@@ -136,6 +139,11 @@ export type {
   CoherenceMedicineInput,
   SetupCardPick,
   PickSetupCardInput,
+  LinkMedicineInput,
+  LinkBoxInput,
+  BoxChange,
+  CatalogBoxDiff,
+  FormMismatch,
 } from './treatmentSetup'
 
 // Medida × etapa do tratamento (contrato 069 FR-010/FR-012; criado pela 097 DS-7)

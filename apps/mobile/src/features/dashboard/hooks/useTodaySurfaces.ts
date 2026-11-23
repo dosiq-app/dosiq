@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AppState } from 'react-native'
 import { getNow } from '@dosiq/core'
 import { pickTodaySurfaces, nextSessionGate, OPEN_GATE, type AlertCandidate, type SessionGate } from '@dashboard/utils/pickTodaySurfaces'
-import { buildStockCandidates, type StockAlertPayload, type StockAlertItem, type SupplyNoticeItem } from '@dashboard/utils/todayStockCandidates'
+import { buildStockCandidates, groupStockCandidates, type StockAlertPayload, type StockAlertItem, type SupplyNoticeItem } from '@dashboard/utils/todayStockCandidates'
 import { useTodayAlertDismissals } from '@dashboard/hooks/useTodayAlertDismissals'
 
 /**
@@ -49,8 +49,10 @@ export function useTodaySurfaces({
 
   // Sem memo no "agora" (AP-366): a janela de 24 h do "sem estoque" vale a cada render.
   const now = getNow()
-  const stockCandidates = buildStockCandidates(stockAlerts, supplyNotices, protocols, now)
-    .map((c) => ({ ...c, dismissed: isDismissed(c.key) }))
+  // Smoke 125 2a: N do mesmo nível ⇒ 1 card; a dispensa do grupo é checada na chave do grupo.
+  const stockCandidates = groupStockCandidates(
+    buildStockCandidates(stockAlerts, supplyNotices, protocols, now).map((c) => ({ ...c, dismissed: isDismissed(c.key) })),
+  ).map((c) => ({ ...c, dismissed: isDismissed(c.key) }))
 
   const pushEligible = push.remindable && push.usable === false
   const alerts: Array<AlertCandidate<StockAlertPayload | null>> = [

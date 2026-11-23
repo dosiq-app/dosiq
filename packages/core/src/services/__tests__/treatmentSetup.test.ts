@@ -96,7 +96,7 @@ describe('checkDosePlausibility — casos do handoff §2.1/§2.3 (PO-125-6)', ()
   it('Ozempic 1,34 mg/mL com 5 mg ⇒ 3,7 mL numa aplicação', () => {
     const w = checkDosePlausibility({ dose: 5, doseUnit: 'mg', presentation: 'injetavel', concentrationMgPerMl: 1.34 })
     expect(w.map((x) => x.kind)).toEqual(['exceeds_injection_volume'])
-    expect(w[0].message).toBe('5 mg daria 3,7 mL numa aplicação — mais do que uma caneta aplica de uma vez. Confira a dose ou a concentração.')
+    expect(w[0].message).toBe('5 mg dariam 3,7 mL de uma vez. É muito para uma aplicação. Confira a dose na receita e a concentração na caixa.')
   })
   it('Ozempic 0,5 mg · Wegovy 1,7/2,27 e 2,4/3,2 ⇒ coerentes (≤ 0,75 mL)', () => {
     expect(checkDosePlausibility({ dose: 0.5, doseUnit: 'mg', presentation: 'injetavel', concentrationMgPerMl: 1.34 })).toEqual([])
@@ -115,7 +115,7 @@ describe('checkDosePlausibility — casos do handoff §2.1/§2.3 (PO-125-6)', ()
   it('líquido 500 mg/mL com 15 mL ⇒ costuma ser gotas', () => {
     const w = checkDosePlausibility({ dose: 15, doseUnit: 'ml', presentation: 'liquido', concentrationMgPerMl: 500 })
     expect(w.map((x) => x.kind)).toEqual(['ml_looks_like_drops'])
-    expect(w[0].message).toBe('500 mg/mL costuma ser em gotas. Confira: a dose é 15 gotas, ou a concentração é outra?')
+    expect(w[0].message).toBe('Remédio de 500 mg/mL costuma ser em gotas. Confira na receita se são 15 gotas, e na caixa se a concentração é essa.')
   })
   it('líquido 50 mg/mL com 15 mL (solução oral) ⇒ coerente', () => {
     expect(checkDosePlausibility({ dose: 15, doseUnit: 'ml', presentation: 'liquido', concentrationMgPerMl: 50 })).toEqual([])
@@ -127,13 +127,13 @@ describe('checkDosePlausibility — casos do handoff §2.1/§2.3 (PO-125-6)', ()
   it('Mounjaro 60 mg com caneta de 2,5 mg ⇒ excede a caneta', () => {
     const w = checkDosePlausibility({ dose: 60, doseUnit: 'mg', presentation: 'injetavel', penContent: 2.5, denominatorMl: 0.5 })
     expect(w.map((x) => x.kind)).toEqual(['exceeds_pen'])
-    expect(w[0].message).toBe('O rótulo diz 2,5 mg. Confirma 60 mg?')
+    expect(w[0].message).toBe('Na caixa: 2,5 mg por dose. 60 mg passa disso. Confira na receita quanto você aplica de cada vez.')
   })
 
   it('Mounjaro "0,6 mg" ⇒ parece mL', () => {
     const w = checkDosePlausibility({ dose: '0,6', doseUnit: 'mg', presentation: 'injetavel', penContent: 2.5, denominatorMl: 0.5 })
     expect(w.map((x) => x.kind)).toEqual(['looks_like_ml'])
-    expect(w[0].message).toBe('0,6 parece mL. A dose é em mg? Confira o número com "mg" ao lado.')
+    expect(w[0].message).toBe('Na caixa: 2,5 mg / 0,5 mL. 0,6 mg é bem menos que isso. Confira na receita quanto você aplica, em mg.')
   })
 
   it('Ozivy 0,25 mg em 1,34 mg/mL (multidose, sem denominador) ⇒ nada', () => {
@@ -148,7 +148,7 @@ describe('checkDosePlausibility — casos do handoff §2.1/§2.3 (PO-125-6)', ()
 
   it('Amplictil gotas 20 mL ⇒ parece tamanho do frasco; 9,99 não', () => {
     expect(checkDosePlausibility({ presentation: 'liquido', denominatorMl: 20 })[0].message).toBe(
-      '20 mL parece o tamanho do frasco. Na caixa, o número depois da barra costuma ser menor.',
+      '20 mL parece o tamanho do frasco. Confira a concentração na caixa: o número depois da barra costuma ser bem menor.',
     )
     expect(denominatorLooksLikePackage(10, 'liquido')).toBe(true)
     expect(denominatorLooksLikePackage('9,99', 'liquido')).toBe(false)
@@ -328,7 +328,7 @@ describe('checkDosePlausibility — rótulo reconstruído com ponto flutuante (s
   })
   it('dose acima do rótulo avisa com o número do rótulo arredondado (5, não 4,999…)', () => {
     const w = checkDosePlausibility({ dose: 7.5, doseUnit: 'mg', presentation: 'injetavel', penContent: pen, denominatorMl: 0.6 })
-    expect(w.find((x) => x.kind === 'exceeds_pen')?.message).toBe('O rótulo diz 5 mg. Confirma 7,5 mg?')
+    expect(w.find((x) => x.kind === 'exceeds_pen')?.message).toBe('Na caixa: 5 mg por dose. 7,5 mg passa disso. Confira na receita quanto você aplica de cada vez.')
   })
 })
 
@@ -355,6 +355,6 @@ describe('checkDosePlausibility — contagem alta por tomada (smoke 1c, PO 19/11
   })
   it('texto diz a contagem e o que conferir', () => {
     const [w] = checkDosePlausibility({ dose: 3, doseUnit: null, presentation: 'injetavel' })
-    expect(w.message).toBe('São 3 aplicações por vez. A dose em mg já vem na caneta: cada aplicação costuma ser 1 caneta.')
+    expect(w.message).toBe('São 3 aplicações de uma vez. Cada aplicação costuma ser 1 caneta ou 1 ampola. Confira na receita quantas você aplica.')
   })
 })

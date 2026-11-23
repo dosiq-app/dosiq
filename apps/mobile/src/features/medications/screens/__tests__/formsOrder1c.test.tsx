@@ -205,3 +205,22 @@ describe('cadastro vindo do "Cadastrar com os dados da caixa" do Estoque (smoke 
     expect(mockCrossTab).toHaveBeenCalledWith('Estoque', 'PurchaseForm', expect.objectContaining({ medicineId: 'new-1', scanEan: '789', scanConfirmed: true }))
   })
 })
+
+// 125 2a (AC8.8 · PO-125-29): "Corrigir forma" da Hoje abre a edição com a forma proposta marcada.
+describe('PO-125-29 — forma proposta pelo card da Hoje', () => {
+  it('abre com a forma marcada sem gravar; Salvar grava a forma (com o que muda junto) e abre a folha AC7.5', async () => {
+    mockProtocols.rows = [T1]
+    const utils = editLosartana({ proposedPresentation: 'injetavel' })
+    expect(mockUpdate).not.toHaveBeenCalled()
+    expect(utils.getByTestId('presentation-chip-injetavel').props.accessibilityState).toMatchObject({ checked: true })
+    await act(async () => fireEvent.press(utils.getByText('Salvar remédio')))
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1))
+    expect(mockUpdate.mock.calls[0][1]).toMatchObject({ presentation: 'injetavel', shelf_life_days: '28' })
+    await waitFor(() => expect(utils.getByText('A dose de Pressão pode ter mudado')).toBeTruthy())
+  })
+
+  it('sem proposta, a edição abre com a forma salva', () => {
+    const utils = editLosartana()
+    expect(utils.getByTestId('presentation-chip-comprimido').props.accessibilityState).toMatchObject({ checked: true })
+  })
+})

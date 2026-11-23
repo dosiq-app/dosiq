@@ -205,11 +205,17 @@ interface UseMedicineDatabaseOptions {
   baseUrl?: string
   /** Vale só na carga que cria o store deste baseUrl (E-4). */
   ttlMs?: number
+  /**
+   * 125 2a (C-2a-1): `false` não dispara a carga (a Hoje só lê a base com candidato a Vincular). Se a base
+   * já está em memória (outro consumidor), o snapshot é lido mesmo assim — ler não custa nada.
+   */
+  enabled?: boolean
 }
 
 export function useMedicineDatabase({
   baseUrl = ANVISA_BASE_URL,
   ttlMs = TTL_MS,
+  enabled = true,
 }: UseMedicineDatabaseOptions = {}) {
   // States
   const entry = getEntry(baseUrl)
@@ -218,14 +224,14 @@ export function useMedicineDatabase({
     () => ({
       subscribe: (listener: () => void) => {
         entry.listeners.add(listener)
-        ensureLoaded(entry, baseUrl, ttlMs)
+        if (enabled) ensureLoaded(entry, baseUrl, ttlMs)
         return () => {
           entry.listeners.delete(listener)
         }
       },
       getSnapshot: () => entry.snapshot,
     }),
-    [entry, baseUrl, ttlMs],
+    [entry, baseUrl, ttlMs, enabled],
   )
   const { database, normalized: normalizedDatabase, manifest, isLoading, error } =
     useSyncExternalStore(subscribe, getSnapshot, getSnapshot)

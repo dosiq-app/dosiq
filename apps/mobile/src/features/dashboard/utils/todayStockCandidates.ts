@@ -36,6 +36,7 @@ export interface SupplyNoticeItem {
 
 export type StockAlertPayload =
   | { type: 'stock'; level: StockLevel; item: StockAlertItem; nextDose: { date: string; time: string } | null }
+  | { type: 'stock_group'; level: StockLevel; items: StockAlertItem[]; nextDose: { date: string; time: string } | null }
   | { type: 'supply'; item: SupplyNoticeItem; urgency: SupplyUrgency }
 
 /** S-21: urgência da compra (régua da aba Estoque). */
@@ -111,4 +112,38 @@ export function buildStockCandidates(
     })
   }
   return out
+}
+
+/**
+ * Smoke 125 2a (PO 22/11): N remédios no MESMO nível de estoque viram UM card ("Sem estoque de 2 remédios").
+ * Dois "Sem estoque" ocupavam os 2 lugares de cima — alarmista, e o setup nem entrava. Esteira não serve:
+ * esconderia uma urgência real. Roda DEPOIS da dispensa (só ativos agrupam); a chave leva os ids, então o
+ * grupo dispensado volta só quando outro remédio entra nele. A próxima dose do grupo é a mais cedo.
+ */
+export function groupStockCandidates<T extends AlertCandidate<StockAlertPayload> & { dismissed?: boolean }>(candidates: T[]): T[] {
+  const byLevel = new Map<StockLevel, T[]>()
+  for (const c of candidates) {
+    if (c.dismissed || c.payload?.type !== 'stock') continue
+    const list = byLevel.get(c.payload.level) ?? []
+    list.push(c)
+    byLevel.set(c.payload.level, list)
+  }
+  const grouped = new Set<T>()
+  const groups: T[] = []
+  for (const [level, list] of byLevel) {
+    if (list.length < 2) continue
+    list.forEach((c) => grouped.add(c))
+    const stock = list.map((c) => c.payload as Extract<StockAlertPayload, { type: 'stock' }>)
+    const nextDose = stock
+      .map((p) => p.nextDose)
+      .filter((d): d is { date: string; time: string } => !!d)
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))[0] ?? null
+    groups.push({
+      ...list[0],
+      key: `${level}:group:${stock.map((p) => p.item.medicineId).sort().join(',')}`,
+      order: Math.min(...list.map((c) => c.order ?? Number.POSITIVE_INFINITY)),
+      payload: { type: 'stock_group', level, items: stock.map((p) => p.item), nextDose },
+    })
+  }
+  return [...candidates.filter((c) => !grouped.has(c)), ...groups]
 }

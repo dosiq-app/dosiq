@@ -127,7 +127,8 @@ export async function getMedicinesData(medicineIds) {
     // 121 A (FR-001, RC3 E-3): `therapeutic_class_code` classifica o perfil wedge/misto da Hoje.
     // R-295: coluna `text` com SELECT de `authenticated` em prod e QA (MCP 2026-11-15).
     // 125 fatia 2 (FR-019): `anvisa_registration` busca as forças do registro no sidecar 127. R-295: prod e QA 2026-11-19.
-    .select('id, name, type, presentation, dosage_per_pill, dosage_unit, concentration_volume_ml, units_per_ml, therapeutic_class_code, anvisa_registration')
+    // 125 fatia 2a (FR-037): `active_ingredient` casa o remédio sem código com a lista (Vincular). R-295: prod e QA 2026-11-22.
+    .select('id, name, type, presentation, dosage_per_pill, dosage_unit, concentration_volume_ml, units_per_ml, therapeutic_class_code, anvisa_registration, active_ingredient')
     .in('id', medicineIds)
 
   if (error) throw error
@@ -138,6 +139,7 @@ export async function getMedicinesData(medicineIds) {
       // type + presentation: ícone canônico de identificação (getMedicineIconName, 012 Fase A)
       type: m.type,
       presentation: m.presentation,
+      active_ingredient: m.active_ingredient,
       dosage_per_pill: m.dosage_per_pill,
       dosage_unit: m.dosage_unit,
       concentration_volume_ml: m.concentration_volume_ml,

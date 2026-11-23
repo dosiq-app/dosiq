@@ -58,8 +58,11 @@ export default function TodayAlertCard({ payload, stockCount = 1, onDismiss, emp
     }, [viewedKind, stockCount])
   )
 
-  const openPurchase = () =>
-    navigateCrossTab(ROUTES.STOCK, ROUTES.PURCHASE_FORM, {
+  // Grupo (smoke 125 2a): não há UM remédio para travar o form ⇒ abre o Estoque.
+  const group = payload.type === 'stock_group'
+  const openPurchase = () => group
+    ? navigateCrossTab(ROUTES.STOCK, ROUTES.STOCK_MAIN)
+    : navigateCrossTab(ROUTES.STOCK, ROUTES.PURCHASE_FORM, {
       mode: 'create',
       medicineId: copy.medicineId,
       medicineName: copy.name,
@@ -75,12 +78,12 @@ export default function TodayAlertCard({ payload, stockCount = 1, onDismiss, emp
       subtitle={copy.subtitle}
       primary={{
         label: 'Registrar compra',
-        accessibilityLabel: `Registrar compra de ${copy.name}`,
+        accessibilityLabel: group ? `Abrir o estoque: ${copy.name}` : `Registrar compra de ${copy.name}`,
         onPress: openPurchase,
         testID: 'today-alert-cta',
       }}
       dismiss={onDismiss ? {
-        accessibilityLabel: `Dispensar aviso de estoque de ${copy.name}`,
+        accessibilityLabel: group ? 'Dispensar aviso de estoque' : `Dispensar aviso de estoque de ${copy.name}`,
         onPress: onDismiss,
         testID: 'today-alert-dismiss',
       } : undefined}

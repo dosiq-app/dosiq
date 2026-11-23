@@ -32,7 +32,7 @@ export default function DoseWarnings({ warnings, confirmLabel, onConfirm }: Prop
           return (
             <Text key={w.kind} style={styles.text}>
               <Text style={styles.title}>{title}</Text>
-              {rest ? ` ${rest}` : ''}
+              {rest ? `\n${rest}` : ''}
             </Text>
           )
         })}

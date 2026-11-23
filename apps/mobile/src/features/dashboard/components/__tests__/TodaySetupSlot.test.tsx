@@ -13,6 +13,29 @@ jest.mock('@treatments/hooks/useProtocolMutation', () => ({ useProtocolMutation:
 jest.mock('@medications/hooks/useMedicineMutation', () => ({ useMedicineMutation: () => ({ update: mockMedicineUpdate }) }))
 jest.mock('@treatments/components/WeekdaySelector', () => () => null)
 jest.mock('@shared/components/form/FormTimePicker', () => () => null)
+// 2a
+const mockShow = jest.fn()
+jest.mock('@shared/components/feedback/Toast', () => ({ useToast: () => ({ show: mockShow }) }))
+const mockStockTotal = jest.fn((_id: string): Promise<any> => Promise.resolve(2960))
+jest.mock('@stock/services/stockService', () => ({ stockService: { getTotalQuantity: (id: string) => mockStockTotal(id) } }))
+const mockGetById = jest.fn((id: string): Promise<any> => Promise.resolve({ id, name: 'Ozempic', laboratory: 'Novo' }))
+jest.mock('@medications/services/medicineService', () => ({ medicineService: { getById: (id: string) => mockGetById(id) } }))
+// O sheet real tem índice/Modal: aqui só a ponte — expõe as props e devolve a escolha por um botão.
+const mockSheetProps: { current: any } = { current: null }
+jest.mock('@medications/components/MedicineAnvisaSheet', () => {
+  const { Pressable, Text } = jest.requireActual('react-native')
+  return {
+    MedicineAnvisaSheet: (props: any) => {
+      mockSheetProps.current = props
+      return (
+        <>
+          <Pressable testID="sheet-pick" onPress={() => props.onSelect({ anvisaItem: {}, cmedDraft: (globalThis as any).__draft })}><Text>pick</Text></Pressable>
+          <Pressable testID="sheet-close" onPress={props.onClose}><Text>close</Text></Pressable>
+        </>
+      )
+    },
+  }
+})
 
 import TodaySetupSlot from '../TodaySetupSlot'
 import { navigateCrossTab } from '@navigation/navigateCrossTab'
@@ -144,5 +167,127 @@ describe('TodaySetupSlot', () => {
     fireEvent.press(r.getByTestId('setup-schedule-save'))
     await waitFor(() => expect(s.confirmSchedule).toHaveBeenCalledWith({ time_schedule: ['08:00'], weekdays: ['terça'] }))
     expect(mockProtocolUpdate).toHaveBeenCalledWith('p1', { time_schedule: ['08:00'], weekdays: ['terça'] }, { previous: expect.objectContaining({ id: 'p1' }) })
+  })
+})
+
+describe('TodaySetupSlot — 2a', () => {
+  // Hoje: o mapa de remédios não traz `id` — o hook põe `protocol.medicine_id` (S-4).
+  const tz = { id: 'm7', name: 'Tizerpatida', presentation: 'comprimido', dosage_per_pill: 5, dosage_unit: 'mg' }
+  const p7 = { id: 'p7', medicine_id: 'm7', medicine: tz, dosage_per_intake: 1, intake_unit: null, active: true }
+  const mounjaroDraft = { name: 'Mounjaro', active_ingredient: 'Tirzepatida', therapeutic_class_code: 'A10S1', anvisa_registration: '112600202', presentation: 'injetavel', dosage_per_pill: 5, dosage_unit: 'mg/ml', concentration_volume_ml: 0.5, regulatory_category: 'Novo' }
+  const linkSetup = (over: any = {}) => ({
+    card: { kind: 'vincular', medicineId: 'm7', protocolId: 'p7' },
+    protocol: p7, medicine: tz, scheduleConfirmed: false, entries: [],
+    linkMatches: [{ name: 'Mounjaro', activeIngredient: 'Tirzepatida' }],
+    confirmCoherence: jest.fn(), confirmSchedule: jest.fn(),
+    dismissLink: jest.fn(() => Promise.resolve()), confirmForm: jest.fn(() => Promise.resolve()),
+    ...over,
+  }) as any
+  const renderLink = (s: any, refresh = jest.fn()) => ({
+    refresh,
+    ...render(<TodaySetupSlot setup={s} protocols={[p7]} today={TODAY} nowTime="10:00" refresh={refresh} />),
+  })
+  afterEach(() => { (globalThis as any).__draft = undefined; mockSheetProps.current = null })
+
+  it('"Sim, é esse" abre o sheet no item, com a conferência e o estoque (só texto)', async () => {
+    const { getByTestId } = renderLink(linkSetup())
+    fireEvent.press(getByTestId('setup-link'))
+    await waitFor(() => expect(mockSheetProps.current).not.toBeNull())
+    expect(mockStockTotal).toHaveBeenCalledWith('m7')
+    expect(mockSheetProps.current.initialItem).toMatchObject({ name: 'Mounjaro' })
+    expect(mockSheetProps.current.linkTarget).toEqual({ medicine: tz, stockQty: 2960 })
+  })
+
+  it('[Usar …] grava a caixa no MESMO remédio; forma mudou com tratamento ⇒ folha AC7.5 antes de recarregar', async () => {
+    ;(globalThis as any).__draft = mounjaroDraft
+    const { getByTestId, findByText, getByText, refresh } = renderLink(linkSetup())
+    fireEvent.press(getByTestId('setup-link'))
+    await waitFor(() => expect(mockSheetProps.current).not.toBeNull())
+    fireEvent.press(getByTestId('sheet-pick'))
+    await waitFor(() => expect(mockMedicineUpdate).toHaveBeenCalledTimes(1))
+    const [id, payload] = mockMedicineUpdate.mock.calls[0]
+    expect(id).toBe('m7')
+    expect(payload).toMatchObject({ name: 'Mounjaro', presentation: 'injetavel', dosage_per_pill: 5, anvisa_registration: '112600202' })
+    expect(payload).not.toHaveProperty('quantity')
+    await findByText(/A forma passou de comprimido para injetável/)
+    expect(refresh).not.toHaveBeenCalled()
+    fireEvent.press(getByText('Revisar tratamento'))
+    expect(navigateCrossTab).toHaveBeenCalledWith(ROUTES.TREATMENTS, ROUTES.PROTOCOL_FORM, { id: 'p7' })
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('caixa da mesma forma e sem aviso ⇒ recarrega direto (a regra julga de novo — AC8.4)', async () => {
+    ;(globalThis as any).__draft = { ...mounjaroDraft, presentation: 'comprimido', dosage_per_pill: 5, dosage_unit: 'mg', concentration_volume_ml: null }
+    const { getByTestId, refresh, queryByText } = renderLink(linkSetup())
+    fireEvent.press(getByTestId('setup-link'))
+    await waitFor(() => expect(mockSheetProps.current).not.toBeNull())
+    fireEvent.press(getByTestId('sheet-pick'))
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1))
+    expect(queryByText(/pode ter mudado/)).toBeNull()
+  })
+
+  it('sem caixa (sem código) ⇒ nada grava, toast, card fica', async () => {
+    ;(globalThis as any).__draft = undefined
+    const { getByTestId, refresh } = renderLink(linkSetup())
+    fireEvent.press(getByTestId('setup-link'))
+    await waitFor(() => expect(mockSheetProps.current).not.toBeNull())
+    fireEvent.press(getByTestId('sheet-pick'))
+    expect(mockMedicineUpdate).not.toHaveBeenCalled()
+    expect(mockShow).toHaveBeenCalledWith('O remédio ficou como estava.', { variant: 'info' })
+    expect(refresh).not.toHaveBeenCalled()
+    expect(getByTestId('setup-card-vincular')).toBeTruthy()
+  })
+
+  it('erro ao gravar ⇒ sem recarga, card fica (D-5)', async () => {
+    ;(globalThis as any).__draft = mounjaroDraft
+    mockMedicineUpdate.mockResolvedValueOnce(undefined)
+    const { getByTestId, refresh } = renderLink(linkSetup())
+    fireEvent.press(getByTestId('setup-link'))
+    await waitFor(() => expect(mockSheetProps.current).not.toBeNull())
+    fireEvent.press(getByTestId('sheet-pick'))
+    await waitFor(() => expect(mockMedicineUpdate).toHaveBeenCalled())
+    await waitFor(() => expect(getByTestId('setup-card-vincular')).toBeTruthy())
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('ficha do proposto: princípio ativo, para que serve e forma (PO 22/11 — Lipoless → Lipless); "Não é" dispensa', () => {
+    const s = linkSetup({
+      medicine: { ...tz, name: 'Lipoless' },
+      linkMatches: [{ name: 'Lipless', activeIngredient: 'Ciprofibrato', therapeuticClass: 'Fibratos', forms: ['comprimido'] }],
+    })
+    const { getByText } = renderLink(s)
+    expect(getByText('“Lipoless” é o Lipless?')).toBeTruthy()
+    expect(getByText(/Ciprofibrato/)).toBeTruthy()
+    expect(getByText(/Fibratos/)).toBeTruthy()
+    expect(getByText(/comprimido/)).toBeTruthy()
+    fireEvent.press(getByText('Não é'))
+    expect(s.dismissLink).toHaveBeenCalled()
+  })
+
+  it('Corrigir forma abre o form completo com a forma proposta; "Está certo" dispensa', async () => {
+    const s = linkSetup({
+      card: { kind: 'forma', medicineId: 'm7', protocolId: 'p7', mismatch: { proposed: 'injetavel', reason: 'catalog' } },
+    })
+    const { getByText, refresh } = renderLink(s)
+    expect(getByText('Na lista oficial:')).toBeTruthy()
+    expect(getByText('A forma cadastrada não bate com a lista oficial. Qual é a certa?')).toBeTruthy()
+    fireEvent.press(getByText('É injetável'))
+    await waitFor(() => expect(navigateCrossTab).toHaveBeenCalledWith(ROUTES.TREATMENTS, ROUTES.MEDICINE_EDIT, {
+      medicine: { id: 'm7', name: 'Ozempic', laboratory: 'Novo' }, proposedPresentation: 'injetavel',
+    }))
+    expect(mockMedicineUpdate).not.toHaveBeenCalled()
+    expect(refresh).not.toHaveBeenCalled()
+    fireEvent.press(getByText('É comprimido'))
+    expect(s.confirmForm).toHaveBeenCalled()
+  })
+
+  it('Corrigir forma sem rede ⇒ toast de erro, nada navega', async () => {
+    mockGetById.mockRejectedValueOnce(new Error('offline'))
+    const s = linkSetup({ card: { kind: 'forma', medicineId: 'm7', protocolId: 'p7', mismatch: { proposed: null, reason: 'catalog' } } })
+    const { getByText } = renderLink(s)
+    expect(getByText('Na lista oficial, Tizerpatida vem em outra forma.')).toBeTruthy()
+    fireEvent.press(getByText('Corrigir forma'))
+    await waitFor(() => expect(mockShow).toHaveBeenCalledWith('Não foi possível abrir o remédio. Tente de novo.', { variant: 'error' }))
+    expect(navigateCrossTab).not.toHaveBeenCalled()
   })
 })
