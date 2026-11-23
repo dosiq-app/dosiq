@@ -118,19 +118,8 @@ export function doseRowCopy(
 
 // ─── 121 C · L1 diária (FR-040..FR-043, AC-16) ──────────────────────────────────
 
-export type DoseCadence = { kind: 'daily'; days: 1 } | { kind: 'weekly'; days: number }
-
-/**
- * FR-040: a L1 vale para wedge com cadência CONHECIDA — a forma não decide (substitui G-B5).
- * C-A2: `intervalo_dias` 2..6, alternado, PRN e personalizado ficam sem L1 (sem caso nem copy).
- */
-export function doseCadence(protocol: { frequency?: string | null; interval_days?: number | null } | null | undefined): DoseCadence | null {
-  if (!protocol) return null
-  if (protocol.frequency === 'diário') return { kind: 'daily', days: 1 }
-  if (protocol.frequency === 'intervalo_dias' && protocol.interval_days === 1) return { kind: 'daily', days: 1 }
-  const weekly = weeklyCadenceDays(protocol)
-  return weekly ? { kind: 'weekly', days: weekly } : null
-}
+// FR-040 (121 C): cadência mora no core desde a 124 A (RC3 E-10) — re-export sem mudar comportamento.
+export { doseCadence, weeklyCadenceDays, type DoseCadence } from '@dosiq/core'
 
 /** Menor horário "HH:mm" do tratamento (dose do dia), ou null. */
 export function firstScheduledTime(protocol: { time_schedule?: string[] | null } | null | undefined): string | null {
@@ -159,16 +148,6 @@ export function dailyRowCopy(
   else if (next) head = `Próxima · ${weekdayDate(next.date)} às ${next.time}`
   if (!head) return { primary: count ?? '', secondary: null }
   return { primary: head, secondary: count }
-}
-
-/** Cadência ≥ 7 dias (semanal ou `intervalo_dias` ≥ 7); devolve o intervalo ou null. Base de `doseCadence`. */
-export function weeklyCadenceDays(protocol: { frequency?: string | null; interval_days?: number | null } | null | undefined): number | null {
-  if (!protocol) return null
-  if (protocol.frequency === 'semanal') return 7
-  if (protocol.frequency === 'intervalo_dias' && typeof protocol.interval_days === 'number' && protocol.interval_days >= 7) {
-    return protocol.interval_days
-  }
-  return null
 }
 
 // ─── 121 B · L3 Evolução (FR-034, AC-15) ────────────────────────────────────────

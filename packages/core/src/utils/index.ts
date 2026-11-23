@@ -374,6 +374,10 @@ export type {
   DailyWindowSummary,
 } from './weeklyDoseSummary'
 
+// Cadência de dose (121 C; no core desde a 124 A — RC3 E-10)
+export { doseCadence, weeklyCadenceDays } from './doseCadence'
+export type { DoseCadence } from './doseCadence'
+
 // SemVer utilities (026 — Nudges In-App)
 export { compareSemver, satisfiesSemver } from './semver'
 export { suggestEmailDomain, KNOWN_EMAIL_DOMAINS, EMAIL_DOMAIN_CORRECTIONS } from './emailDomainSuggestion'
