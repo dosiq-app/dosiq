@@ -12,6 +12,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - **Web** (`Fixed`, **patch** `apps/web` 4.41.0 → **4.41.1**; canal: deploy web, independente do corte do app):
   - **Cadastro de remédio:** o campo "Princípio ativo" não trava mais na primeira letra digitada. Antes, qualquer valor no campo (inclusive o digitado) o deixava somente leitura e acendia o selo "Fonte: ANVISA". Agora só fica somente leitura, com o selo, quando o valor veio da seleção na base ANVISA; digitar outro nome no campo do remédio libera o campo de novo. Editar um remédio já cadastrado segue editável.
 - **Mobile:** sem mudança nesta fatia (a Fatia A, tela cheia do alarme crítico, entra em seguida).
+- **Servidor** (`Fixed`, observabilidade; sem versão de app, deploy via Vercel):
+  - **Apuração de entrega crítica:** o resumo semanal de pacientes sem canal persistente (segunda-feira) não usa mais o título "Dose crítica sem entrega comprovada" nem nível `error` quando nenhuma dose crítica deixou de ser entregue. Agora sai como "Resumo semanal: pacientes sem canal de notificação persistente", nível `warning`. Falha real de entrega mantém título e nível anteriores.
+  - **Monitor de cron `critical-delivery-audit`:** o check-in só é enviado em produção; em preview o monitor deixa de acusar "missed check-in" permanente.
+  - **Gate do tick (`notify_tick_work`):** o timeout de transporte agora chega ao Sentry como `warning` de verdade. O rebaixamento do #956 só tratava o abort que rejeita, mas o postgrest-js o devolve como `{ error: { message: 'TimeoutError: …' } }`, então o `DOSIQ-SERVER-9` seguia como `error` (43 eventos desde 28/10). A falha aberta e o comportamento do tick não mudam.
 
 ### Remédio fora da lista (spec 125, Fatia 2a)
 

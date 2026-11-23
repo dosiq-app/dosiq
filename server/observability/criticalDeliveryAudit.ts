@@ -363,6 +363,24 @@ export function buildReport(params: {
   }
 }
 
+const DELIVERY_FAILURE_TITLE = 'Dose crítica sem entrega comprovada nas últimas 24 h'
+const DIGEST_ONLY_TITLE = 'Resumo semanal: pacientes sem canal de notificação persistente'
+
+/**
+ * Só o resumo semanal (segunda, SP) de `sem_canal` persistentes disparou ⇒ NÃO houve dose crítica
+ * sem entrega. Título e nível próprios: o `DOSIQ-SERVER-4` de 2026-11-23 chegou com
+ * `criticalNoDelivery.total = 0` e título de falha de entrega — alarme falso de conteúdo.
+ */
+function classifyAlert(report: CriticalDeliveryReport): { title: string; level: 'error' | 'warning' } {
+  const digestOnly =
+    report.criticalNoDelivery.total === 0 &&
+    report.noChannelPatients.total === 0 &&
+    report.truncatedReads.length === 0
+  return digestOnly
+    ? { title: DIGEST_ONLY_TITLE, level: 'warning' }
+    : { title: DELIVERY_FAILURE_TITLE, level: 'error' }
+}
+
 /** FR-010 — dia saudável não emite evento. Sem isso o alerta vira ruído diário e ninguém lê. */
 export function shouldAlert(report: CriticalDeliveryReport): boolean {
   return (
@@ -578,10 +596,10 @@ export async function runCriticalDeliveryAudit(params: {
     return report
   }
 
-  captureServerEvent('Dose crítica sem entrega comprovada nas últimas 24 h', {
-    level: 'error',
-    correlationId,
-    job: 'critical_delivery_audit',
+  const { title, level } = classifyAlert(report)
+  captureServerEvent(title, {
+    level,
+    correlationId, job: 'critical_delivery_audit',
     extras: {
       window: report.window,
       criticalNoDelivery: { total: report.criticalNoDelivery.total, totals: report.totals },

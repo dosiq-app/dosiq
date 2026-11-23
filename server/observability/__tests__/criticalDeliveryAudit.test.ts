@@ -442,6 +442,7 @@ describe('emissão ao Sentry (FR-009/FR-010)', () => {
     expect(captureServerEvent).toHaveBeenCalledTimes(1)
     const [message, ctx] = vi.mocked(captureServerEvent).mock.calls[0]
     expect(message).toMatch(/sem entrega comprovada/i)
+    expect(ctx?.level).toBe('error')
     expect(ctx?.job).toBe('critical_delivery_audit')
     expect(ctx?.extras?.criticalNoDelivery).toMatchObject({ total: 1 })
     // O payload inteiro não pode conter texto de domínio clínico — só ids, contagens e instantes.
@@ -638,7 +639,12 @@ describe('sem_canal novo × persistente (082 D2)', () => {
     const report = await runCriticalDeliveryAudit({ supabase: persistenteSó(), logger: loggerStub, now: segunda })
 
     expect(shouldAlert(report)).toBe(true)
-    const [, ctx] = vi.mocked(captureServerEvent).mock.calls[0]
+    const [message, ctx] = vi.mocked(captureServerEvent).mock.calls[0]
+    // DOSIQ-SERVER-4 (2026-11-23): digest sem nenhuma dose crítica sem entrega NÃO pode usar o
+    // título de falha de entrega nem nível error.
+    expect(message).toMatch(/^Resumo semanal/)
+    expect(message).not.toMatch(/sem entrega comprovada/i)
+    expect(ctx?.level).toBe('warning')
     const extras = (ctx?.extras ?? {}) as Record<string, any>
     expect(extras.persistentNoChannelItems).toEqual([{ userId: U, cause: 'aparelho_inativo', days: 143 }])
     expect(extras.noChannelItems).toEqual([])

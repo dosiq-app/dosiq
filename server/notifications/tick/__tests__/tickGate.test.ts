@@ -149,6 +149,20 @@ describe('fetchTickWork', () => {
     await expect(fetchTickWork({ supabase: client, now, laLeadMinutes: 60, timeoutMs: 1 })).rejects.toBeInstanceOf(TickGateTimeoutError);
   });
 
+  it('🔴 abort que RESOLVE como { error } (forma real do postgrest-js) também vira TickGateTimeoutError', async () => {
+    const { client } = clientReturning(
+      Promise.resolve({ data: null, error: { message: 'TimeoutError: The operation was aborted due to timeout' } }),
+    );
+    await expect(fetchTickWork({ supabase: client, now, laLeadMinutes: 60, timeoutMs: 1 })).rejects.toBeInstanceOf(TickGateTimeoutError);
+  });
+
+  it('erro de RPC que menciona timeout no meio da frase segue como Error comum', async () => {
+    const { client } = clientReturning(Promise.resolve({ data: null, error: { message: 'canceling statement due to statement timeout' } }));
+    const err = await fetchTickWork({ supabase: client, now, laLeadMinutes: 60 }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(TickGateTimeoutError);
+  });
+
   it.each([
     ['null', null],
     ['campo ausente', { reminders_due: true, profiles: [] }],

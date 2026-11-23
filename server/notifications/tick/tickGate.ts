@@ -135,7 +135,15 @@ export async function fetchTickWork(params: {
     throw new Error(`notify_tick_work falhou: ${(err as { message?: string })?.message ?? String(err)}`);
   }
   const { data, error } = result;
-  if (error) throw new Error(`notify_tick_work falhou: ${error.message ?? String(error)}`);
+  if (error) {
+    // postgrest-js NÃO rejeita no abort: resolve `{ error: { message: 'TimeoutError: …' } }` (o nome do
+    // erro de fetch vira prefixo da mensagem). O `catch` acima só pega o caso que rejeita — sem este
+    // ramo o #956 não rebaixava nada em produção e o DOSIQ-SERVER-9 seguiu como `error` (2026-11-23).
+    if (/^(TimeoutError|AbortError)\b/.test(error.message ?? '')) {
+      throw new TickGateTimeoutError(`notify_tick_work falhou: ${error.message}`);
+    }
+    throw new Error(`notify_tick_work falhou: ${error.message ?? String(error)}`);
+  }
   return parseWork(data);
 }
 

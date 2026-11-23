@@ -297,6 +297,9 @@ function _safeCheckIn(fn: () => string): string | null {
  */
 export async function withServerMonitor<T>(monitor: ServerMonitor, fn: () => Promise<T>): Promise<T> {
   if (!process.env.SENTRY_SERVER_DSN) return fn()
+  // Cron da Vercel só roda em produção: check-in vindo de preview cria um ambiente de monitor que
+  // nunca recebe o horário agendado e vira "missed check-in" permanente (DOSIQ-SERVER-D).
+  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== 'production') return fn()
 
   const checkInId = _safeCheckIn(() =>
     Sentry.captureCheckIn(

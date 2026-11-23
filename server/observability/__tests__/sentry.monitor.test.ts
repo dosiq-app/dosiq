@@ -67,6 +67,29 @@ describe('withServerMonitor (082 D1 · S-3)', () => {
     expect(fn).toHaveBeenCalledTimes(1)
   })
 
+  it('🔴 preview ⇒ no-op: cron da Vercel só roda em produção (DOSIQ-SERVER-D)', async () => {
+    process.env.VERCEL_ENV = 'preview'
+    const fn = vi.fn(async () => 'rodou')
+
+    try {
+      await expect(withServerMonitor(CRITICAL_DELIVERY_AUDIT_MONITOR, fn)).resolves.toBe('rodou')
+      expect(mockCaptureCheckIn).not.toHaveBeenCalled()
+    } finally {
+      delete process.env.VERCEL_ENV
+    }
+  })
+
+  it('produção ⇒ faz check-in normalmente', async () => {
+    process.env.VERCEL_ENV = 'production'
+    mockCaptureCheckIn.mockImplementation(() => 'check-in-1') // o teste anterior deixa o mock lançando
+    try {
+      await withServerMonitor(CRITICAL_DELIVERY_AUDIT_MONITOR, async () => 1)
+      expect(mockCaptureCheckIn).toHaveBeenCalledTimes(2)
+    } finally {
+      delete process.env.VERCEL_ENV
+    }
+  })
+
   it('sem DSN (dev/test) ⇒ no-op: nenhum check-in, job roda', async () => {
     delete process.env.SENTRY_SERVER_DSN
     const fn = vi.fn(async () => 'rodou')
