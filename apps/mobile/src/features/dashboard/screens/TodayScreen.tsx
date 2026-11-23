@@ -22,7 +22,7 @@ import ScreenContainer from '@shared/components/ui/ScreenContainer'
 import LoadingState from '@shared/components/states/LoadingState'
 import EmptyState from '@shared/components/states/EmptyState'
 import ErrorState from '@shared/components/states/ErrorState'
-import { getPeriodFromTime, getNow, getUserTime, parseISO, getTodayLocal, DEFAULT_TZ, summarizeWedgeProfile } from '@dosiq/core'
+import { getPeriodFromTime, getNow, getUserTime, parseISO, getTodayLocal, DEFAULT_TZ, summarizeTrackedProfile } from '@dosiq/core'
 import { useTodayMeasures } from '@measures/hooks/useTodayMeasures'
 import AdherenceDayCard from '@dashboard/components/AdherenceDayCard'
 import TreatmentWeekModule from '@dashboard/components/TreatmentWeekModule'
@@ -565,8 +565,12 @@ function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal }
   const profile = wedge?.profile ?? 'nenhum'
   const isWedge = profile === 'wedge'
   const hasDoseToday = timeline.some((item: any) => item.kind !== 'measure')
-  const wedgeProtocol = wedge?.wedgeProtocolId ? protocols.find((p: any) => p.id === wedge.wedgeProtocolId) : null
-  const weekModule = profile === 'nenhum' ? null : (
+  // 124 A: o módulo é do wedge mais recente; sem wedge, do não wedge com cadência ≥ 7 d (misto segue no
+  // wedge até a fatia B). Sem tratamento do módulo ⇒ Hoje de sempre (INV-4).
+  const moduleId = wedge?.moduleProtocolId ?? null
+  const wedgeProtocol = moduleId ? protocols.find((p: any) => p.id === moduleId) ?? null : null
+  const moduleIsWedge = wedge?.moduleIsWedge ?? false
+  const weekModule = !wedgeProtocol && profile === 'nenhum' ? null : (
     <TreatmentWeekModule
       userId={data?.user?.id ?? null}
       profile={profile}
@@ -578,10 +582,11 @@ function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal }
       onRegisterEarly={(instance: any) => setBulkModal(earlyRegisterModal(instance, wedgeProtocol, data?.timezone || DEFAULT_TZ))}
       onOpenTreatment={navigateToTreatmentDetail}
       onAdjustTreatment={openTreatmentEdit}
+      isWedge={moduleIsWedge}
     />
   )
   // Smoke 121 B: tratamento cuja escada a L3 já mostra — o card neutro da 029 dele sai da Hoje.
-  const weekProtocolId = profile === 'nenhum' ? null : (wedgeProtocol?.id ?? null)
+  const weekProtocolId = weekModule ? (wedgeProtocol?.id ?? null) : null
   return { isWedge, showAgenda: !isWedge || hasDoseToday, weekModule, weekProtocolId }
 }
 
@@ -903,8 +908,9 @@ export default function TodayScreen({ route, navigation }) {
   const hasAnyTreatment = protocols.length > 0 || scheduledProtocols.length > 0
   // 121 A (FR-001): perfil sobre os tratamentos ATIVOS hoje (protocolos já trazem o medicamento com
   // `therapeutic_class_code`). Cache antigo sem a classe ⇒ `nenhum` = Hoje de sempre (INV-4).
-  const wedge = useMemo(() => summarizeWedgeProfile(
-    protocols.map((p: any) => ({ id: p.id, medicine_id: p.medicine_id, start_date: p.start_date })),
+  // 124 A (FR-005/FR-013): + elegíveis por cadência — não wedge ≥ 7 d também ganha o módulo.
+  const wedge = useMemo(() => summarizeTrackedProfile(
+    protocols.map((p: any) => ({ id: p.id, medicine_id: p.medicine_id, start_date: p.start_date, frequency: p.frequency, interval_days: p.interval_days })),
     Object.fromEntries(protocols.map((p: any) => [p.medicine_id, p.medicine?.therapeutic_class_code ?? null]))
   ), [protocols])
   const nextDoseLabel = useMemo(

@@ -4,6 +4,8 @@
 // L1 para wedge com cadência conhecida — diária ou ≥ 7 d; a forma muda só o verbo (121 C · FR-040, substitui
 // G-B5). L3 só com escada COMPLETA (AP-311) — sem ela, some.
 // Superfície de dose/medida, não alerta nem promo: não entra no árbitro da 120 C (H-1).
+// 124 A: tratamento NÃO wedge com cadência ≥ 7 d também ganha o módulo ("ACOMPANHAMENTO"), só com a L1
+// (L2 peso e L3 são do wedge até a fatia B). L1 aberta → "Ver aplicações/doses anteriores" (sheet da dose).
 
 import { useMemo, useState } from 'react'
 import { View, Text, StyleSheet } from 'react-native'
@@ -24,10 +26,12 @@ import {
   shiftDay,
   summarizeDailyWindow,
   summarizeWeeklyDose,
+  trackableCadence,
   type WedgeProfile,
 } from '@dosiq/core'
 import WeightRow from '@dashboard/components/WeightRow'
 import DoseRow from '@dashboard/components/DoseRow'
+import DoseNavSheet from '@dose/components/DoseNavSheet'
 import EvolutionRow from '@dashboard/components/EvolutionRow'
 import { useTreatmentWeekDose } from '@dashboard/hooks/useTreatmentWeekDose'
 import { useTodayWeekRows } from '@dashboard/hooks/useTodayWeekRows'
@@ -36,7 +40,6 @@ import {
   chartAxisFrom,
   dailyRowCopy,
   defaultWeightWindow,
-  doseCadence,
   evolutionDetail,
   evolutionRowCopy,
   firstScheduledTime,
@@ -60,20 +63,24 @@ type Props = {
   onOpenTreatment?: (protocolId: string) => void
   /** 125 fatia 2: "Ajustar" do miolo da L1 antes da 1ª dose → edição do tratamento. */
   onAdjustTreatment?: (protocolId: string) => void
+  /** 124 A: tratamento do módulo é wedge? Não wedge ⇒ "ACOMPANHAMENTO", só L1 (cadência ≥ 7 d). */
+  isWedge?: boolean
 }
 
 /**
  * L1/L3 do módulo (121 B/C): elegibilidade por cadência (FR-040), leituras e derivações puras do core.
  * Separado do componente para manter a ordem States → Memos legível (e a complexidade baixa).
  */
-function useWeekDoseView({ protocol, userId, timezone, today, reloadKey }: {
+function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey }: {
   protocol: any
+  isWedge: boolean
   userId: string | null
   timezone: string
   today: string
   reloadKey?: unknown
 }) {
-  const cadenceOf = doseCadence(protocol)
+  // 124 A (FR-013): wedge = qualquer cadência conhecida; não wedge = só ≥ 7 d (nunca diário).
+  const cadenceOf = trackableCadence(protocol, isWedge)
   const isDaily = cadenceOf?.kind === 'daily'
   const cadence = cadenceOf && !isDaily ? cadenceOf.days : null
   const doseEligible = cadenceOf !== null
@@ -135,13 +142,13 @@ function useWeekDoseView({ protocol, userId, timezone, today, reloadKey }: {
 }
 
 /** D13: sobrelinha + nome (19/800) + chip de concentração (mesmo pill do card do remédio), sem ícone. */
-function ModuleHeader({ medicineName, medicine }: { medicineName: string | null; medicine?: any }) {
+function ModuleHeader({ medicineName, medicine, isWedge }: { medicineName: string | null; medicine?: any; isWedge: boolean }) {
   const conc = medicine?.dosage_per_pill
     ? formatConcentration(medicine.dosage_per_pill, medicine.dosage_unit, medicine.concentration_volume_ml)
     : null
   return (
     <View style={styles.header} testID="treatment-week-header">
-      <Text style={styles.eyebrow}>SEMANA DO TRATAMENTO</Text>
+      <Text style={styles.eyebrow}>{isWedge ? 'SEMANA DO TRATAMENTO' : 'ACOMPANHAMENTO'}</Text>
       {medicineName ? (
         <View style={styles.titleRow}>
           <Text style={styles.medName} numberOfLines={1}>{medicineName}</Text>
@@ -158,18 +165,20 @@ function ModuleHeader({ medicineName, medicine }: { medicineName: string | null;
 
 export default function TreatmentWeekModule({
   userId, profile, medicineName, treatmentStart, timezone, reloadKey, protocol = null, onRegisterEarly, onOpenTreatment,
-  onAdjustTreatment,
+  onAdjustTreatment, isWedge = true,
 }: Props) {
   // States
   const [windowChoice, setWindowChoice] = useState<WeightWindow | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const { rows, toggle } = useTodayWeekRows(userId, profile)
-  const series = useTodayWeightSeries({ enabled: true, userId, timezone, treatmentStart, reloadKey })
+  // 124 A: peso (L2) é do wedge até a fatia B — sem leitura fora dele.
+  const series = useTodayWeightSeries({ enabled: isWedge, userId, timezone, treatmentStart, reloadKey })
   // Memos
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey vira o dia após recarga da Hoje
   const today = useMemo(() => getTodayLocal(timezone), [timezone, reloadKey])
   const yesterday = shiftDay(today, -1)
   const { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel } = useWeekDoseView({
-    protocol, userId, timezone, today, reloadKey,
+    protocol, isWedge, userId, timezone, today, reloadKey,
   })
   const windowSel = windowChoice ?? defaultWeightWindow(series.recent, today)
   const windowFrom =
@@ -197,7 +206,7 @@ export default function TreatmentWeekModule({
 
   return (
     <View style={styles.card} testID="treatment-week-module">
-      <ModuleHeader medicineName={medicineName} medicine={protocol?.medicine} />
+      <ModuleHeader medicineName={medicineName} medicine={protocol?.medicine} isWedge={isWedge} />
       {doseEligible ? (
         <DoseRow
           open={rows.dose}
@@ -214,9 +223,22 @@ export default function TreatmentWeekModule({
           injectable={injectable}
           daily={daily}
           setup={setupRows?.length ? { rows: setupRows, onAdjust: () => onAdjustTreatment?.(protocol.id) } : null}
+          onOpenHistory={daily ? null : () => setHistoryOpen(true)}
         />
       ) : null}
-      <WeightRow
+      {doseEligible && !daily ? (
+        <DoseNavSheet
+          visible={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          initial={dose.recent[0] ?? null}
+          protocolId={protocol?.id ?? null}
+          medicineId={protocol?.medicine_id ?? protocol?.medicine?.id ?? null}
+          medicineName={medicineName}
+          injectable={injectable}
+          timezone={timezone}
+        />
+      ) : null}
+      {isWedge ? <WeightRow
         open={rows.peso}
         onToggle={() => toggle('peso')}
         points={points}
@@ -231,8 +253,8 @@ export default function TreatmentWeekModule({
         error={series.error}
         onRetry={series.retry}
         onSaved={series.reload}
-      />
-      {evolution && protocol?.id ? (
+      /> : null}
+      {isWedge && evolution && protocol?.id ? (
         <EvolutionRow
           copy={evolution}
           detail={evolutionOpen}
