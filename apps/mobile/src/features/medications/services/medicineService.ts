@@ -6,6 +6,7 @@
 // - Sem transforms — avg_price é responsabilidade do consumer no mobile
 
 import { createMedicineRepository } from '@dosiq/core'
+import { isNetworkError } from '@shared/utils/networkError'
 import { supabase } from '../../../platform/supabase/nativeSupabaseClient'
 import { logEvent } from '../../../platform/analytics/productAnalytics'
 import { EVENTS } from '../../../platform/analytics/analyticsEvents'
@@ -18,6 +19,8 @@ const typedClient = supabase as any
 async function getUserId() {
   const { data, error } = await supabase.auth.getUser()
   const user = data?.user
+  // Smoke 2a (PO 22/11): offline, o getUser falha por rede — não é sessão expirada.
+  if (error && isNetworkError(error)) throw error
   if (error || !user) throw new Error('Sessão expirada. Faça login novamente.')
   return user.id
 }

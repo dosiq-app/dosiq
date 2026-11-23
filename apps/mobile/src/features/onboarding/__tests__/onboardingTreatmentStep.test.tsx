@@ -151,7 +151,7 @@ describe('injetável (AC2.2, AC2.5, AC2.5b, AC3.3)', () => {
     fireEvent.press(getByText('Continuar'))
     expect(mockShow).toHaveBeenLastCalledWith('Digite quanto usa de cada vez.', { variant: 'error' })
     fireEvent.changeText(getByLabelText('Dose por aplicação'), '0,6')
-    expect(getByText(/A dose é em mg\? Confira o número com "mg" ao lado\./)).toBeTruthy()
+    expect(getByText(/Confira na receita quanto você aplica, em mg\./)).toBeTruthy()
     fireEvent.press(getByText('Usar 0,6 mg mesmo assim'))
     expect(queryByTestId('dose-warnings')).toBeNull()
     fireEvent.press(getByText('Continuar'))

@@ -19,7 +19,7 @@ import * as LucideIcons from 'lucide-react-native'
 import { useKeyboardVisible } from '@shared/hooks/useKeyboardVisible'
 import { CmedPresentationStep } from '@medications/components/CmedPresentationStep'
 import { MedicineSearchResultItem } from '@medications/components/MedicineSearchResultItem'
-import { useMedicineSearchFlow } from '@medications/hooks/useMedicineSearchFlow'
+import { useMedicineSearchFlow, type LinkTarget } from '@medications/hooks/useMedicineSearchFlow'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
@@ -56,6 +56,7 @@ export function MedicineAnvisaSheet({
   initialItem = null,
   initialQuery = null,
   initialResults = null,
+  linkTarget = null,
 }: {
   open: boolean
   onClose?: () => void
@@ -67,9 +68,11 @@ export function MedicineAnvisaSheet({
   // 119 B (smoke iOS, "Metropolol"): o cartão casa por erro de digitação, a busca do sheet só por
   // prefixo — enquanto a busca é a semeada, a lista mostra os itens que o cartão achou.
   initialResults?: any[] | null
+  // 125 2a (AC8.2): vínculo de um remédio salvo — o passo 2 confere antes de devolver (opt-in).
+  linkTarget?: LinkTarget | null
 }) {
   // States (R-010 — States → Memos → Effects → Handlers)
-  const flow = useMedicineSearchFlow({ active: !!open, onSelect })
+  const flow = useMedicineSearchFlow({ active: !!open, onSelect, linkTarget })
   const { query, setQuery, trimmed, results, hint, picked, presentationStep, presentationKey } = flow
   const keyboardVisible = useKeyboardVisible()
   // 117 US-6: foco no campo de busca sem 2º toque. Pedido no `onShow` (fim da animação do Modal), não

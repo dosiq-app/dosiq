@@ -5,7 +5,8 @@
 // 1 aplicação de caneta em mg/UI) ou, na 1b, a TRANSCRIÇÃO da embalagem de dose única (concentração ×
 // volume da unidade — dado da caixa, não sugestão clínica; PO 2026-11-17/19).
 
-import { formatNumberPtBR } from '../utils/doseUnit'
+import { formatNumberPtBR, formatStrength } from '../utils/doseUnit'
+import { PRESENTATION_LABELS, normalizeRegulatoryCategory } from '../schemas/medicineSchema'
 import { cleanFloat } from '../utils/formUtils'
 import { parseLocalDate, formatLocalDate, addDays, parseISO } from '../utils/dateUtils'
 
@@ -208,21 +209,21 @@ export const COUNT_MAX_PER_INTAKE = { units: 10, drops: 60, ml: 50, penApplicati
 function countWarning(dose: number, unit: string, presentation?: string | null): DosePlausibilityWarning | null {
   const count = countKindFor(unit, presentation)
   if (!count || dose <= count.max) return null
-  return { kind: 'count_looks_high', message: `São ${formatNumberPtBR(dose)} ${count.noun} por vez. ${count.hint}` }
+  return { kind: 'count_looks_high', message: `São ${formatNumberPtBR(dose)} ${count.noun} de uma vez. ${count.hint}` }
 }
 
 type CountKind = { max: number; noun: string; hint: string }
 
 function countKindFor(unit: string, presentation?: string | null): CountKind | null {
   const u = unit.toLowerCase()
-  if (u === 'gotas') return { max: COUNT_MAX_PER_INTAKE.drops, noun: 'gotas', hint: 'Confira se o número não é a dose em mg ou mL.' }
-  if (u === 'ml' && presentation === 'liquido') return { max: COUNT_MAX_PER_INTAKE.ml, noun: 'mL', hint: 'Confira se o número não é a dose em mg ou gotas.' }
+  if (u === 'gotas') return { max: COUNT_MAX_PER_INTAKE.drops, noun: 'gotas', hint: 'Confira na receita: esse número não é a dose em mg ou mL?' }
+  if (u === 'ml' && presentation === 'liquido') return { max: COUNT_MAX_PER_INTAKE.ml, noun: 'mL', hint: 'Confira na receita: esse número não é a dose em mg ou gotas?' }
   if (u !== '') return null
-  if (presentation === 'comprimido') return { max: COUNT_MAX_PER_INTAKE.units, noun: 'comprimidos', hint: 'Confira se o número não é a dosagem em mg.' }
-  if (presentation === 'capsula') return { max: COUNT_MAX_PER_INTAKE.units, noun: 'cápsulas', hint: 'Confira se o número não é a dosagem em mg.' }
+  if (presentation === 'comprimido') return { max: COUNT_MAX_PER_INTAKE.units, noun: 'comprimidos', hint: 'Confira na receita: esse número não é a dose em mg?' }
+  if (presentation === 'capsula') return { max: COUNT_MAX_PER_INTAKE.units, noun: 'cápsulas', hint: 'Confira na receita: esse número não é a dose em mg?' }
   // Injetável sem unidade na tomada = dose por caneta: a dose conta aplicações (setupDefaults, C-2).
   if (presentation === 'injetavel')
-    return { max: COUNT_MAX_PER_INTAKE.penApplications, noun: 'aplicações', hint: 'A dose em mg já vem na caneta: cada aplicação costuma ser 1 caneta.' }
+    return { max: COUNT_MAX_PER_INTAKE.penApplications, noun: 'aplicações', hint: 'Cada aplicação costuma ser 1 caneta ou 1 ampola. Confira na receita quantas você aplica.' }
   return null
 }
 
@@ -245,7 +246,7 @@ function packageWarning(denominator: number, presentation?: string | null): Dose
   const what = presentation === 'injetavel' ? 'da embalagem' : 'do frasco'
   return {
     kind: 'denominator_looks_like_package',
-    message: `${formatNumberPtBR(denominator)} mL parece o tamanho ${what}. Na caixa, o número depois da barra costuma ser menor.`,
+    message: `${formatNumberPtBR(denominator)} mL parece o tamanho ${what}. Confira a concentração na caixa: o número depois da barra costuma ser bem menor.`,
   }
 }
 
@@ -272,14 +273,14 @@ export function checkDosePlausibility(input: DosePlausibilityInput): DosePlausib
   if (pen !== null && pen > 0 && dose > pen) {
     warnings.push({
       kind: 'exceeds_pen',
-      message: `O rótulo diz ${formatNumberPtBR(pen)} ${unit}. Confirma ${formatNumberPtBR(dose)} ${unit}?`,
+      message: `Na caixa: ${formatNumberPtBR(pen)} ${unit} por dose. ${formatNumberPtBR(dose)} ${unit} passa disso. Confira na receita quanto você aplica de cada vez.`,
     })
   }
 
   if (looksLikeMl(dose, unit, pen, denominator, input.presentation)) {
     warnings.push({
       kind: 'looks_like_ml',
-      message: `${formatNumberPtBR(dose)} parece mL. A dose é em mg? Confira o número com "mg" ao lado.`,
+      message: `Na caixa: ${formatNumberPtBR(pen as number)} mg / ${formatNumberPtBR(denominator as number)} mL. ${formatNumberPtBR(dose)} mg é bem menos que isso. Confira na receita quanto você aplica, em mg.`,
     })
   }
 
@@ -296,7 +297,7 @@ export function checkDosePlausibility(input: DosePlausibilityInput): DosePlausib
     if (ml > INJECTION_MAX_ML_PER_APPLICATION) {
       warnings.push({
         kind: 'exceeds_injection_volume',
-        message: `${formatNumberPtBR(dose)} ${unit} daria ${formatNumberPtBR(Math.round(ml * 10) / 10)} mL numa aplicação — mais do que uma caneta aplica de uma vez. Confira a dose ou a concentração.`,
+        message: `${formatNumberPtBR(dose)} ${unit} dariam ${formatNumberPtBR(Math.round(ml * 10) / 10)} mL de uma vez. É muito para uma aplicação. Confira a dose na receita e a concentração na caixa.`,
       })
     }
   }
@@ -309,7 +310,7 @@ export function checkDosePlausibility(input: DosePlausibilityInput): DosePlausib
   ) {
     warnings.push({
       kind: 'ml_looks_like_drops',
-      message: `${formatNumberPtBR(conc)} mg/mL costuma ser em gotas. Confira: a dose é ${formatNumberPtBR(dose)} gotas, ou a concentração é outra?`,
+      message: `Remédio de ${formatNumberPtBR(conc)} mg/mL costuma ser em gotas. Confira na receita se são ${formatNumberPtBR(dose)} gotas, e na caixa se a concentração é essa.`,
     })
   }
   const count = countWarning(dose, unit, input.presentation)
@@ -736,12 +737,18 @@ export const SETUP_WINDOW_DAYS = 14
 
 export type SetupCardPick =
   | { kind: 'confira'; protocolId: string; verdict: Extract<CoherenceVerdict, { status: 'incoerente' }> }
+  | { kind: 'forma'; medicineId: string; protocolId: string; mismatch: FormMismatch }
+  | { kind: 'vincular'; medicineId: string; protocolId: string }
   | { kind: 'falta'; medicineId: string }
   | { kind: 'cadastrado'; protocolId: string }
 
 export interface PickSetupCardInput {
   /** Tratamentos ativos (em uso e agendados), na ordem de exibição. */
-  protocols: Array<{ id: string; created_at?: string | null }>
+  protocols: Array<{ id: string; medicine_id?: string | null; created_at?: string | null }>
+  /** 2a (FR-043): forma divergente por remédio (`formMismatch`), já SEM os dispensados. */
+  formMismatches?: Record<string, FormMismatch | null | undefined>
+  /** 2a (FR-037): remédios sem código que casam com a lista, já SEM os dispensados. */
+  linkCandidateIds?: Iterable<string>
   /** Tratamentos com algum registro na janela carregada. */
   loggedProtocolIds: Iterable<string>
   /** Veredito por tratamento já SEM os confirmados neste aparelho. */
@@ -766,15 +773,192 @@ function isRecent(createdAt: string | null | undefined, today: string): boolean 
   return days !== null && days >= 0 && days <= SETUP_WINDOW_DAYS
 }
 
-/** Um card por vez: Confira > Falta 1 passo > Tratamento cadastrado (AC6.6). Confira não tem limite de idade. */
+/**
+ * Um card por vez: Confira > Corrigir forma > Vincular > Falta 1 passo > Tratamento cadastrado (AC6.6 ·
+ * FR-043). Confira, Corrigir forma e Vincular não têm limite de idade (miram o cadastro legado).
+ */
 export function pickSetupCard(i: PickSetupCardInput): SetupCardPick | null {
   for (const p of i.protocols) {
     const v = i.verdicts[p.id]
     if (v && v.status === 'incoerente') return { kind: 'confira', protocolId: p.id, verdict: v }
   }
+  for (const p of i.protocols) {
+    const mismatch = p.medicine_id ? i.formMismatches?.[p.medicine_id] : null
+    if (mismatch) return { kind: 'forma', medicineId: p.medicine_id as string, protocolId: p.id, mismatch }
+  }
+  const linkable = new Set(i.linkCandidateIds ?? [])
+  const toLink = linkable.size > 0 ? i.protocols.find((p) => !!p.medicine_id && linkable.has(p.medicine_id)) : undefined
+  if (toLink) return { kind: 'vincular', medicineId: toLink.medicine_id as string, protocolId: toLink.id }
   const orphan = i.orphanMedicines.find((m) => isRecent(m.created_at, i.today))
   if (orphan) return { kind: 'falta', medicineId: orphan.id }
   const logged = new Set(i.loggedProtocolIds)
   const fresh = i.protocols.find((p) => !logged.has(p.id) && isRecent(p.created_at, i.today))
   return fresh ? { kind: 'cadastrado', protocolId: fresh.id } : null
+}
+
+// ── Vínculo à lista oficial e forma divergente (fatia 2a · FR-039 · FR-042) ──────────────────────
+
+/** Remédio como está salvo (só os campos que o vínculo lê). */
+export interface LinkMedicineInput {
+  name?: string | null
+  active_ingredient?: string | null
+  presentation?: string | null
+  dosage_per_pill?: number | string | null
+  dosage_unit?: string | null
+  concentration_volume_ml?: number | string | null
+}
+
+/** Caixa escolhida na lista oficial (`CmedMedicineDraft` ou equivalente). */
+export interface LinkBoxInput {
+  name?: string | null
+  active_ingredient?: string | null
+  laboratory?: string | null
+  therapeutic_class?: string | null
+  therapeutic_class_code?: string | null
+  regulatory_category?: string | null
+  anvisa_registration?: string | null
+  presentation?: string | null
+  dosage_per_pill?: number | null
+  dosage_unit?: string | null
+  concentration_volume_ml?: number | null
+}
+
+export type BoxChange =
+  | { field: 'name'; from: string; to: string }
+  | { field: 'ingredient'; from: string | null; to: string }
+  | { field: 'presentation'; from: string | null; to: string }
+  | { field: 'strength'; from: string | null; to: string }
+
+export interface CatalogBoxDiff {
+  /** O que o vínculo grava no MESMO remédio (identidade + forma + força). Estoque nunca entra (RC3 E-2). */
+  payload: Record<string, unknown>
+  changes: BoxChange[]
+  /** "O estoque ({n}) fica como está. Confira depois se ainda vale." com estoque registrado; null sem estoque. */
+  stockLine: string | null
+}
+
+const NO_FORM_LABEL = 'sem forma informada'
+
+function foldText(v: unknown): string {
+  return String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ')
+}
+
+function presentationText(p: string | null | undefined): string {
+  return (p && (PRESENTATION_LABELS as Record<string, string>)[p]) || NO_FORM_LABEL
+}
+
+function boxStrengthText(dose: unknown, unit: unknown, volume: unknown): string | null {
+  const d = toNumber(dose as number | string | null | undefined)
+  const v = toNumber(volume as number | string | null | undefined)
+  return formatStrength(null, d, (unit as string | null) ?? null, v)
+}
+
+/**
+ * FR-039 (revoga 119 INV-6): a caixa escolhida dá identidade, forma e força ao MESMO remédio. Outra
+ * concentração não bloqueia (é o que se quer corrigir). Força ambígua (dose null) mantém a salva;
+ * pomada/spray/outro ficam em unidades (só a forma entra). Sem volume na caixa ⇒ volume null (RC6 #971).
+ */
+function linkPayload(box: LinkBoxInput, takesStrength: boolean): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    name: box.name,
+    active_ingredient: box.active_ingredient,
+    // RC6 #973: genérico da CMED não tem fabricante nem registro — null apagaria o que a pessoa cadastrou.
+    laboratory: box.laboratory || undefined,
+    therapeutic_class: box.therapeutic_class,
+    therapeutic_class_code: box.therapeutic_class_code,
+    regulatory_category: box.regulatory_category === undefined ? undefined : normalizeRegulatoryCategory(box.regulatory_category),
+    anvisa_registration: box.anvisa_registration || undefined,
+    presentation: box.presentation || undefined,
+  }
+  if (takesStrength) {
+    payload.dosage_per_pill = box.dosage_per_pill
+    payload.dosage_unit = box.dosage_unit ?? null
+    payload.concentration_volume_ml = box.concentration_volume_ml ?? null
+  }
+  for (const key of Object.keys(payload)) if (payload[key] === undefined) delete payload[key]
+  return payload
+}
+
+function linkChanges(medicine: LinkMedicineInput, box: LinkBoxInput, takesStrength: boolean): BoxChange[] {
+  const changes: BoxChange[] = []
+  if (box.name && foldText(box.name) !== foldText(medicine.name)) {
+    changes.push({ field: 'name', from: String(medicine.name ?? '').trim(), to: box.name })
+  }
+  // PO 22/11 (Lipoless → Lipless, um fibrato): o princípio ativo diz O QUE é o remédio proposto.
+  if (box.active_ingredient && foldText(box.active_ingredient) !== foldText(medicine.active_ingredient)) {
+    changes.push({ field: 'ingredient', from: medicine.active_ingredient?.trim() || null, to: box.active_ingredient })
+  }
+  const recorded = medicine.presentation || null
+  if (box.presentation && box.presentation !== recorded) changes.push({ field: 'presentation', from: recorded, to: box.presentation })
+  if (!takesStrength) return changes
+  const before = boxStrengthText(medicine.dosage_per_pill, medicine.dosage_unit, medicine.concentration_volume_ml)
+  const after = boxStrengthText(box.dosage_per_pill, box.dosage_unit, box.concentration_volume_ml)
+  if (after && before !== after) changes.push({ field: 'strength', from: before, to: after })
+  return changes
+}
+
+/**
+ * FR-039 (revoga 119 INV-6): a caixa escolhida dá identidade, forma e força ao MESMO remédio. Outra
+ * concentração não bloqueia (é o que se quer corrigir). Força ambígua (dose null) mantém a salva;
+ * pomada/spray/outro ficam em unidades (só a forma entra). Sem volume na caixa ⇒ volume null (RC6 #971).
+ */
+export function diffCatalogBox(medicine: LinkMedicineInput, box: LinkBoxInput, stockQty?: number | null): CatalogBoxDiff {
+  const form = box.presentation || medicine.presentation || null
+  const hasDose = box.dosage_per_pill !== null && box.dosage_per_pill !== undefined
+  const takesStrength = hasDose && !setupDefaults(form).strengthOptional
+  const stock = typeof stockQty === 'number' && Number.isFinite(stockQty) && stockQty > 0 ? stockQty : null
+  return {
+    payload: linkPayload(box, takesStrength),
+    changes: linkChanges(medicine, box, takesStrength),
+    stockLine: stock === null ? null : `O estoque (${formatNumberPtBR(stock)}) fica como está. Confira depois se ainda vale.`,
+  }
+}
+
+/** Linhas da conferência (AC8.2 · RC2 R5-5): "Nome: A → B", "Forma: …", "Dosagem: …". INV-6: a tela só mostra. */
+export function describeBoxChange(changes: BoxChange[]): string[] {
+  return changes.map((c) => {
+    if (c.field === 'name') return `Nome: ${c.from} → ${c.to}`
+    // Smoke 2a (PO 22/11): sem valor antes, "— →" não diz nada — o valor entra marcado como novo.
+    if (c.field === 'ingredient') return c.from ? `Princípio ativo: ${c.from} → ${c.to}` : `Princípio ativo: ${c.to} (novo)`
+    if (c.field === 'presentation') return `Forma: ${presentationText(c.from)} → ${presentationText(c.to)}`
+    return `Dosagem: ${c.from ?? 'não informada'} → ${c.to}`
+  })
+}
+
+export interface FormMismatch {
+  /** Forma proposta; null = o catálogo tem várias e o nome não decide (o form abre sem marcar). */
+  proposed: SetupPresentation | 'outro' | 'pomada' | 'spray' | null
+  reason: 'catalog' | 'name'
+}
+
+// Pista de forma no nome (FR-042 b). Ordem importa: "solução injetável" é injetável, não líquido.
+const NAME_FORM_HINTS: Array<[RegExp, FormMismatch['proposed']]> = [
+  [/\binjetavel\b|\bcaneta\b/, 'injetavel'],
+  [/\bgotas\b|\bliquido\b|\bxarope\b|\bsolucao\b|\bsuspensao\b/, 'liquido'],
+  [/\bcapsulas?\b/, 'capsula'],
+]
+
+function formFromName(name: unknown): FormMismatch['proposed'] {
+  const text = foldText(name)
+  for (const [re, form] of NAME_FORM_HINTS) if (re.test(text)) return form
+  return null
+}
+
+/**
+ * FR-042: forma gravada que o catálogo do PRÓPRIO registro não tem (sinal a — `catalogForms` = `f` das
+ * entradas do sidecar 127; null para remédio sem registro, inclusive genérico, revisão 22/11) ou que o
+ * nome contradiz (sinal b). Nunca muda nada: só aponta (INV-2). Sem lista nome→classe (INV-4).
+ */
+export function formMismatch(medicine: { name?: string | null; presentation?: string | null }, catalogForms: Array<string | null> | null): FormMismatch | null {
+  const recorded = medicine.presentation || null
+  if (!recorded) return null
+  const hint = formFromName(medicine.name)
+  const forms = Array.from(new Set((catalogForms ?? []).filter((f): f is string => !!f)))
+  if (forms.length > 0) {
+    if (forms.includes(recorded)) return null
+    if (forms.length === 1) return { proposed: forms[0] as FormMismatch['proposed'], reason: 'catalog' }
+    return { proposed: hint && forms.includes(hint) ? hint : null, reason: 'catalog' }
+  }
+  if (catalogForms && catalogForms.length === 0) return null
+  return hint && hint !== recorded ? { proposed: hint, reason: 'name' } : null
 }

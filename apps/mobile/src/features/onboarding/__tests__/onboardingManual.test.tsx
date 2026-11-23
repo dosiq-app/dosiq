@@ -132,7 +132,7 @@ describe('F-4 dosagem (AC2.6, C-2)', () => {
     expect(queryByLabelText('Número depois da barra (mL)')).toBeNull()
     fireEvent.press(getByTestId('volume-shortcut'))
     fireEvent.changeText(getByLabelText('Número depois da barra (mL)'), '20')
-    expect(getByTestId('volume-warning').props.children).toBe('20 mL parece o tamanho do frasco. Na caixa, o número depois da barra costuma ser menor.')
+    expect(getByTestId('volume-warning').props.children).toBe('20 mL parece o tamanho do frasco. Confira a concentração na caixa: o número depois da barra costuma ser bem menor.')
     fireEvent.press(getByText('Continuar'))
     expect(c.setMedicine).toHaveBeenCalledWith(expect.objectContaining({ presentation: 'liquido', concentration_volume_ml: '20' }))
     expect(c.setMedicineIntakeUnit).toHaveBeenCalledWith('gotas')

@@ -422,3 +422,22 @@ describe('carga única compartilhada', () => {
     expect(AsyncStorage.multiSet).toHaveBeenCalledTimes(1)
   })
 })
+
+// -------------------------------------------------------------------
+// 125 2a (C-2a-1): `enabled: false` não carrega; ligar depois carrega
+// -------------------------------------------------------------------
+describe('enabled', () => {
+  it('false não lê cache nem rede; ao ligar, carrega', async () => {
+    fetchMock.mockImplementation((url) =>
+      url.endsWith('manifest.json') ? mockFetchOk(mockManifest) : mockFetchOk(mockData),
+    )
+    const { result, rerender } = renderHook(({ on }) => useMedicineDatabase({ enabled: on }), { initialProps: { on: false } })
+    await act(async () => {})
+    expect(AsyncStorage.multiGet).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(result.current.isReady).toBe(false)
+
+    rerender({ on: true })
+    await waitFor(() => expect(result.current.isReady).toBe(true))
+  })
+})

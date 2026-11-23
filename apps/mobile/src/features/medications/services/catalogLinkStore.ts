@@ -31,34 +31,3 @@ export async function dismissCatalogLink(medicineId: string | null | undefined):
     // best-effort
   }
 }
-
-// Smoke 1c (PO 19/11): veredito "quais itens da lista oficial vinculam" por remédio — evita carregar o
-// índice CMED (1,4–8 s de disco no Android) a cada abertura do detalhe. Guarda id + assinatura da força
-// (sem nome em claro: a assinatura vira hash) e os nomes dos itens vinculáveis (dado público da ANVISA).
-export const CATALOG_LINK_VERDICT_PREFIX = 'catalog-link-verdict:'
-
-function hash(text: string): string {
-  let h = 5381
-  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0
-  return (h >>> 0).toString(36)
-}
-
-/** Nomes vinculáveis guardados para esta assinatura; null = sem veredito (calcular). */
-export async function readCatalogLinkVerdict(medicineId: string, signature: string): Promise<string[] | null> {
-  try {
-    const raw = await AsyncStorage.getItem(`${CATALOG_LINK_VERDICT_PREFIX}${medicineId}`)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    return parsed?.sig === hash(signature) && Array.isArray(parsed.names) ? parsed.names : null
-  } catch {
-    return null
-  }
-}
-
-export async function saveCatalogLinkVerdict(medicineId: string, signature: string, names: string[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(`${CATALOG_LINK_VERDICT_PREFIX}${medicineId}`, JSON.stringify({ sig: hash(signature), names }))
-  } catch {
-    // best-effort
-  }
-}

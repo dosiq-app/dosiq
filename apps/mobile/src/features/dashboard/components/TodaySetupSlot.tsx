@@ -5,8 +5,12 @@
 // (AC6.4a) e o próximo card da fila entra na hora (AC6.6). Grava pelas MESMAS mutações dos forms
 // (`useProtocolMutation`/`useMedicineMutation`): invalidam caches e reagendam alarmes (FR-006) — o
 // serviço cru pularia isso (RC5). Erro ⇒ toast da mutação e o card fica.
+// 2a: Vincular abre o MESMO sheet da busca (com `linkTarget`: o passo 2 confere antes de devolver) —
+// fluxo em `useSetupLink`. Corrigir forma abre o form do remédio (aba Tratamentos) com a forma
+// proposta; só Salvar grava.
 
 import { useCallback, useRef, useState } from 'react'
+import { useIsFocused } from '@react-navigation/native'
 import type { StrengthEntry } from '@dosiq/core'
 import SetupCard from '@dashboard/components/SetupCard'
 import ConfiraSheet from '@dashboard/components/ConfiraSheet'
@@ -14,7 +18,11 @@ import SetupScheduleSheet, { type ScheduleChange } from '@dashboard/components/S
 import type { TodaySetupState } from '@dashboard/hooks/useTodaySetup'
 import { useProtocolMutation } from '@treatments/hooks/useProtocolMutation'
 import { useMedicineMutation } from '@medications/hooks/useMedicineMutation'
-import { openTreatmentEdit, openTreatmentCreate } from '@dashboard/utils/setupCopy'
+import { openTreatmentEdit, openTreatmentCreate, openMedicineEdit } from '@dashboard/utils/setupCopy'
+import { MedicineAnvisaSheet } from '@medications/components/MedicineAnvisaSheet'
+import FormChangeSheet from '@medications/components/FormChangeSheet'
+import { useSetupLink } from '@dashboard/hooks/useSetupLink'
+import { useToast } from '@shared/components/feedback/Toast'
 
 
 
@@ -31,17 +39,20 @@ interface TodaySetupSlotProps {
 
 export default function TodaySetupSlot({ setup, protocols, today, nowTime, refresh, emphasis = false }: TodaySetupSlotProps) {
   // States
-  const [sheet, setSheet] = useState<null | 'confira' | 'box' | 'schedule'>(null)
+  const [sheet, setSheet] = useState<null | 'confira' | 'box' | 'schedule' | 'link'>(null)
   const [busy, setBusy] = useState(false)
   // RC6 #971: trava síncrona — `busy` (estado) só chega no próximo render e o "Usar 2,5 mg" do card não o lê.
   const inFlight = useRef(false)
   const protocolMutation = useProtocolMutation()
   const medicineMutation = useMedicineMutation()
+  const { show } = useToast()
   const { card, protocol, medicine } = setup
 
   // Handlers
   // `undefined` = a mutação falhou (já mostrou o toast): a folha e o card ficam.
-  const run = useCallback(async (work: () => Promise<unknown>) => {
+  // `reload: false` = quem chamou recarrega depois (Vincular espera a folha AC7.5: recarregar antes tira
+  // o card da fila e desmonta o slot com a folha junto).
+  const run = useCallback(async (work: () => Promise<unknown>, { reload = true } = {}) => {
     if (inFlight.current) return
     inFlight.current = true
     setBusy(true)
@@ -49,14 +60,27 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
       const result = await work()
       if (result === undefined) return
       setSheet(null)
-      refresh()
+      if (reload) refresh()
     } finally {
       inFlight.current = false
       setBusy(false)
     }
   }, [refresh])
+  const openLinkSheet = useCallback(() => setSheet('link'), [])
+  const closeSheet = useCallback(() => setSheet(null), [])
+  const notify = useCallback((message: string) => show(message, { variant: 'info' }), [show])
+  const linkFlow = useSetupLink({
+    medicine, protocols, run, update: medicineMutation.update, refresh, openSheet: openLinkSheet, closeSheet, notify,
+  })
+  const focused = useIsFocused()
 
-  if (!card) return null
+  // RC6 #973 (HIGH): "Revisar" navega para a aba Tratamentos e o Modal do PRÓXIMO item cobria o form. A folha
+  // só aparece com a Hoje em foco, e independe do card (o reload do foco pode zerá-lo com a fila ainda cheia).
+  const reviewSheet = linkFlow.reviewItem && focused ? (
+    <FormChangeSheet item={linkFlow.reviewItem} onReview={() => linkFlow.reviewNext(true)} onDismiss={() => linkFlow.reviewNext(false)} />
+  ) : null
+
+  if (!card) return reviewSheet
   const verdict = card.kind === 'confira' ? card.verdict : null
   const otherTreatments = medicine?.id
     ? protocols.filter((p) => p?.medicine_id === medicine.id && p.id !== protocol?.id).length
@@ -85,6 +109,12 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
     await setup.confirmCoherence()
     return true
   })
+  const fixForm = () => run(async () => {
+    const opened = await openMedicineEdit(medicine.id, card.kind === 'forma' ? card.mismatch.proposed : null)
+    if (!opened) show('Não foi possível abrir o remédio. Tente de novo.', { variant: 'error' })
+    // Não recarrega a Hoje: nada foi gravado (a volta do form recarrega pelo foco).
+    return undefined
+  })
 
   return (
     <>
@@ -103,7 +133,25 @@ export default function TodaySetupSlot({ setup, protocols, today, nowTime, refre
         onCheck={() => setSheet('confira')}
         onUseUnit={useUnit}
         onPickBox={() => setSheet('box')}
+        linkMatches={setup.linkMatches}
+        onLink={() => { void linkFlow.open() }}
+        onDismissLink={() => { void setup.dismissLink() }}
+        onFixForm={() => { void fixForm() }}
+        onKeepForm={() => { void setup.confirmForm() }}
       />
+      {sheet === 'link' && medicine ? (
+        <MedicineAnvisaSheet
+          key={`link:${medicine.id}`}
+          open
+          onClose={() => setSheet(null)}
+          onSelect={linkFlow.choose}
+          initialItem={setup.linkMatches[0] ?? null}
+          initialQuery={setup.linkMatches[0] ? null : (medicine.name ?? null)}
+          entryPoint="catalog_link"
+          linkTarget={{ medicine, stockQty: linkFlow.stockQty }}
+        />
+      ) : null}
+      {reviewSheet}
       {sheet === 'confira' || sheet === 'box' ? (
         <ConfiraSheet
           // RC6 #971 (R-273/AP-222): outra entidade ⇒ folha nova, sem passo/seleção da anterior.

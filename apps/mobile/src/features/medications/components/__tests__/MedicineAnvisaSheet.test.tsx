@@ -324,3 +324,70 @@ describe('abertura direta (119 B — sugestão do campo / vínculo)', () => {
     expect(onSelect).not.toHaveBeenCalled()
   })
 })
+
+// 125 2a (AC8.2 · RC3 E-R5-1): vínculo de remédio salvo — conferência inline no passo 2 (opt-in).
+describe('linkTarget', () => {
+  // Rascunho real da caixa única do Divalproato (o que o form receberia sem vínculo).
+  function singleDraft() {
+    mockCmed.current = { status: 'ready', index: indexFrom(), lookup: null }
+    const onSelect = jest.fn()
+    render(<MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} />)
+    return onSelect.mock.calls[0][0].cmedDraft
+  }
+
+  // Smoke 2a (PO 22/11, Ozivy): caixa única já abre SELECIONADA — conferência direto, sem o toque sem decisão.
+  it('concentração única que muda o remédio NÃO pula: já abre selecionada mostrando o que muda; só [Usar …] devolve', () => {
+    const draft = singleDraft()
+    jest.clearAllMocks()
+    const medicine = { name: 'Divalprato', presentation: 'capsula', dosage_per_pill: 250, dosage_unit: 'mg' }
+    const onSelect = jest.fn()
+    const { getByText, getByTestId, queryByTestId } = render(
+      <MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} linkTarget={{ medicine, stockQty: 30 }} />,
+    )
+    expect(getByText('Confira a embalagem')).toBeTruthy()
+    expect(getByText('Manter como está')).toBeTruthy()
+    expect(queryByTestId('link-confirm')).toBeTruthy()
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(getByText(`Divalprato → ${draft.name}`)).toBeTruthy()
+    expect(getByText('Cápsula → Comprimido')).toBeTruthy()
+    expect(getByText('250 mg → 500 mg')).toBeTruthy()
+    expect(getByText('O estoque (30) fica como está. Confira depois se ainda vale.')).toBeTruthy()
+    fireEvent.press(getByTestId('link-confirm-use'))
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(onSelect.mock.calls[0][0].cmedDraft.dosage_per_pill).toBe(500)
+  })
+
+  it('"‹" com a caixa selecionada desfaz a seleção e não devolve nada', () => {
+    mockCmed.current = { status: 'ready', index: indexFrom(), lookup: null }
+    const onSelect = jest.fn()
+    const { getByText, getByLabelText, queryByTestId } = render(
+      <MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} linkTarget={{ medicine: { name: 'Outro', presentation: 'comprimido' } }} />,
+    )
+    // Caixa única já abre selecionada ("Confira a embalagem"); "‹" desfaz e volta à lista.
+    expect(queryByTestId('link-confirm')).toBeTruthy()
+    fireEvent.press(getByLabelText('Voltar'))
+    expect(queryByTestId('link-confirm')).toBeNull()
+    expect(getByText('Qual embalagem você tem?')).toBeTruthy()
+    fireEvent.press(getByText('500 mg'))
+    expect(queryByTestId('link-confirm')).toBeTruthy()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('nada muda ⇒ concentração única pula como sempre', () => {
+    const draft = singleDraft()
+    jest.clearAllMocks()
+    const onSelect = jest.fn()
+    render(<MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} linkTarget={{ medicine: draft }} />)
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(eventProps('medicine_presentation_selected')[0]).toMatchObject({ outcome: 'single' })
+  })
+
+  it('sem linkTarget (form, onboarding, scanner, seletor): nenhuma conferência; 2+ concentrações escolhem no toque', () => {
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    const onSelect = jest.fn()
+    const { getByText, queryByTestId } = render(<MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} />)
+    fireEvent.press(getByText('500 mg'))
+    expect(queryByTestId('link-confirm')).toBeNull()
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+})

@@ -3,7 +3,7 @@
 //
 // O árbitro (`pickTodaySurfaces`) continua escolhendo o alerta; aqui ele concorre com o card de setup
 // numa régua ÚNICA de 7 degraus e se decide ONDE cada um entra:
-//   1 sem estoque c/ dose em 24 h (urgente, vermelho) · 2 lembretes desligados (urgente, âmbar) · 3 Confira · 2º plano restrito
+//   1 sem estoque c/ dose em 24 h (urgente, vermelho) · 2 lembretes desligados (urgente, âmbar) · 3 Confira · Corrigir forma · Vincular · 2º plano restrito
 //   ──────────── Semana do tratamento (widget fixo, spec 121) ────────────
 //   4 acabando / próxima compra / bateria Xiaomi-Samsung · 5 Falta 1 passo · 6 Tratamento cadastrado · 7 estoque baixo, OTA
 // Orçamento: 1 card. 2 só quando o melhor é urgente (1–2) — classe da régua, não a cor do card. Degraus 1–3 ficam acima
@@ -18,7 +18,8 @@ import { ALERT_HOME, tierOfCandidate, type AlertCandidate, type AlertKind, type 
 
 export type { CardTier }
 
-const SETUP_TIER: Record<SetupCardPick['kind'], CardTier> = { confira: 3, falta: 5, cadastrado: 6 }
+// 2a (PO 21/11 Q1): Corrigir forma e Vincular no degrau 3, acima do widget, como o Confira.
+const SETUP_TIER: Record<SetupCardPick['kind'], CardTier> = { confira: 3, forma: 3, vincular: 3, falta: 5, cadastrado: 6 }
 
 /** Último degrau que fica ACIMA da Semana do tratamento. */
 export const UPPER_MAX_TIER = 3

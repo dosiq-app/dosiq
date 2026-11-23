@@ -18,7 +18,6 @@ import {
   DOSAGE_UNITS,
   DOSAGE_UNIT_LABELS,
   PRESENTATIONS,
-  setupDefaults,
   PRESENTATION_LABELS,
   REGULATORY_CATEGORIES,
   REGULATORY_CATEGORY_LABELS,
@@ -36,7 +35,8 @@ import { AnvisaBanner } from '@medications/components/AnvisaBanner'
 import { MedicineAnvisaSheet } from '@medications/components/MedicineAnvisaSheet'
 import { MedicineCandidatesSheet } from '@medications/scan/MedicineCandidatesSheet'
 import { CatalogFieldSuggestions } from '@medications/components/CatalogSuggestionList'
-import { catalogLinkPayload, keepSavedStrength } from '@medications/utils/catalogMatch'
+import { boxKeepsSavedStrength, keepSavedStrength } from '@medications/utils/catalogMatch'
+import { presentationPatch, SHELF_LIFE_FORMS } from '@medications/utils/presentationPatch'
 import { useCatalogSuggestionSheet } from '@medications/hooks/useCatalogSuggestionSheet'
 import { StrengthChoiceCard } from '@medications/components/StrengthChoiceCard'
 import { PresentationChips, UnitChipsField, ChoiceChips } from '@medications/components/FormFirstStrength'
@@ -112,8 +112,6 @@ function formTitle(isEditing, scanInfo) {
   return scanInfo ? 'Confira antes de salvar' : 'Novo remédio'
 }
 
-// AC7.4: validade depois de aberto só para injetável e líquido (R-295: 0/193 sólidos com valor, prod 17/11).
-const SHELF_LIFE_FORMS = new Set(['injetavel', 'liquido'])
 // Campos que o form mostra com erro no próprio campo. Erro do Zod fora deles ainda cai no alerta (anti-silent).
 const INLINE_ERROR_FIELDS = new Set(['name', 'presentation', 'dosage_per_pill', 'dosage_unit', 'concentration_volume_ml', 'shelf_life_days', 'active_ingredient', 'type', 'therapeutic_class', 'regulatory_category', 'laboratory'])
 
@@ -190,7 +188,8 @@ export default function MedicineFormScreen() {
   const [sheetOpen, setSheetOpen] = useState(false)
   // 066: formas do item escolhido (filtro do dropdown), "Ver todas", edição manual da forma,
   // dose ambígua (INV-2) e força completa da caixa (D9).
-  const [presentationTouched, setPresentationTouched] = useState(false)
+  // 125 2a (AC8.8): forma proposta pelo card da Hoje conta como escolhida.
+  const [presentationTouched, setPresentationTouched] = useState(!!route.params?.proposedPresentation)
   const [doseCheckRequired, setDoseCheckRequired] = useState(false)
   const [strengthLabel, setStrengthLabel] = useState<string | null>(null)
   // C-C10: concentrações de 1 toque do composto ambíguo; erro no campo ao salvar sem escolher.
@@ -214,6 +213,8 @@ export default function MedicineFormScreen() {
   const identificationY = useRef(0)
   const medicine = route.params?.medicine ?? null
   const isEditing = !!medicine
+  // 125 2a (AC8.8): "Corrigir forma" abre com a forma proposta marcada; só "Salvar remédio" grava.
+  const proposedPresentation = isEditing ? route.params?.proposedPresentation ?? null : null
 
   // Memos
   // FormInput espera string. Converter dosage_per_pill (number no DB) para string
@@ -226,7 +227,7 @@ export default function MedicineFormScreen() {
       medicine.dosage_per_pill !== null && medicine.dosage_per_pill !== undefined
         ? String(labelAmount(medicine.dosage_per_pill, medicine.concentration_volume_ml) ?? medicine.dosage_per_pill)
         : ''
-    return {
+    const values = {
       ...medicine,
       dosage_per_pill: amountStr,
       concentration_volume_ml:
@@ -238,7 +239,8 @@ export default function MedicineFormScreen() {
           ? String(medicine.shelf_life_days)
           : '',
     }
-  }, [medicine])
+    return proposedPresentation ? { ...values, ...presentationPatch(values, proposedPresentation) } : values
+  }, [medicine, proposedPresentation])
 
   // Hooks dependentes (consomem memos acima)
   // Usa createSchema para create + edit — em edit todos obrigatórios continuam exigidos
@@ -339,8 +341,8 @@ export default function MedicineFormScreen() {
   // Sem caixa: preenche como antes, `forms` sugere a forma e o registro é limpo (C-C4).
   const handleAnvisaSelect = useCallback(
     ({ anvisaItem: item, cmedDraft: draft }) => {
-      // RC5 119 B (R-299): em edição, caixa de outra força não entra — mesmo bloqueio do vínculo.
-      if (isEditing && draft && !catalogLinkPayload(medicine, draft)) {
+      // RC5 119 B (R-299): em edição, caixa de outra força não entra (o vínculo da Hoje é outro caminho — FR-039).
+      if (isEditing && draft && !boxKeepsSavedStrength(medicine, draft)) {
         setSheetOpen(false)
         clearSheet()
         closeSuggestions()
@@ -422,23 +424,7 @@ export default function MedicineFormScreen() {
   const handlePresentationChange = useCallback(
     (_name, value) => {
       setPresentationTouched(true)
-      form.handleChange('presentation', value)
-      // 125 (C-3): pomada/spray sem força gravam 'un'; o Zod exige unidade.
-      // Smoke 1c (PO 19/11): pomada/spray/outro só têm 'un'; voltar a uma forma com força limpa o 'un'.
-      const defaults = setupDefaults(value)
-      if (defaults.strengthOptional) form.handleChange('dosage_unit', defaults.fixedDosageUnit)
-      else if (form.values.dosage_unit && !defaults.strengthUnits.includes(String(form.values.dosage_unit)))
-        form.handleChange('dosage_unit', undefined)
-      if (value === 'injetavel') {
-        const current = form.values.shelf_life_days
-        if (current === '' || current === null || current === undefined) {
-          form.handleChange('shelf_life_days', '28')
-        }
-      } else if (!SHELF_LIFE_FORMS.has(value)) {
-        // Campo fica oculto fora de injetável/líquido (AC7.4) — limpar evita persistir valor
-        // obsoleto ao salvar (review Gemini #658, mesmo fix do web). Líquido mantém o que houver.
-        form.handleChange('shelf_life_days', '')
-      }
+      for (const [key, next] of Object.entries(presentationPatch(form.values, value))) form.handleChange(key, next)
     },
     [form]
   )

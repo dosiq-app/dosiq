@@ -51,7 +51,7 @@ teste de tabela (`utils/__tests__/pickTodaySurfaces.test.ts`). Decisão: ADR-129
 ```
 Cabeçalho · Adesão                         fixos (Adesão some no perfil wedge e com card de setup)
 [ BLOCO DE DOSES ]   sempre no topo: hero, troca de etapa, doses de hoje sem registro (foco da tela)
-[ CARDS 1–3 ]        sem estoque c/ dose em 24 h · lembretes desligados · Confira a dose
+[ CARDS 1–3 ]        sem estoque c/ dose em 24 h · lembretes desligados · Confira a dose · Confira a forma · Confira o remédio
 [ SEMANA DO TRAT. ]  spec 121 · só perfil wedge/misto · posição fixa · fora da régua
 [ CARDS 4–7 ]        acabando/próxima compra/bateria otimizada · Falta 1 passo · Confira o tratamento · baixo/OTA
 [ PROMO ]            máx 1 · sem técnico pendente · só sem card de ação, ou na vaga livre de baixo (wedge sem Agenda)
@@ -85,6 +85,8 @@ pelo módulo; com dose hoje a Agenda fica, porque é o caminho da correção do 
 | 1 | **Sem estoque** (urgente · vermelho) | alerta op · 117/120 C | saldo zero **e** dose do remédio em 24 h; ou próxima compra no dia/atrasada | Registrar compra | X · 7 d por remédio e degrau | acima | ponto no Estoque |
 | 2 | **Lembretes desligados** (urgente · âmbar fixo) | alerta téc · 120 A | tratamento que gera lembrete + push não utilizável | preparo → diálogo do sistema / Ajustes | "Agora não" · 7 d | acima | ponto no Perfil |
 | 3 | **Confira** | setup · 125 | dose do tratamento não fecha com a caixa do catálogo (§2.2) | Conferir / Escolher a caixa / Usar X | **não** — "Aplico X mesmo" vale para a combinação | acima | espera na fila |
+| 3 | **Confira a forma** (Corrigir forma) | setup · 125 2a | remédio **com** código cuja forma não está nas formas do seu registro (sidecar 127) ou que o nome contradiz (§2.2) | Corrigir forma | **sim** — "Está certo", por remédio, para sempre | acima | espera na fila |
+| 3 | **Confira o remédio** (Vincular) | setup · 125 2a | remédio **sem registro**: sem código, nome/princípio casa com UM item da lista; com código, marca de nome exato **e** forma divergente — aí o vínculo **absorve** o Confira a forma (um card de identidade por remédio; "Não é" devolve a forma) (§2.2, C-2a-16) | Sim, é esse / Escolher | **sim** — "Não é"/"Nenhum desses", por remédio, para sempre | acima | espera na fila |
 | — | *Semana do tratamento* | 121 · wedge/misto | — | — | — | fixa | — |
 | 4 | **Acabando** | alerta op · 117 | diário ≤ 3 dias; não diário ≤ 1 dose; ou zero sem dose em 24 h | Registrar compra | X · 7 d | abaixo | ponto no Estoque |
 | 4 | **Próxima compra** | alerta op · 105 | data de compra em 0..7 dias (a 1–2 dias âmbar); **início futuro sem estoque para a 1ª dose** (125 FR-034) | Registrar compra | X · 7 d | abaixo | ponto no Estoque |
@@ -95,13 +97,18 @@ pelo módulo; com dose hoje a Agenda fica, porque é o caminho da correção do 
 | 7 | **Atualização pronta** | alerta téc · OTA | OTA baixado e app ocioso | reinicia o app | não | abaixo | — (aplica sozinha) |
 
 No mesmo degrau, o árbitro decide entre alertas pela ordem da linha (acabando antes de compra antes de bateria
-otimizada; baixo antes de OTA) e, entre remédios, o de menos dias. Alerta e setup no mesmo degrau (3: Confira ×
-2º plano restrito): o alerta vem antes.
+otimizada; baixo antes de OTA) e, entre remédios, o de menos dias. Alerta e setup no mesmo degrau (3: Confira,
+Confira a forma ou Confira o remédio × 2º plano restrito): o alerta vem antes. Só um setup aparece por vez (§2.2),
+então os três setups do degrau 3 nunca disputam entre si.
 
 ### 2.2 Cards de setup — variações e casos de uso (spec 125 fatia 2)
 
-`pickSetupCard` (core) escolhe **um**: Confira > Falta 1 passo > Confira o tratamento. Resolvido, o próximo
-entra na hora. Fora da espera "1 aviso por sessão"; **sem dispensa** — o toque resolve (PO 17/11, mantido 20/11).
+`pickSetupCard` (core) escolhe **um**: Confira > Confira a forma > Confira o remédio > Falta 1 passo > Confira o
+tratamento (fila de 5; forma errada invalida a regra da dose — corrigir antes de conferir dose). Resolvido, o
+próximo entra na hora. Fora da espera "1 aviso por sessão". Confira, Confira a forma e Confira o remédio **não têm
+janela de 14 d** (miram o cadastro legado). **Sem dispensa** — o toque resolve (PO 17/11, mantido 20/11) — **com
+duas exceções (125 2a, PO 19/11 · 22/11):** Confira o remédio ("Não é") e Confira a forma ("Está certo"), que podem
+estar errados quando o cadastro está certo; a dispensa é por remédio, no aparelho, e não acende sinal.
 
 **Setup de quem já está na tela (PO 20/11).** "Confira o tratamento" só aparece para tratamento que a Hoje
 ainda não mostra. O do widget (Semana do tratamento / Acompanhamento) leva o setup para o **miolo da L1 aberta**:
@@ -121,6 +128,10 @@ spec 124 levar ao módulo "Acompanhamento".
 | Confira a unidade | injetável em gotas | `intake_unit = gotas` (ou mg × UI trocados) | "**No tratamento:** 2,5 gotas por aplicação" · "Injetável não se mede em gotas. Confira a receita." | Usar 2,5 mg (só se a troca fecha com a caixa) · Ajustar tudo | só a unidade |
 | Confira a caixa | concentração fora do registro | conc. salva (valor e unidade) não existe no registro | "**Cadastrado:** 15 mg/mL" · "Essa concentração não está na lista da ANVISA para {Remédio}." | Escolher pelo rótulo | concentração/volume no remédio |
 | — | indeterminado | sem registro, sem `lv` nem `dd` (Ozivy), catálogo indisponível ou desalinhado | nenhum card (falha fechada) | — | — |
+| Confira a forma | forma fora do registro | remédio com código; forma gravada fora das `f` do registro (sidecar 127) | "A forma cadastrada não bate com {o nome · a lista oficial}. Qual é a certa?" · tabela **Cadastrado:** comprimido / **Pelo nome:**·**Na lista oficial:** líquido (sem forma proposta: "… vem em outra forma.") | É {proposta} · É {cadastrada} (sem proposta: Corrigir forma · Está certo) | nada no card: abre a edição do remédio com a forma proposta marcada; só "Salvar remédio" grava; forma mudou com tratamento ⇒ folha AC7.5 |
+| | pista no nome | remédio com código; nome diz gotas/líquido/xarope/solução/suspensão/injetável/cápsula e a forma gravada é outra; genérico sem registro só tem este sinal | "Pelo nome, parece líquido." | idem | idem |
+| Confira o remédio | 1 item casa | remédio sem código, nome ou princípio casa com a base leve (`catalogMatchesFor`) | "{cadastrado} é o {Nome}?" · "(princípio)" · selo "Base oficial da ANVISA" | Sim, é esse · Não é | a caixa escolhida no passo 2 (identidade + forma + força) no MESMO remédio, depois do antes → depois e do [Usar …]; forma mudou com tratamento ⇒ folha AC7.5 na Hoje |
+| | vários casam | idem | "{cadastrado} é algum destes da lista oficial?" | Escolher · Nenhum desses | idem (o sheet abre com a lista) |
 
 **Folha "O que precisa ajustar?"** (Confira a dose — texto final do smoke PO 20/11; detalhe na spec 125 AC6.4):
 remédio no topo; o fato lado a lado na mesma unidade (NA CAIXA × NO TRATAMENTO); a pergunta ancorada na **receita**
@@ -155,7 +166,7 @@ estoque passa, inclusive como 2º. Ordem: degrau da §2.1 (`tierOfCandidate`) e,
 lembretes › acabando › próxima compra › baixo › bateria › atualização.
 
 - Na 1ª carga, o espaço do alerta espera o estoque carregar (senão o técnico aparece e é trocado).
-- Vários remédios no mesmo degrau: vence o de menos dias; os outros ficam na casa.
+- Vários remédios no mesmo **nível de estoque** (sem estoque · acabando · baixo): **um card de grupo** (smoke 125 2a, 22/11) — título com a contagem ("Sem estoque de 2 remédios"), nomes numa linha ("A, B e mais N" a partir de 4) e só a dose mais cedo; o botão abre a aba Estoque (não há um remédio para travar o form). A dispensa vale para o conjunto: volta quando outro remédio entra no grupo. Antes, vencia o de menos dias e os outros ficavam escondidos — dois "Sem estoque" ocupavam os 2 lugares de cima. Compra (105) não agrupa.
 - **Um aviso por sessão:** depois que a pessoa resolve ou dispensa o aviso mostrado, o espaço
   fica vazio — sem o próximo da régua e sem promo — até o app voltar do segundo plano. Só "sem
   estoque com dose em 24 h" fura a espera. Os demais seguem com o sinal na casa.
@@ -202,13 +213,14 @@ nunca neutro, mesmo com a dose a dias: o saldo zero já é o problema.
 - Alerta operacional: X no canto. Vale por remédio **e** degrau, por 7 dias. Se o degrau sobe
   (baixo → acabando → sem estoque), o alerta volta na hora.
 - Bateria: "Não mostrar de novo" (spec 068). Atualização: não dispensável.
+- Setup: não dispensável, exceto Confira o remédio ("Não é") e Confira a forma ("Está certo") — §2.2.
 
 ## 4. Casas e primeiro toque
 
 | Alerta | Primeiro toque | Casa (recebe o sinal) |
 |---|---|---|
 | Lembretes desligados | preparo → diálogo do sistema; bloqueado → Ajustes; Android com canal desligado → a tela **do canal** (comum, ou de doses críticas para quem tem alarme crítico) | Perfil › Notificações › engrenagem (Preferências) — o ponto acompanha o caminho até o controle |
-| Sem estoque / acabando / baixo | registro de compra **daquele** remédio | aba Estoque |
+| Sem estoque / acabando / baixo | registro de compra **daquele** remédio; grupo ⇒ aba Estoque | aba Estoque |
 | Próxima compra | registro de compra do remédio da próxima etapa | aba Estoque |
 | Bateria do aparelho | assistente da spec 068 | Perfil › Alarme e bateria (e a aba Perfil) |
 | Atualização pronta | reinicia o app | — (aplica sozinha no próximo início) |

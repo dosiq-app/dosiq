@@ -331,13 +331,15 @@ describe('TodayScreen', () => {
       expect(alerts[0].props.payload.level).toBe('stock_low')
     })
 
-    it('dois remédios em alerta ⇒ ainda 1 alerta, o de menos dias (E-3)', () => {
+    // Smoke 125 2a (PO 22/11): mesmo nível ⇒ UM card de grupo com os dois (antes: só o de menos dias, E-3).
+    it('dois remédios no mesmo nível ⇒ 1 alerta, agrupado com os dois', () => {
       mockStockActive = [{ id: 'm1', name: 'Selozok', daysRemaining: 6.5 }, { id: 'm2', name: 'Farto', daysRemaining: 4 }]
       today('2026-09-28T22:00:00.000Z')
       const { getAllByTestId } = render(<TodayScreen route={{ params: {} } as any} navigation={{ setParams: jest.fn() } as any} />)
       const alerts = getAllByTestId('today-alert')
       expect(alerts).toHaveLength(1)
-      expect(alerts[0].props.payload.item.medicineId).toBe('m2')
+      expect(alerts[0].props.payload.type).toBe('stock_group')
+      expect(alerts[0].props.payload.items.map((i: any) => i.medicineId).sort()).toEqual(['m1', 'm2'])
     })
 
     it('nova carga do Hoje (ex.: dose registrada) relê o estoque; a 1ª montagem não', () => {

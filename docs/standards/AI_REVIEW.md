@@ -1,7 +1,7 @@
 ---
 title: "AI Review (RC5/RC6) — operação pós-Gemini"
 description: "Protocolo de revisão de código por IA em 4 camadas após descontinuação do Gemini bot, incluindo RC5 (self-review) e RC6 (review independente)."
-version: "1.3.0"
+version: "1.4.0"
 status: active
 category: standard
 audience:
@@ -13,38 +13,55 @@ tags:
   - rc5
   - rc6
 created_at: "2026-07-18"
-updated_at: "2026-10-02"
+updated_at: "2026-11-23"
 epic: "056"
 ---
 
 # AI Review (RC5/RC6) — operação pós-Gemini
 
-> Extraído do CLAUDE.md em 2026-07-18. Arquitetura: ADR-069 (accepted). Specs: 034, 056 (local-only).
+> Extraído do CLAUDE.md em 2026-07-18; atualizado em 2026-11-23. Arquitetura: ADR-069 (accepted). Specs: 034, 056, 058, 060, 078, 080 (+ melhorias `A1–A5`, `B1–B2`, `C2`, `A4` shift-left).
 > O `gemini-code-assist[bot]` foi descontinuado em 2026-07-17; o substituto é em camadas.
 
 ## As 4 camadas
 
 | Camada | O quê | Quando |
 |--------|-------|--------|
-| L0 | Lint determinístico (enum não-pt-BR em `z.enum`, `res.json` sem status, `new Date`, cores…) | sempre (`rtk lint`) |
+| L0 | Lint + gates determinísticos (`eslint.config.js` + `npm run lint:gates`) — barra regras mecânicas em ~0 ms | sempre (`npm run lint`, pre-commit `lint-staged`, CI `test.yml`) |
 | L1 | **RC5** self-review do diff (`/devflow code-review`) — aplica os catálogos R/AP hunk-a-hunk | antes de TODO PR Tier 1+ |
 | L2 | **RC6** revisor IA independente — processo fresco, sem contexto da sessão do coder | após abrir PR Tier 1+ (**obrigatório**, NC3) |
 | L3 | Humano (R-060) | sempre; único que mergeia |
+
+**O que L0 já garante em `error` / gate (atualizado pós-`A4` shift-left):**
+- **ESLint AST (`eslint.config.js`):** `R-020`/`AP-342` (`new Date`, `toISOString().slice/split`, `split("T")`), `R-010` (ordem de hooks), `R-090` (`res.json` sem `res.status`), `AP-299` (enums em `z.enum`), `R-204` (`div onClick`), `AP-366` (`getNow`/`getRawNow`/`nowInSP` dentro de `useMemo` em `apps/{web,mobile}/src/features`), `R-305` (`.update().eq()` sem `.select()` em `packages/core/src/repositories`), `AP-216` (`no-explicit-any` em `packages/core/src/{types,schemas}`) e `RC6 Ext #6` (`ASI_MOCK_CAST_SELECTOR` em testes — bloco isolado por *whitelist* `Override 3` com apenas `no-unexpected-multiline`, `no-dupe-keys` e `ASI_MOCK_CAST_SELECTOR`, sem falsos bloqueios de regras de app).
+- **Gates de repositório (`npm run lint:gates`, CI + `.lintstagedrc.mjs`):** `lint:unit-label` (`AP-306`), `lint:vigency` (`064`, web + mobile `features/*/services`, `features/*/utils`, `dashboard/hooks`), `lint:stock-forecast` (`066`) e `lint:migration-grants` (`108/R-325` em `docs/migrations/*.sql`).
+- **`test.yml` / `.lintstagedrc.mjs`:** incluem explicitamente `docs/migrations/**` e `scripts/**/*.{js,mjs}`.
 
 ## RC6 — como rodar
 
 Script vive na skill devflow (repo externo):
 
 ```bash
-bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#>          # dry-run (default): imprime JSON, não muta nada
-bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post   # publica review no PR + events.jsonl
-# devflow ≥ v3.3.0: o veredito também vai para ${TMPDIR}/rc6-<PR#>.json (ou --json-out=PATH).
+bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#>              # dry-run (default): imprime JSON, não muta nada
+bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post       # publica review no PR + events.jsonl
+bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --breakdown  # auditoria das 4 parcelas do preâmbulo (reconciliação 0B, sem LLM)
+# O veredito também vai para ${TMPDIR}/rc6-<PR#>.json (ou --json-out=PATH).
 # LEIA ESSE ARQUIVO — com 2>&1 o log e as mensagens do --post caem no mesmo stream e o parse quebra.
 ```
 
-Motores: `agy` primário (Gemini, quota OAuth extensa + diversidade de vendor) · `claude` pass B
-em Tier 2 (com `--setting-sources ""` — não carrega payload do projeto) · Codex só exceção
-(plano Go, quota baixa) · `/code-review` ultra apenas caso excepcional. Custo marginal ~$0.
+Motores (`engine-core.sh 1.3.0`): `agy` primário (`gemini-4-neon-medium` base, escalando chunks `HOT` para `gemini-4-neon-high` via `C2`) · `claude` Pass B em Tier 2 (`--tools "" --strict-mcp-config --setting-sources ""` — não carrega payload do projeto) · fallback de Pass B no `agy` chunked com roteamento adaptativo quando `claude` não está ativo. Custo marginal ~$0 (OAuth).
+
+### Receitas rápidas por cenário (para agentes coders)
+
+| Cenário do PR / revisão | Comando recomendado | O que acontece |
+|---|---|---|
+| **PR Tier 1** (`<8` arquivos, sem `rename`) | `bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post` | Só Pass A (`agy`): chunks `HOT` vão em `gemini-4-neon-high` (`10m`), `NORMAL`/`COLD` em `neon-medium` (`8m`). |
+| **PR Tier 2** (`>=8` arquivos ou com `rename`/migração) | `bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post` | Pass A (`agy` + escalonamento `HOT`) + Pass B (`claude` full-context focado em Ext #7/#8). |
+| **Quota do `claude` baixa/esgotada** | `RC6_ENGINE_CLAUDE=0 bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post` | Pass A (`agy` inteiro em `neon-medium` sem duplicar `high`) + Pass B (`agy` em `neon-high` nos chunks `HOT`/`NORMAL` e `neon-medium` em `COLD`). |
+| **PR grande (`>8` chunks) ou arquivo central cortado** | Inspecionar `coverage.not_reviewed` e re-rodar com `RC6_MAX_CHUNKS=10` (ou `12`) | `rank_chunks.py` prioriza os 8 chunks de maior risco; se um arquivo crítico cair fora, subir o cap explicitamente e declarar no PR. |
+| **PR com `.sql` / `.sh` / `.swift` / `.py`** | Comando padrão + conferência humana dos arquivos não-JS | Aparecem em `coverage.not_reviewed_by_type` com `partial: true`; declarar no PR quem revisou `docs/migrations/*.sql` (ver regra de GRANT abaixo). |
+| **Medir payload/preâmbulo antes de gastar quota** | `RC6_MEASURE=1 RC6_KEEP_PREAMBLE=1 bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#>` | Monta chunks (com `B1`/`B2`/`A1`), imprime bytes por chunk e sai sem chamar LLM. |
+| **Inspecionar quais regras o seletor escolheu** | `node scripts/select-rules.mjs --diff-file <diff> --limit 5` | Mostra as 5 regras/APs ranqueadas + motivo (`path`, `adj_path`, `diff_trigger`, `keyword`, `domain`). Use `--format card` se houver `review_card` no índice. |
+| **Segunda opinião em spec/plano (RC1–RC4)** | `bash ~/SKILLS/devflow/scripts/second-opinion.sh --artifact plan\|spec\|analysis --spec-dir <dir>` | Auditoria fria pré-código com os mesmos invariantes de segurança (`--measure` mede sem gastar LLM). |
 
 ⚠️ **Quando o agy cai e o claude cobre, a review acontece mas a propriedade do ADR-069 não.** O
 fallback preserva *cobertura*, não *diversidade de vendor* — e o claude do Pass B é o **mesmo modelo**
@@ -102,30 +119,48 @@ novo ou em outra máquina.
   entram se a medição acima mostrar a classe **recorrendo**. Sem linhas no `measurement.md`, não
   construir.
 
-## Tuning de contexto e quota (spec 056)
+## Tuning de contexto, seleção por chunk, grafo e effort
 
-O preâmbulo (CLAUDE.md + índices R/AP + detalhes) é fixo e reenviado por chunk — dívida composta:
-todo AP novo engorda TODO review futuro, e acima de ~160KB o agy amostra em silêncio. Controles:
+O preâmbulo (`CLAUDE.md` + `SELECTED MEMORIES` + índices `R`/`AP` + `DETAIL_FILES`) é reenviado por chunk — e o `agy 1.5.13` trunca silenciosamente o Turn 1 por volta de `~79.6K` `input_tokens` (amostrando/degradando acima de `~160 KB`). Controles em `~/SKILLS/devflow/scripts/ai-review.sh` e `~/SKILLS/devflow/scripts/lib/engine-core.sh`:
 
 | Env | Default | Efeito |
-|-----|---------|--------|
-| `RC6_IDX_LINE_MAX` | `110` | ⚠️ **LEGADO** — clamp por linha dos índices (era 230; -40% no preâmbulo, medido #756/#766). Corta por **caractere** desde o fix do #798; some quando `RC6_RULE_SELECTOR` virar default (spec 060/FR-015) |
-| `RC6_RULE_SELECTOR` | `0` | **(spec 060, em construção)** `=1` troca o clamp+pack filter pelo seletor cirúrgico sobre `compiled_rules_index.json`: manda 3–5 regras **inteiras** em vez de ~605 linhas truncadas. Fail-safe: índice ausente/corrompido ⇒ cai no pack filter da 056 |
-| `RC6_PACK_FILTER` | **`auto`** | Envia só os packs (`data_and_schema`, `react_and_ui`, `mobile_and_platform`, `infra_and_deploy`, `process_and_testing`, `notifications`, `test_hygiene`, `tooling_and_build`) dos caminhos alterados. **`auto`** = filtra **só o chunk** cujo payload não-filtrado passaria de `RC6_AUTO_FILTER_ABOVE`; abaixo disso não corta nada. `1` = sempre; `0` = nunca (**é a baseline do A/B do PO-5**). **Fail-safe:** caminho não-mapeado ⇒ catálogo inteiro. CLAUDE.md vai sempre inteira (regras transversais R-295/R-299/R-282) |
-| `RC6_AUTO_FILTER_ABOVE` | `150000` | limiar (bytes de payload do chunk) que dispara o `auto`. Empírico: o agy amostra em silêncio acima de ~160K |
-| `RC6_MEASURE` | `0` | `=1` monta preâmbulo+chunks, imprime bytes (preâmbulo, packs in/out, payload por chunk) e **PARA antes do engine** — medir sem gastar quota (o `--dry-run` AINDA chama engine) |
-| `RC6_KEEP_PREAMBLE` | `0` | `=1` (com MEASURE) dumpa o preâmbulo em `/tmp/rc6_preamble.txt` para auditar o filtro |
-| `RC6_MAX_CHUNKS` | `6` | teto de chunks revisados. Acima dele um **ranking de risco** escolhe quais entram e a cobertura fica `partial` (`not_reviewed` no JSON lista o que ficou de fora). Suba (ex.: `8`) quando o arquivo central do PR cair fora — #852: o componente principal da 069 A2 ficou fora do top-6; re-run com `=8` deu `coverage=full`. Re-run assim é exceção à regra 1×/PR e vai declarado no PR |
-| `RC6_ENGINE_CLAUDE` | `1` | `=0` tira o claude do RC6; Pass B cai p/ agy chunked (cobertura tier2 intacta). **Use quando a quota do claude estiver baixa** — o claude do Pass B é o MESMO motor dos agentes coders |
-| `RC6_PASSB_TIMEOUT` | `480` | teto wall-clock (s) do claude no Pass B; um claude que HANGA (esperando quota liberar) é morto e cai no fallback agy — não wedgeia o RC6 |
-| `RC6_JSON_OUT` | `${TMPDIR}/rc6-<PR>.json` | **(devflow v3.3.0)** onde o veredito é gravado (= `--json-out=PATH`). É a fonte para ler achados e cobertura. Arquivo de risco fora dos globs de código (`.sql .swift .kt .java .m .py .sh`) aparece em `coverage.not_reviewed_by_type` e deixa o veredito `partial` — declarar no PR quem revisou esses arquivos |
-| `RC6_MAIN` | **auto** (`baseRefName` do PR) | branch-base do diff. **Desde 2026-07-29 é derivada do próprio PR** (`gh pr view --json baseRefName`), não mais `main` fixo. Só defina à mão para revisar contra outra base |
-| `RC6_PROBE_TIMEOUT` | `30s` | teto do probe de liveness do agy (roda uma vez por run, antes do Pass A). Um agy que não responde é tratado como ausente em ≤30s em vez de custar 8min × nº de chunks |
-| `RC6_SKIP_PROBE` | `0` | `=1` pula o probe. Só use se souber que o agy está saudável e quiser poupar ~6s + uma chamada barata |
-| `RC6_AGY_TIMEOUT` | `8m` | `--print-timeout` do agy por chunk. Baixe em PR pequeno se quiser falha rápida |
-| `RC6_AB` | **`auto`** | captura do par A/B do PO-5 (spec 056). `auto` = arma sozinho quando o PR qualifica; `0` desliga; `1` força (ignora os desarmes). Ver o bloco 🔬 abaixo |
-| `RC6_AB_MIN_PACKS` | `3` | mínimo de packs no diff para o par valer a pena — abaixo disso o filtro omite pouco e o A/B não tem contraste |
-| `RC6_AB_LOG` | `plans/specs/034-gemini-sunset/measurement.md` | onde a linha do par é appendada. Se o arquivo não existir, o A/B não arma (mantém o script utilizável fora do dosiq) |
+|---|---|---|
+| `RC6_CTX_TOTAL_MAX` | `150000` | Teto global (bytes) do payload por chunk (preâmbulo + diff + full files + callees). |
+| `RC6_IDX_LINE_MAX` | `80` | Clamp em **caracteres** (spec 080, via Python UTF-8 seguro) de cada linha dos catálogos `RULES_INDEX.md` / `ANTI_PATTERNS_INDEX.md`. |
+| `RC6_GROWTH_MAX_BPD` | `1500` | Teto diário (bytes/dia) de crescimento da parcela `wiki` medido contra `.agent/memory/rc6-preamble-baseline.json` (falha aberta com degradação `80→55→40c` apenas no `wiki`, preservando `CLAUDE.md`). |
+| `RC6_PACK_FILTER` | **`auto`** | Envia só os packs (`data_and_schema`, `react_and_ui`, `mobile_and_platform`, `infra_and_deploy`, `process_and_testing`, `notifications`, `test_hygiene`, `tooling_and_build`) dos caminhos do chunk. **`auto`** filtra **só o chunk** que passaria de `RC6_AUTO_FILTER_ABOVE` (`150000`). **Fail-safe:** caminho não-mapeado ⇒ catálogo inteiro; `CLAUDE.md` nunca é filtrado. |
+| `RC6_SELECTOR` | **`1`** | (`=0` desliga) Ativa `scripts/select-rules.mjs` injetando o bloco `SELECTED MEMORIES` ranqueado pelo diff (+ `--related-paths` quando `RC6_SELECTOR_RELATED=1`). |
+| `RC6_SELECTOR_LIMIT` | `5` | Quantidade máxima de regras/APs selecionadas pelo seletor por chamada. |
+| `RC6_SELECTOR_FORMAT` | `""` | Vazio = texto integral (`full`). Use `card` para instruir `--format card` (`Review Cards <=450 B` quando presentes em `compiled_rules_index.json`, com fallback automático para `full`). |
+| `RC6_SELECTOR_RELATED` | `1` | Repassa os arquivos vizinhos de 1 hop (`chunk_i.related`, até 15 caminhos não presentes no chunk) via `--related-paths` ao seletor (`adj_path` ativa quando há `diff_trigger` real). |
+| `RC6_RULE_GRAPH` | `0` *(opt-in)* | Em `select-rules.mjs`, `=1` (ou `--graph`) liga o boost de grafo documental (`docNeighbors`) + histórico (`events.jsonl`), limitado a `<=20%` (`<=5.0` pts) e bloqueado para globs boilerplate sem evidência. Recomendado manter `0` até o lote completo de Review Cards/triggers no índice compilado. |
+| `RC6_CHUNK_SCOPE` | **`1`** | **`A1` (default ativo):** roda `select-rules.mjs` e `DETAIL_FILES` (`RC6_DETAIL_MAX=24000`) **por chunk** (com dedupe local entre `DETAIL` e `SELECTED` e válvula de corte pós-montagem sob `RC6_CTX_TOTAL_MAX`). Reservas de planejamento: `RC6_CHUNK_DETAIL_RESERVE=6000`, `RC6_CHUNK_SEL_RESERVE=12000`. `=0` restaura o escopo global legado. |
+| `RC6_GRAPH_CHUNK` | **`1`** | **`B1` (default ativo):** empacota chunks por coesão de grafo (`rc6_graph_context.py chunk`) via `.graftroom/.graph/wiring.json` + fallback regex/`tsconfig`/barrels + pareamento `teste ↔ alvo`, em vez de ordem alfabética (`=0` restaura ordem sequencial). |
+| `RC6_CALLEES` | **`1`** | **`B2` (default ativo):** fatia definições externas chamadas nos hunks (`rc6_graph_context.py callees`, arquivos não modificados/fora do chunk) sob `===== EXTERNAL CALLEES =====`, respeitando a folga até `RC6_CALLEES_MAX_BYTES` (`12000`). `=0` desliga. |
+| `RC6_ADAPTIVE_EFFORT` | **`auto`** | **`C2`:** classifica chunks via `rank_chunks.py` (`HOT`, `NORMAL`, `COLD`, limiar `RC6_EFFORT_HOT_MIN=4`). Em Tier 1 ou Tier 2 + `claude`, chunks `HOT` no Pass A sobem para `RC6_AGY_HOT_MODEL` (`gemini-4-neon-high`, `RC6_AGY_HOT_TIMEOUT=10m`). Em Tier 2 `agy`-only, Pass A usa modelo base (`neon-medium`, sem duplicar `high`) e Pass B rebaixa apenas chunks `COLD` (`__tests__`, `_dev`, fixtures) para o modelo base. `=0` ou `RC6_AGY_MODEL` explícito trava modelo fixo. |
+| `RC6_MAX_CHUNKS` | **`8`** | Teto de chunks revisados (`rank_chunks.py` seleciona os de maior risco; acima do teto `coverage.partial=true` e `not_reviewed` lista os descartados). |
+| `RC6_MEASURE` | `0` | `=1` monta preâmbulo + chunks (`B1`/`B2`/`A1`) + ranking, imprime contabilidade em bytes e **PARA antes do engine** (`$0` de quota). Use `RC6_KEEP_PREAMBLE=1` para dumpar o preâmbulo em `/tmp/rc6_preamble.txt`. |
+| `RC6_ENGINE_CLAUDE` | `1` | `=0` desliga o `claude` do RC6; Pass B roda no `agy` chunked (`C2`). Use quando a quota do `claude` estiver baixa. |
+| `RC6_PASSB_TIMEOUT` | `480` | Teto wall-clock (`s`) do `claude` no Pass B (também aceita `RC6_AGY_PASSB_MODEL=gemini-4-neon-high` e `RC6_AGY_PASSB_TIMEOUT=10m` no fallback `agy`). |
+| `RC6_JSON_OUT` | `${TMPDIR}/rc6-<PR>.json` | Caminho de escrita do veredito JSON (`--json-out=PATH`). Leia este arquivo (não stdout) para checar findings e `coverage`. |
+| `RC6_MAIN` | **auto** (`baseRefName`) | Branch-base do diff (`gh pr view --json baseRefName`). Defina manualmente apenas ao comparar contra outra base ou offline. |
+| `RC6_PROBE_TIMEOUT` | `30s` | Teto do probe inicial de liveness do `agy` (`RC6_SKIP_PROBE=1` pula). |
+| `RC6_AGY_TIMEOUT` | `8m` | `--print-timeout` base do `agy` por chunk. |
+| `RC6_AGY_TRUNC_TOKENS` | `78000` | Limiar para detecção determinística de truncamento silencioso de Turn 1 do `agy` (`num_turns=1`, prefill perto de `~79.6K` tokens ⇒ `truncated: true`, superfície no `VERDICT` e em `coverage.truncated_chunks`). |
+| `RC6_RETRIES` / `RC6_AGY_MODEL_FALLBACK` | `2` / `gemini-4-hydrogen-medium` | Resiliência do `@core 1.2+` (spec 003): backoff `RC6_BACKOFF="30 90"`, `RC6_JITTER=1`, orçamento extra `RC6_RETRY_BUDGET=300`, breaker `RC6_BREAKER=3` e fallback de pool em `503`/timeout. `RC6_STATUS_FILE` grava progresso JSONL ao vivo. |
+| `RC6_AB` / `RC6_AB_MIN_PACKS` | **`auto`** / `3` | Captura automática do par A/B do PO-5 em `RC6_AB_LOG` (`plans/specs/034-gemini-sunset/measurement.md`), desarmada se ausente. |
+
+### Arquitetura do Seletor (`select-rules.mjs`), Review Cards (`compile-review-cards.mjs`) e Grafo (`B1`/`B2`)
+
+- **Seletor (`scripts/select-rules.mjs`, zero dependências externas para rodar em worktrees isolados):**
+  - **Globs:** usa curva sublinear `PATH_SPEC_CURVE` por especificidade e aplica desconto de *crowd* (`0.65×` para globs com `df >= 10`, `0.35×` para `df >= 20`) para impedir que globs boilerplate (ex.: `apps/web/**`) sufoquem regras específicas.
+  - **Triggers e keywords:** `isValidTrigger()` filtra tokens degenerados (`"*"` em `AP-372`); `diff_triggers` (até `MAX_TRIGGER_HITS=4`) e `keywords` (tokenização *code-aware* camelCase + `stripAccents`, sem substring para `<=3` chars) pontuam com ponderação **IDF**.
+  - **Diversidade por domínio:** usa 3 vagas livres por domínio + decaimento leve (`0.95^k`), preservando consistência por prefixo (`top-5 == top-20.slice(0, 5)`).
+- **Review Cards (`scripts/compile-review-cards.mjs`):**
+  - Compilador determinístico para geração offline de *Review Cards* (`<= 450 B`) + validação contra o repositório real (`validateTriggersAgainstRepo` com `TRIGGER_MAX_REPO_SHARE=0.20`, `GLOB_MAX_REPO_SHARE=0.45`, preservação obrigatória de símbolos backtick e exceções `(exc: ...)`). Destilação batch recomendada em **Ollama local (`gemma4:12b-mlx`)** para custo `$0` de quota OAuth.
+- **Grafo & Callees (`rc6_graph_context.py` em `devflow/scripts/`):**
+  - **`B1`:** usa `.graftroom/.graph/wiring.json` quando presente e sempre complementa com parser regex + resolução de aliases (`@dosiq/*`, `@features/*`, `tsconfig.json`) + barrels (`index.*`) para funcionar também em worktrees/CI sem `.graftroom/`. Elevou a coesão `prod ↔ prod` no corpus de `26.7%` para **`57.5%`** (`52.2%` mesmo sem `.graftroom/`).
+  - **`B2`:** cruza hunks modificados (`chunk_i.diff`) com símbolos no `wiring.json` (+ 1 hop intra-arquivo) e imports novos resolvidos via barrels, injetando até `12 KB` de definições externas inalteradas ao final do bloco de código do chunk.
 
 **🔴 Base do diff — a armadilha que custou 3 runs errados:** até 2026-07-29 o default era `main` fixo.
 Numa onda com **branch de integração** (055: `feature/055-w1-sdk54`), isso fazia o RC6 revisar o diff
@@ -294,12 +329,18 @@ sobre um diff não-confiável). Absorvemos as estratégias:
 
 ## Regras de operação (aprendidas em produção)
 
+- **Checklist de veredito após todo RC6:** antes de declarar revisão limpa, confira o arquivo JSON (`RC6_JSON_OUT`) e a linha `VERDICT:` no stderr:
+  - `coverage.partial` (`false` esperado; se `true`, checar `coverage.not_reviewed` e `coverage.not_reviewed_by_type`);
+  - `coverage.truncated_chunks` (`0` esperado; `>0` ou `truncated=` no `VERDICT` indica que Turn 1 do `agy` bateu o teto de `~79.6K` tokens — baixar `RC6_CTX_TOTAL_MAX` ou dividir o chunk);
+  - `coverage.selector.status` (`ok`; se `failed` ou `empty`, inspecionar `reason`);
+  - `coverage.effort` (tier `HOT`/`NORMAL`/`COLD` por chunk e `pass_a_escalate_hot`);
+  - `coverage.per_pass` e `independent_reviewers` (`min`/`max`).
 - **RC6 roda UMA vez por PR.** Acima do budget não existe consistência entre runs — re-rodar
   "pra confirmar" só queima quota (caso #757: 5 runs = >30% da quota 5h do claude, 3 resultados
   disjuntos). Resultado com aviso de budget no stderr = **advisory**: julgar findings no mérito.
-- **PR grande: chunking automático.** Acima de ~150KB o script fatia o diff por arquivo e roda
-  1 chamada agy por chunk (merge consolida; label `agy (N chunks)`). Cap de 6 chunks (`RC6_MAX_CHUNKS`) — além disso a coverage fica PARCIAL com aviso: confira
-  `not_reviewed`; se o arquivo central do PR estiver lá, suba o teto ou fatie o PR. Causa: >160KB o agy AMOSTRA o input
+- **PR grande: chunking por grafo automático (`B1`).** Acima do budget do chunk (`CTX_TOTAL_MAX - preâmbulo - 8000`) o script agrupa arquivos acoplados via grafo de imports e roda
+  1 chamada `agy` por chunk (merge consolida; label `agy (N chunks)`). Cap default de **8 chunks** (`RC6_MAX_CHUNKS`) — além disso `rank_chunks.py` prioriza os 8 mais arriscados e a coverage fica PARCIAL com aviso: confira
+  `not_reviewed`; se o arquivo central do PR estiver lá, suba o teto (`RC6_MAX_CHUNKS=10`) ou fatie o PR. Causa: >160KB o `agy` AMOSTRA o input
   em silêncio (bisect 2026-07-17: 160K ok, 200K degrada com exit 0).
 - **Motor "quebrado" em 100% dos chunks → desconfie do PAYLOAD antes do motor.** Falha uniforme não
   é característica de quota (que degrada), nem de rede (que varia): é característica de entrada

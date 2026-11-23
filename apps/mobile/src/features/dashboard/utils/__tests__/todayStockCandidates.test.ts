@@ -1,5 +1,5 @@
 // spec 120 C · PO-120-13/19 — degraus da régua para estoque e compra (D-13, C1.5 C-1/C-2).
-import { buildStockCandidates, stockLevelOf, isWithin24h, nextDoseOfMedicine } from '../todayStockCandidates'
+import { buildStockCandidates, groupStockCandidates, stockLevelOf, isWithin24h, nextDoseOfMedicine } from '../todayStockCandidates'
 
 afterEach(() => {
   jest.clearAllMocks()
@@ -94,5 +94,26 @@ describe('S-21 — próxima compra escala pela régua da aba Estoque', () => {
     const [c] = buildStockCandidates([], [notice(date as string, d as number)], [], NOW15)
     expect(c.kind).toBe(kind)
     expect(c.key).toBe(key)
+  })
+})
+
+// Smoke 125 2a (PO 22/11): agrupamento roda depois da dispensa; chave leva os ids.
+describe('groupStockCandidates', () => {
+  const cand = (id: string, level: any, extra: any = {}) => ({
+    kind: level, key: `${level}:${id}`, order: 0,
+    payload: { type: 'stock', level, item: { medicineId: id, medicineName: id, daysRemaining: 0, isZero: true }, nextDose: extra.nextDose ?? null },
+    dismissed: extra.dismissed ?? false,
+  }) as any
+
+  it('2 do mesmo nível ⇒ 1 grupo com a dose mais cedo', () => {
+    const out = groupStockCandidates([cand('a', 'stock_zero', { nextDose: { date: '2026-11-23', time: '09:00' } }), cand('b', 'stock_zero', { nextDose: { date: '2026-11-23', time: '08:00' } })])
+    expect(out).toHaveLength(1)
+    expect(out[0].key).toBe('stock_zero:group:a,b')
+    expect(out[0].payload.nextDose).toEqual({ date: '2026-11-23', time: '08:00' })
+  })
+
+  it('níveis diferentes e dispensados não agrupam', () => {
+    const out = groupStockCandidates([cand('a', 'stock_zero'), cand('b', 'stock_low'), cand('c', 'stock_zero', { dismissed: true })])
+    expect(out.map((c: any) => c.payload.type)).toEqual(['stock', 'stock', 'stock'])
   })
 })

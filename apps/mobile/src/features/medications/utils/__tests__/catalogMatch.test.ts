@@ -1,5 +1,5 @@
 // RC5 119 B: força/forma salvas vencem o rascunho em edição; índice da base construído uma vez.
-import { catalogLinkPayload, keepSavedStrength, suggestionIndexFor } from '../catalogMatch'
+import { boxKeepsSavedStrength, keepSavedStrength, linkMatchesFor, suggestionIndexFor } from '../catalogMatch'
 
 describe('catalogMatch (119 B, RC5)', () => {
   afterEach(() => {
@@ -18,8 +18,8 @@ describe('catalogMatch (119 B, RC5)', () => {
     expect(keepSavedStrength(null, draftValues)).toBe(draftValues)
   })
 
-  it('catalogLinkPayload: força diferente ⇒ null (bloqueio da edição e do vínculo)', () => {
-    expect(catalogLinkPayload({ dosage_per_pill: 2.5, dosage_unit: 'mg/ml' }, { ...draftValues, therapeutic_class_code: 'A10S' })).toBeNull()
+  it('boxKeepsSavedStrength: força diferente ⇒ trava a edição', () => {
+    expect(boxKeepsSavedStrength({ dosage_per_pill: 2.5, dosage_unit: 'mg/ml' }, { ...draftValues, therapeutic_class_code: 'A10S' })).toBe(false)
   })
 
   it('suggestionIndexFor: mesma base ⇒ mesmo índice (sem reconstruir)', () => {
@@ -29,40 +29,46 @@ describe('catalogMatch (119 B, RC5)', () => {
   })
 })
 
-describe('vínculo com unidade sem número (smoke 1c, "Aas" comprimido null + g)', () => {
-  const draft = { name: 'AAS', dosage_per_pill: 100, dosage_unit: 'mg', presentation: 'comprimido', therapeutic_class_code: 'B01C' }
-  it('unidade sozinha não é força conhecida: vincula e traz 100 mg da caixa', () => {
-    const payload = catalogLinkPayload({ name: 'Aas', presentation: 'comprimido', dosage_per_pill: null, dosage_unit: 'g' }, draft)
-    expect(payload).toMatchObject({ dosage_per_pill: 100, dosage_unit: 'mg' })
+describe('boxKeepsSavedStrength — trava do form em edição (E-R5-5; o vínculo da Hoje é o core)', () => {
+  const box = { name: 'AAS', dosage_per_pill: 100, dosage_unit: 'mg', presentation: 'comprimido', therapeutic_class_code: 'B01C' }
+  it('unidade sozinha não é força conhecida: a caixa entra', () => {
+    expect(boxKeepsSavedStrength({ presentation: 'comprimido', dosage_per_pill: null, dosage_unit: 'g' }, box)).toBe(true)
   })
-  it('com número, unidade diferente segue não vinculando (R-299)', () => {
-    expect(catalogLinkPayload({ presentation: 'comprimido', dosage_per_pill: 100, dosage_unit: 'g' }, draft)).toBeNull()
+  it('com número, unidade diferente trava (R-299)', () => {
+    expect(boxKeepsSavedStrength({ presentation: 'comprimido', dosage_per_pill: 100, dosage_unit: 'g' }, box)).toBe(false)
   })
-  it('pomada fica em un: a força da caixa não entra', () => {
-    const payload = catalogLinkPayload({ presentation: 'pomada', dosage_per_pill: null, dosage_unit: 'un' }, { ...draft, presentation: 'pomada', dosage_unit: 'g', dosage_per_pill: 30 })
-    expect(payload).not.toBeNull()
-    expect(payload).not.toHaveProperty('dosage_per_pill')
-    expect(payload).not.toHaveProperty('dosage_unit')
+  it('cadastro em "un" com caixa sólida: a caixa entra', () => {
+    expect(boxKeepsSavedStrength({ presentation: 'outro', dosage_per_pill: 1, dosage_unit: 'un' }, box)).toBe(true)
   })
   it('edição: unidade salva sem número não vence a da caixa', () => {
     expect(keepSavedStrength({ dosage_per_pill: null, dosage_unit: 'g' }, { dosage_per_pill: 100, dosage_unit: 'mg' })).toEqual({ dosage_per_pill: 100, dosage_unit: 'mg' })
   })
 })
 
-describe('cadastro em "un" com caixa de comprimido (smoke 1c, heurística mínima)', () => {
-  const box = { name: 'AAS', dosage_per_pill: 100, dosage_unit: 'mg', presentation: 'comprimido', therapeutic_class_code: 'B01C' }
-  it('"outro" 1 un ⇒ vira comprimido 100 mg', () => {
-    expect(catalogLinkPayload({ presentation: 'outro', dosage_per_pill: 1, dosage_unit: 'un' }, box)).toMatchObject({
-      presentation: 'comprimido', dosage_per_pill: 100, dosage_unit: 'mg',
-    })
+// Smoke 2a (PO 22/11): o ranking por raridade deixava uma palavra genérica rara propor outro remédio.
+describe('linkMatchesFor (125 2a)', () => {
+  const base = [
+    { name: 'Babymed Tratamento', activeIngredient: 'Nistatina; Óxido de Zinco', laboratory: 'X' },
+    { name: 'Losartana Potássica', activeIngredient: 'Losartana Potássica' },
+    { name: 'Aradois', activeIngredient: 'Losartana Potássica', laboratory: 'Y' },
+    { name: 'Mounjaro', activeIngredient: 'Tirzepatida', laboratory: 'Lilly' },
+    { name: 'Oxalato De Escitalopram', activeIngredient: 'Oxalato De Escitalopram' },
+    { name: 'Esc Odt', activeIngredient: 'Oxalato De Escitalopram', laboratory: 'Z' },
+  ]
+
+  it('exige todas as palavras conhecidas: "Losartana sem tratamento" não vira "Babymed Tratamento"', () => {
+    expect(linkMatchesFor(base, '[s125] Losartana sem tratamento', null).map((i) => i.name)).not.toContain('Babymed Tratamento')
   })
-  it('comprimido 32 un ⇒ assume 100 mg, forma fica', () => {
-    const p = catalogLinkPayload({ presentation: 'comprimido', dosage_per_pill: 32, dosage_unit: 'un' }, box)
-    expect(p).toMatchObject({ dosage_per_pill: 100, dosage_unit: 'mg' })
-    expect(p).not.toHaveProperty('presentation')
+
+  it('erro de digitação segue pelo fuzzy: Tizerpatida → Mounjaro', () => {
+    expect(linkMatchesFor(base, 'Tizerpatida', null).map((i) => i.name)).toEqual(['Mounjaro'])
   })
-  it('caixa líquida não sobrescreve "un" (estoque mudaria de sentido)', () => {
-    const p = catalogLinkPayload({ presentation: 'outro', dosage_per_pill: 1, dosage_unit: 'un' }, { ...box, presentation: 'liquido', dosage_unit: 'mg/ml', dosage_per_pill: 50 })
-    expect(p).toBeNull()
+
+  it('nome idêntico (no nome ou no princípio ativo cadastrado) vence a marca', () => {
+    expect(linkMatchesFor(base, 'Escitalopram', 'Oxalato de Escitalopram').map((i) => i.name)).toEqual(['Oxalato De Escitalopram'])
+  })
+
+  it('RC6 #973: exato pelo princípio ativo precisa cobrir o nome — "Aradois H" não vira o genérico', () => {
+    expect(linkMatchesFor(base, 'Aradois H', 'Losartana Potássica').map((i) => i.name)).not.toContain('Losartana Potássica')
   })
 })

@@ -54,7 +54,7 @@ describe('ProtocolFormBody — 125 T015', () => {
     const { getByText, queryByTestId } = render(
       <ProtocolFormBody {...baseProps} medicine={medicine} form={makeForm({ dosage_per_intake: 0.6, intake_unit: 'mg' })} />,
     )
-    expect(getByText('0,6 parece mL. A dose é em mg? Confira o número com "mg" ao lado.')).toBeTruthy()
+    expect(getByText(/0,6 mg é bem menos que isso\. Confira na receita quanto você aplica, em mg\./)).toBeTruthy()
     fireEvent.press(getByText('Usar 0,6 mg mesmo assim'))
     expect(queryByTestId('dose-warnings')).toBeNull()
   })

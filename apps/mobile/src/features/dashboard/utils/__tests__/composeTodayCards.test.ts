@@ -107,4 +107,28 @@ describe('composeTodayCards', () => {
       expect(composeTodayCards({ alert: alert('stock_urgent'), setup: falta }).lower).toHaveLength(1)
     })
   })
+
+  describe('2a — Corrigir forma e Vincular no degrau 3 (PO 21/11 Q1)', () => {
+    const forma = { kind: 'forma', medicineId: 'm2', protocolId: 'p2', mismatch: { proposed: 'injetavel', reason: 'catalog' } } as any
+    const vincular = { kind: 'vincular', medicineId: 'm3', protocolId: 'p3' } as any
+
+    it('ficam acima do widget, como o Confira', () => {
+      expect(composeTodayCards({ alert: null, setup: forma }).upper.map((c) => c.tier)).toEqual([3])
+      expect(composeTodayCards({ alert: null, setup: vincular }).upper.map((c) => c.tier)).toEqual([3])
+    })
+    it('alerta no mesmo degrau (bateria restrita, 3) vem antes e o setup espera — degrau 3 não abre 2ª vaga', () => {
+      const r = composeTodayCards({ alert: { kind: 'oem', key: 'oem', oemReason: 'restricted' } as any, setup: vincular })
+      expect(keys(r.upper)).toEqual(['oem'])
+      expect(r.lower).toEqual([])
+    })
+    it('vermelho (1) libera a 2ª vaga: sem estoque em 24 h + Corrigir forma ⇒ os dois acima; só o 1º é o foco', () => {
+      const r = composeTodayCards({ alert: alert('stock_zero'), setup: forma })
+      expect(r.upper.map((c) => c.tier)).toEqual([1, 3])
+    })
+    it('vence acabando (4): o alerta vira sinal na casa', () => {
+      const r = composeTodayCards({ alert: alert('supply'), setup: vincular })
+      expect(r.upper.map((c) => c.tier)).toEqual([3])
+      expect(r.dropped.map((d) => d.kind)).toEqual(['supply'])
+    })
+  })
 })
