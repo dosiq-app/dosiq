@@ -113,7 +113,7 @@ Dosiq — Ativação de conta
       </div>
 
       <!-- Spec 123 FR-012 (RC-SEC S-1): aviso a quem não se cadastrou, logo abaixo do botão -->
-      <p class="email-body-text" style="font-size: 14px; line-height: 1.5; color: #3e4946; margin: 0 0 24px; text-align: center;"><strong style="color: #191c1d;">Se você não se cadastrou no dosiq, ignore este e-mail.</strong> Nenhuma conta será criada.</p>
+      <p class="email-body-text" style="font-size: 14px; line-height: 1.5; color: #3e4946; margin: 0 0 24px; text-align: center;"><strong>Se você não se cadastrou no dosiq, ignore este e-mail.</strong> Nenhuma conta será criada.</p>
 
       <!-- Caixa Híbrida de Código OTP -->
       <div class="otp-box" style="background-color: #f2f4f5; padding: 16px; border-radius: 16px; text-align: center; margin: 24px 0;">
