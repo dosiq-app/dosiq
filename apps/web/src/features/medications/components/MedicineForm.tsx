@@ -41,6 +41,8 @@ export default function MedicineForm({
     shakeFields,
     saveSuccess,
     setSaveSuccess,
+    activeIngredientFromAnvisa,
+    setActiveIngredientFromAnvisa,
     handleChange,
     handleMedicineSelect,
     handleLaboratorySelect,
@@ -78,6 +80,8 @@ export default function MedicineForm({
         setSaveSuccess={setSaveSuccess}
         handleChange={handleChange}
         handleMedicineSelect={handleMedicineSelect}
+        activeIngredientFromAnvisa={activeIngredientFromAnvisa}
+        setActiveIngredientFromAnvisa={setActiveIngredientFromAnvisa}
         medicine={medicine}
       />
 
