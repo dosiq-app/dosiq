@@ -5,7 +5,7 @@
 // G-B5). L3 só com escada COMPLETA (AP-311) — sem ela, some.
 // Superfície de dose/medida, não alerta nem promo: não entra no árbitro da 120 C (H-1).
 // 124 A: tratamento NÃO wedge com cadência ≥ 7 d também ganha o módulo ("ACOMPANHAMENTO"), só com a L1
-// (L3 é do wedge). L1 aberta → "Ver aplicações/doses anteriores" (sheet da dose).
+// (L3 é do wedge). L1 aberta → "Ver todas as aplicações" (só injetável) (sheet da dose).
 // 124 B: com > 1 elegível o cabeçalho vira seletor (sheet "Acompanhar", FR-012) e o título fica
 // "ACOMPANHAMENTO" (FR-015); a L2 segue a medida do tratamento selecionado (FR-016, `widgetMeasure`).
 
@@ -321,10 +321,11 @@ export default function TreatmentWeekModule({
           injectable={injectable}
           daily={daily}
           setup={setupRows?.length ? { rows: setupRows, onAdjust: () => onAdjustTreatment?.(protocol.id) } : null}
-          onOpenHistory={daily ? null : () => setHistoryOpen(true)}
+          // Smoke 124 B (PO 24/11): sheet só para injetável — no oral repete a lista das últimas doses.
+          onOpenHistory={daily || !injectable ? null : () => setHistoryOpen(true)}
         />
       ) : null}
-      {doseEligible && !daily ? (
+      {doseEligible && !daily && injectable ? (
         <DoseNavSheet
           visible={historyOpen}
           onClose={() => setHistoryOpen(false)}

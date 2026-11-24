@@ -117,6 +117,12 @@ describe('TreatmentWeekModule — 124 B', () => {
     expect(s.queryByTestId('weight-row')).toBeNull()
   })
 
+  it('oral semanal: sem link nem sheet da dose (smoke 24/11 — a lista das últimas doses já cobre)', () => {
+    const s = render(<TreatmentWeekModule {...base} protocol={{ ...monthly, frequency: 'semanal', medicine: { name: 'Selozok', presentation: 'comprimido' } }} isWedge={false} />)
+    fireEvent.press(s.getByTestId('dose-row'))
+    expect(s.queryByTestId('dose-nav')).toBeNull()
+  })
+
   it('mensal nenhum ⇒ L2 some (C-4)', () => {
     const s = render(<TreatmentWeekModule {...base} protocol={monthly} isWedge={false} />)
     expect(s.queryByTestId('weight-row')).toBeNull()
