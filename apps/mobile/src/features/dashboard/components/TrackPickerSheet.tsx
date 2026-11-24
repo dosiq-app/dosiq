@@ -3,7 +3,7 @@
 // (`trackedStatusLine`). Selecionado = fundo tingido + ✓. A escolha vale só na sessão (FR-014).
 // Mesmo padrão de Modal slide do sheet da dose (124 A).
 
-import { Modal, View, Text, Pressable, StyleSheet, Platform, StatusBar } from 'react-native'
+import { Modal, View, Text, Pressable, ScrollView, StyleSheet, Platform, StatusBar } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
@@ -40,6 +40,8 @@ export default function TrackPickerSheet({ visible, items, selectedId, onSelect,
               <X size={22} color={colors.text.secondary} />
             </Pressable>
           </View>
+          {/* RC6 #977: lista rola dentro de um sheet limitado (fonte grande / muitos tratamentos). */}
+          <ScrollView style={styles.list} contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
           {items.map((it) => {
             const on = it.id === selectedId
             const Icon = it.injectable ? Syringe : Pill
@@ -65,6 +67,7 @@ export default function TrackPickerSheet({ visible, items, selectedId, onSelect,
               </Pressable>
             )
           })}
+          </ScrollView>
           <Text style={styles.footnote}>A escolha vale até fechar o app.</Text>
         </SafeAreaView>
       </View>
@@ -83,7 +86,10 @@ const styles = StyleSheet.create({
     paddingTop: spacing[2],
     paddingBottom: spacing[6],
     gap: spacing[2],
+    maxHeight: '85%',
   },
+  list: { flexGrow: 0 },
+  listContent: { gap: spacing[2] },
   handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: borderRadius.full, backgroundColor: colors.neutral[300], marginBottom: spacing[1] },
   headRow: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
   title: { flex: 1, fontSize: 19, lineHeight: 24, fontWeight: '800', color: colors.text.primary },

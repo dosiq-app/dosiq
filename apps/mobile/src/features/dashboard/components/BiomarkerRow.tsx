@@ -7,12 +7,12 @@
 // Registro: `MeasureValueFields` + Zod do core; grava só por `measuresRepo.create` (R-231), entry
 // `today_inline`. SaMD (ADR-062): sem faixa, meta, cor de juízo ou texto interpretativo.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, Pressable, StyleSheet } from 'react-native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
 const { Ruler, ChevronDown, ChevronUp } = LucideIcons as any
-import { addDays, coerceDecimal, formatLocalDate, getNow, getUserTime, parseISO, shiftDay, validateBiomarkerLog, BIOMARKER_TYPE_UNITS } from '@dosiq/core'
+import { addDays, coerceDecimal, formatLocalDate, getNow, getRawNow, getUserTime, parseISO, shiftDay, validateBiomarkerLog, BIOMARKER_TYPE_UNITS } from '@dosiq/core'
 import MeasureValueFields from '@measures/components/MeasureValueFields'
 import ScatterTrend from '@measures/components/ScatterTrend'
 import { measuresRepo } from '@measures/services/measuresRepo'
@@ -54,21 +54,24 @@ function newest(items: Item[]): Item | null {
 function useBiomarkerSeries(measure: CardMeasure, reloadKey: unknown) {
   // States
   const [state, setState] = useState<{ loading: boolean; error: LoadError; items: Item[] | null }>({ loading: true, error: null, items: null })
+  // RC6 #977: geração — só a carga mais recente aplica (salvar durante uma leitura lenta não volta atrás).
+  const genRef = useRef(0)
   // Handlers
-  const load = useCallback(async (alive: () => boolean = () => true) => {
+  const load = useCallback(async () => {
+    const gen = ++genRef.current
     setState((s) => ({ ...s, loading: true, error: null }))
     try {
-      const items = await measuresRepo.list({ type: measure, fromTs: addDays(getNow(), -FETCH_DAYS).toISOString() })
-      if (alive()) setState({ loading: false, error: null, items: items ?? [] })
+      // RC6 #977: instante real (getRawNow) — `getNow` é relógio de parede do fuso, deslocado em `toISOString`.
+      const items = await measuresRepo.list({ type: measure, fromTs: addDays(getRawNow(), -FETCH_DAYS).toISOString() })
+      if (gen === genRef.current) setState({ loading: false, error: null, items: items ?? [] })
     } catch (err) {
-      if (alive()) setState((s) => ({ loading: false, error: isNetworkError(err) ? 'network' : 'other', items: s.items }))
+      if (gen === genRef.current) setState((s) => ({ loading: false, error: isNetworkError(err) ? 'network' : 'other', items: s.items }))
     }
   }, [measure])
-  // Effects — troca de medida/recarga; resposta de medida antiga descartada.
+  // Effects — troca de medida/recarga; desmontar invalida a geração em voo.
   useEffect(() => {
-    let alive = true
-    void load(() => alive)
-    return () => { alive = false }
+    void load()
+    return () => { genRef.current++ }
   }, [load, reloadKey])
   return { ...state, reload: () => void load() }
 }

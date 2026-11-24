@@ -108,4 +108,16 @@ describe('useTrackedSelection', () => {
     await waitFor(() => expect(other.result.current.ready).toBe(true))
     expect(other.result.current.selectedId).toBe(MENSAL)
   })
+
+  it('RC6 #977: escolha vale quando o usuário chega depois do 1º render (remount)', async () => {
+    const a = setup({ userId: null })
+    a.rerender({ userId: 'u1', eligible, protocols, fallbackId: WEDGE, todayLocal: TODAY, timezone: TZ })
+    await waitFor(() => expect(a.result.current.ready).toBe(true))
+    act(() => a.result.current.select(WEDGE))
+    a.unmount()
+    const b = setup({ userId: null })
+    b.rerender({ userId: 'u1', eligible, protocols, fallbackId: WEDGE, todayLocal: TODAY, timezone: TZ })
+    await waitFor(() => expect(b.result.current.ready).toBe(true))
+    expect(b.result.current.selectedId).toBe(WEDGE)
+  })
 })

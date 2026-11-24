@@ -117,7 +117,8 @@ describe('widgetMeasure (E-12)', () => {
   it('chave ausente = NULL (E-12 revisto: wedge segue com peso, como na 121)', () => {
     expect(widgetMeasure({ frequency: 'semanal' }, true)).toBe('peso')
     expect(widgetMeasure({ frequency: 'semanal' }, false)).toBe('nenhum')
-    expect(widgetMeasure(null, true)).toBe('nenhum')
+    expect(widgetMeasure(null, true)).toBe('peso') // RC6 #977: como na 121
+    expect(widgetMeasure(null, false)).toBe('nenhum')
   })
   it('NULL ⇒ wedge peso / não wedge nenhum', () => {
     expect(widgetMeasure({ tracked_measure: null }, true)).toBe('peso')

@@ -103,6 +103,20 @@ describe('MeasureRow', () => {
   })
 })
 
+describe('BiomarkerRow — RC6 #977', () => {
+  it('carga antiga que volta depois da recarga não sobrescreve a lista nova', async () => {
+    let resolveOld: (v: any) => void = () => {}
+    mockList.mockImplementationOnce(() => new Promise((r) => { resolveOld = r }))
+    mockList.mockResolvedValueOnce([{ value: 130, measured_at: isoDaysAgo(0) }])
+    const s = render(<MeasureRow measure="glicemia" weight={weight} open={false} onToggle={() => {}} timezone={TZ} today={TODAY} reloadKey={1} />)
+    s.rerender(<MeasureRow measure="glicemia" weight={weight} open={false} onToggle={() => {}} timezone={TZ} today={TODAY} reloadKey={2} />)
+    await waitFor(() => expect(s.getByTestId('biomarker-row-summary').props.children).toBe('130 mg/dL · hoje'))
+    resolveOld([{ value: 90, measured_at: isoDaysAgo(3) }])
+    await new Promise((r) => setTimeout(r, 0))
+    expect(s.getByTestId('biomarker-row-summary').props.children).toBe('130 mg/dL · hoje')
+  })
+})
+
 describe('biomarkerLastText', () => {
   it('null sem medida; vírgula decimal', () => {
     expect(biomarkerLastText('glicemia', null, TZ, TODAY)).toBeNull()

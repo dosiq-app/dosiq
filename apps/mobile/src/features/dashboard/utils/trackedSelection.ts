@@ -107,7 +107,8 @@ const MEASURE_SET = new Set<string>(TRACKED_MEASURES as readonly string[])
 
 /** FR-016 · RC3 E-12. */
 export function widgetMeasure(protocol: object | null | undefined, isWedge: boolean): WidgetMeasure {
-  if (!protocol) return 'nenhum'
+  // RC6 #977: módulo wedge sem protocolo carregado mantinha o peso na 121.
+  if (!protocol) return isWedge ? 'peso' : 'nenhum'
   const value = (protocol as { tracked_measure?: unknown }).tracked_measure
   if (value === null || value === undefined) return isWedge ? 'peso' : 'nenhum'
   return typeof value === 'string' && MEASURE_SET.has(value) ? (value as WidgetMeasure) : 'nenhum'

@@ -45,7 +45,10 @@ export function useTrackedSelection({ userId, eligible, protocols, fallbackId, t
   const uid = userId ?? ''
   // States
   const [latest, setLatest] = useState<{ key: string; byId: Record<string, Latest> } | null>(null)
-  const [manual, setManual] = useState<string | null>(() => session.choice[uid] ?? null)
+  // RC6 #977: escolha lida da sessão POR usuário a cada render (uid chega depois do 1º render); o state só
+  // força a re-renderização após a troca.
+  const [, setChoiceTick] = useState(0)
+  const manual = session.choice[uid] ?? null
   // Memos
   const multi = eligible.length > 1
   const idsKey = useMemo(() => eligible.map((e) => e.id).join(','), [eligible])
@@ -111,7 +114,7 @@ export function useTrackedSelection({ userId, eligible, protocols, fallbackId, t
       const from = eligible.find((e) => e.id === selectedId)
       const to = eligible.find((e) => e.id === id)
       session.choice[uid] = id
-      setManual(id)
+      setChoiceTick((n) => n + 1)
       void logEvent(EVENTS.TODAY_TRACKING_SWITCHED, {
         from_kind: from ? trackedKind(from.isWedge, byId.get(from.id)?.medicine) : null,
         to_kind: trackedKind(!!to?.isWedge, byId.get(id)?.medicine),
