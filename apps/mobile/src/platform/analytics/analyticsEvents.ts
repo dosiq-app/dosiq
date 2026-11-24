@@ -107,7 +107,7 @@ export const EVENTS = {
   // Peso durante o tratamento (spec 069 Bb). Nunca valor, média ou diferença (§6).
   MEASURE_SERIES_VIEWED: 'measure_series_viewed',       // biomarker_type, state: chart|missing_count|missing_both|error (121 A: missing_time saiu com o limiar), step_count, treatment_id, surface
   // Hoje · "Semana do tratamento" (spec 121 A · FR-009/FR-020). Só meta — nunca peso nem variação.
-  TODAY_WEEK_ROW_TOGGLED: 'today_week_row_toggled',     // row: dose|peso|evolucao, open: boolean, surface
+  TODAY_WEEK_ROW_TOGGLED: 'today_week_row_toggled',     // row: dose|peso|glicemia|pressao_arterial|evolucao, open: boolean, surface
   TODAY_WEIGHT_LOGGED: 'today_weight_logged',           // source: 'today_inline', surface
   // 124 B (FR-019): troca do tratamento acompanhado. NUNCA nome/id de medicamento ou tratamento.
   TODAY_TRACKING_SWITCHED: 'today_tracking_switched',   // from_kind: wedge|injetavel|outro|null, to_kind: wedge|injetavel|outro, auto_default: boolean, surface

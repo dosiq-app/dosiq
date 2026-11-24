@@ -84,3 +84,31 @@ describe('useTodayWeekRows', () => {
     expect(toggled()).toHaveLength(0)
   })
 })
+
+// 124 B (FR-016, E-14 revisto): glicemia/PA na mesma chave, fora de `rows`.
+describe('useTodayWeekRows — L2 por medida (124 B)', () => {
+  it('glicemia/PA abertas por padrão; escolha de peso já salva segue valendo', async () => {
+    mockStore.set(todayWeekRowsKey('u9'), JSON.stringify({ dose: false, peso: false, evolucao: false }))
+    const h = renderHook(() => useTodayWeekRows('u9', 'wedge'))
+    await waitFor(() => expect(h.result.current.rows.peso).toBe(false))
+    expect(h.result.current.biomarkerOpen).toEqual({ glicemia: true, pressao_arterial: true })
+  })
+
+  it('fechar glicemia persiste e sobrevive ao remount, sem mexer em peso', async () => {
+    const h = renderHook(() => useTodayWeekRows('u8', 'wedge'))
+    await act(async () => { h.result.current.toggle('glicemia') })
+    expect(h.result.current.biomarkerOpen.glicemia).toBe(false)
+    expect(h.result.current.rows.peso).toBe(true)
+    h.unmount()
+    const again = renderHook(() => useTodayWeekRows('u8', 'wedge'))
+    await waitFor(() => expect(again.result.current.biomarkerOpen.glicemia).toBe(false))
+    expect(again.result.current.biomarkerOpen.pressao_arterial).toBe(true)
+  })
+
+  it('JSON com valor não booleano para glicemia ⇒ padrão', async () => {
+    mockStore.set(todayWeekRowsKey('u7'), JSON.stringify({ glicemia: 'x' }))
+    const h = renderHook(() => useTodayWeekRows('u7', 'misto'))
+    await act(async () => {})
+    expect(h.result.current.biomarkerOpen.glicemia).toBe(true)
+  })
+})
