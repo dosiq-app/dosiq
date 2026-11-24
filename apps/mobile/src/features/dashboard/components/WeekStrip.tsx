@@ -4,6 +4,7 @@
 // da semana. Fatos, não nota: cheio = doses vencidas registradas; meio-cheio na diagonal = parte
 // registrada (mesmo desenho do PDF, `.c.partial`); neutro = vencida sem registro (nunca vermelho,
 // nunca "perdeu"); vazio = hoje ainda por vir ou fora do que foi lido; traço = sem dose prevista.
+// Smoke 124 B (PO 24/11): número do dia embaixo (desfaz os dois "Q" e os três "S"); mês implícito; hoje = "Hoje".
 
 import { View, Text, StyleSheet } from 'react-native'
 import Svg, { Circle, Path } from 'react-native-svg'
@@ -52,6 +53,7 @@ export default function WeekStrip({ days, injectable = false }: { days: DailyWin
           ) : (
             <View style={[styles.dot, d.state === 'full' && styles.dotFull, d.state === 'open' && styles.dotOpen]} />
           )}
+          <Text style={[styles.dayNum, d.isToday && styles.dayToday]} testID="week-strip-daynum">{d.isToday ? 'Hoje' : String(Number(d.day.slice(8, 10)))}</Text>
         </View>
       ))}
     </View>
@@ -62,6 +64,8 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing[2], paddingHorizontal: spacing[1] },
   col: { alignItems: 'center', gap: 6, minWidth: 32 },
   letter: { fontSize: 12, fontWeight: '600', color: colors.text.secondary },
+  dayNum: { fontSize: 11, color: colors.text.muted },
+  dayToday: { fontWeight: '700', color: colors.text.secondary },
   dot: { width: SIZE, height: SIZE, borderRadius: R, borderWidth: 1.5, borderColor: colors.border.light, backgroundColor: colors.bg.card },
   dotFull: { backgroundColor: colors.brand.primary, borderWidth: 0 },
   dotOpen: { backgroundColor: colors.neutral[100], borderColor: colors.neutral[300] },
