@@ -166,7 +166,7 @@ describe('useTodaySetup', () => {
     expect(r2.result.current.card).toBeNull()
   })
 
-  // Fix smoke 124 B (24/11, conta QA eu@dosiq.app): escada Mounjaro 5→25 criada junto; só o 20 tem tratamento.
+  // Fix smoke 124 B (24/11, conta de smoke no QA): escada Mounjaro 5→25 criada junto; só o 20 tem tratamento.
   it('etapa de escada (passada com dose ou futura sem dose) ou remédio já usado ⇒ sem "falta"', async () => {
     ;(getRecentMedicines as jest.Mock).mockResolvedValueOnce([
       { id: 'mj5', name: 'Mounjaro', created_at: iso(TODAY), protocols: [], titration_steps: [{ id: 's1' }], medicine_logs: [{ id: 'l1' }] },
