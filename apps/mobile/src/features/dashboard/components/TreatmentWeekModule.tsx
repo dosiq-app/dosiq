@@ -5,10 +5,15 @@
 // G-B5). L3 só com escada COMPLETA (AP-311) — sem ela, some.
 // Superfície de dose/medida, não alerta nem promo: não entra no árbitro da 120 C (H-1).
 // 124 A: tratamento NÃO wedge com cadência ≥ 7 d também ganha o módulo ("ACOMPANHAMENTO"), só com a L1
-// (L2 peso e L3 são do wedge até a fatia B). L1 aberta → "Ver aplicações/doses anteriores" (sheet da dose).
+// (L3 é do wedge). L1 aberta → "Ver aplicações/doses anteriores" (sheet da dose).
+// 124 B: com > 1 elegível o cabeçalho vira seletor (sheet "Acompanhar", FR-012) e o título fica
+// "ACOMPANHAMENTO" (FR-015); a L2 segue a medida do tratamento selecionado (FR-016, `widgetMeasure`).
 
 import { useMemo, useState } from 'react'
-import { View, Text, StyleSheet } from 'react-native'
+import { View, Text, Pressable, StyleSheet } from 'react-native'
+// TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
+import * as LucideIcons from 'lucide-react-native'
+const { ChevronsUpDown } = LucideIcons as any
 import {
   formatConcentration,
   formatIntakeDose,
@@ -30,7 +35,8 @@ import {
   trackableCadence,
   type WedgeProfile,
 } from '@dosiq/core'
-import WeightRow from '@dashboard/components/WeightRow'
+import MeasureRow from '@dashboard/components/MeasureRow'
+import TrackPickerSheet, { type TrackPickerItem } from '@dashboard/components/TrackPickerSheet'
 import DoseRow from '@dashboard/components/DoseRow'
 import DoseNavSheet from '@dose/components/DoseNavSheet'
 import EvolutionRow from '@dashboard/components/EvolutionRow'
@@ -51,6 +57,7 @@ import {
   type WeightWindow,
 } from '@dashboard/utils/treatmentWeek'
 import { treatmentSetupRows } from '@dashboard/utils/setupCopy'
+import { widgetMeasure } from '@dashboard/utils/trackedSelection'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 
 type Props = {
@@ -72,6 +79,9 @@ type Props = {
   nowKey?: number
   /** 124 A: tratamento do módulo é wedge? Não wedge ⇒ "ACOMPANHAMENTO", só L1 (cadência ≥ 7 d). */
   isWedge?: boolean
+  /** 124 B (FR-012): > 1 elegível ⇒ linhas do sheet "Acompanhar"; vazio/1 ⇒ cabeçalho da 121. */
+  pickerItems?: readonly TrackPickerItem[]
+  onSelectTracked?: (protocolId: string) => void
 }
 
 /** Instante do tick da Hoje (`useTodayData.now`); sem ele, o instante real. */
@@ -194,23 +204,48 @@ function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey
   return { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel, todayOpen }
 }
 
-/** D13: sobrelinha + nome (19/800) + chip de concentração (mesmo pill do card do remédio), sem ícone. */
-function ModuleHeader({ medicineName, medicine, isWedge }: { medicineName: string | null; medicine?: any; isWedge: boolean }) {
-  const conc = medicine?.dosage_per_pill
+/** Concentração do selo (mesmo pill do card do remédio). */
+export function moduleConcentration(medicine: any): string | null {
+  return medicine?.dosage_per_pill
     ? formatConcentration(medicine.dosage_per_pill, medicine.dosage_unit, medicine.concentration_volume_ml)
     : null
+}
+
+/**
+ * D13: sobrelinha + nome (19/800) + chip de concentração, sem ícone. 124 B (FR-012/015/018): com
+ * seletor, a linha do nome vira gatilho (≥ 44 pt) com `ChevronsUpDown` — distinto do chevron do
+ * accordion — e o título fica "ACOMPANHAMENTO" fixo (a troca muda só o nome).
+ */
+function ModuleHeader({ medicineName, medicine, isWedge, onPick }: { medicineName: string | null; medicine?: any; isWedge: boolean; onPick?: (() => void) | null }) {
+  const conc = moduleConcentration(medicine)
+  const row = medicineName ? (
+    <>
+      <Text style={styles.medName} numberOfLines={1}>{medicineName}</Text>
+      {conc ? (
+        <View style={styles.concPill} testID="treatment-week-conc">
+          <Text style={styles.concText}>{conc}</Text>
+        </View>
+      ) : null}
+    </>
+  ) : null
   return (
     <View style={styles.header} testID="treatment-week-header">
-      <Text style={styles.eyebrow}>{isWedge ? 'SEMANA DO TRATAMENTO' : 'ACOMPANHAMENTO'}</Text>
-      {medicineName ? (
-        <View style={styles.titleRow}>
-          <Text style={styles.medName} numberOfLines={1}>{medicineName}</Text>
-          {conc ? (
-            <View style={styles.concPill} testID="treatment-week-conc">
-              <Text style={styles.concText}>{conc}</Text>
-            </View>
-          ) : null}
-        </View>
+      <Text style={styles.eyebrow}>{onPick || !isWedge ? 'ACOMPANHAMENTO' : 'SEMANA DO TRATAMENTO'}</Text>
+      {onPick ? (
+        <Pressable
+          onPress={onPick}
+          style={[styles.titleRow, styles.pickRow]}
+          accessibilityRole="button"
+          accessibilityLabel={`Tratamento acompanhado: ${medicineName ?? 'tratamento'}. Toque para trocar.`}
+          testID="treatment-week-picker"
+        >
+          {row}
+          <View style={styles.pickIcon}>
+            <ChevronsUpDown size={20} color={colors.brand.primary} strokeWidth={2.4} />
+          </View>
+        </Pressable>
+      ) : medicineName ? (
+        <View style={styles.titleRow}>{row}</View>
       ) : null}
     </View>
   )
@@ -218,14 +253,16 @@ function ModuleHeader({ medicineName, medicine, isWedge }: { medicineName: strin
 
 export default function TreatmentWeekModule({
   userId, profile, medicineName, treatmentStart, timezone, reloadKey, protocol = null, onRegisterEarly, onOpenTreatment,
-  onAdjustTreatment, isWedge = true, nowKey = 0,
+  onAdjustTreatment, isWedge = true, nowKey = 0, pickerItems = [], onSelectTracked,
 }: Props) {
   // States
   const [windowChoice, setWindowChoice] = useState<WeightWindow | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
-  const { rows, toggle } = useTodayWeekRows(userId, profile)
-  // 124 A: peso (L2) é do wedge até a fatia B — sem leitura fora dele.
-  const series = useTodayWeightSeries({ enabled: isWedge, userId, timezone, treatmentStart, reloadKey })
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const { rows, biomarkerOpen, toggle } = useTodayWeekRows(userId, profile)
+  // 124 B (FR-016): L2 = medida do tratamento selecionado; peso só lê quando é a medida.
+  const measure = widgetMeasure(protocol, isWedge)
+  const series = useTodayWeightSeries({ enabled: measure === 'peso', userId, timezone, treatmentStart, reloadKey })
   // Memos
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey/nowKey viram o dia com a Hoje aberta
   const today = useMemo(() => getTodayLocal(timezone), [timezone, reloadKey, nowKey])
@@ -261,7 +298,21 @@ export default function TreatmentWeekModule({
 
   return (
     <View style={styles.card} testID="treatment-week-module">
-      <ModuleHeader medicineName={medicineName} medicine={protocol?.medicine} isWedge={isWedge} />
+      <ModuleHeader
+        medicineName={medicineName}
+        medicine={protocol?.medicine}
+        isWedge={isWedge}
+        onPick={pickerItems.length > 1 && onSelectTracked ? () => setPickerOpen(true) : null}
+      />
+      {pickerItems.length > 1 && onSelectTracked ? (
+        <TrackPickerSheet
+          visible={pickerOpen}
+          items={pickerItems}
+          selectedId={protocol?.id ?? null}
+          onSelect={onSelectTracked}
+          onClose={() => setPickerOpen(false)}
+        />
+      ) : null}
       {doseEligible ? (
         <DoseRow
           open={rows.dose}
@@ -293,22 +344,30 @@ export default function TreatmentWeekModule({
           timezone={timezone}
         />
       ) : null}
-      {isWedge ? <WeightRow
-        open={rows.peso}
-        onToggle={() => toggle('peso')}
-        points={points}
-        last={series.last}
-        lastDay={lastDay}
+      <MeasureRow
+        measure={measure}
+        open={measure === 'glicemia' || measure === 'pressao_arterial' ? biomarkerOpen[measure] : false}
+        onToggle={() => { if (measure !== 'nenhum') toggle(measure) }}
+        timezone={timezone}
         today={today}
-        yesterday={yesterday}
-        windowSel={windowSel}
-        onWindow={selectWindow}
-        windowFrom={axisFrom}
-        loading={series.loading}
-        error={series.error}
-        onRetry={series.retry}
-        onSaved={series.reload}
-      /> : null}
+        reloadKey={reloadKey}
+        weight={{
+          open: rows.peso,
+          onToggle: () => toggle('peso'),
+          points,
+          last: series.last,
+          lastDay,
+          today,
+          yesterday,
+          windowSel,
+          onWindow: selectWindow,
+          windowFrom: axisFrom,
+          loading: series.loading,
+          error: series.error,
+          onRetry: series.retry,
+          onSaved: series.reload,
+        }}
+      />
       {isWedge && evolution && protocol?.id ? (
         <EvolutionRow
           copy={evolution}
@@ -339,4 +398,6 @@ const styles = StyleSheet.create({
   medName: { flexShrink: 1, fontSize: 19, lineHeight: 24, fontWeight: '800', color: colors.text.primary },
   concPill: { backgroundColor: colors.neutral[100], paddingHorizontal: spacing[2], paddingVertical: 2, borderRadius: 4, borderWidth: 0.5, borderColor: colors.neutral[300] },
   concText: { fontSize: 12, fontWeight: '600', color: colors.neutral[700] },
+  pickRow: { minHeight: 44 },
+  pickIcon: { marginLeft: 'auto', width: 36, height: 36, borderRadius: 18, backgroundColor: colors.brand.mint, alignItems: 'center', justifyContent: 'center', marginRight: -spacing[2] },
 })

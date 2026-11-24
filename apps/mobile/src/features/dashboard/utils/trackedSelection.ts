@@ -4,8 +4,9 @@
 // - `pickTrackedDefault`: seleção padrão a cada abertura — lacuna > dose prevista hoje > próxima mais
 //   cedo; empate ⇒ wedge, depois `id` (estável entre renderizações).
 // - `trackedStatusLine`: linha do sheet. Vocabulário da L1 (G-B3: lacuna NÃO diz "sem registro").
-// - `widgetMeasure`: medida da L2 do widget. NULL ⇒ wedge peso / não wedge nenhum (PO 23/11);
-//   chave ausente (cache antigo) ou valor fora do enum ⇒ nenhum (falha fechada, RC3 E-12).
+// - `widgetMeasure`: medida da L2 do widget. NULL ⇒ wedge peso / não wedge nenhum (PO 23/11).
+//   Chave AUSENTE = NULL (RC3 E-12 revisto 24/11: "ausente ⇒ nenhum" tirava o peso do wedge que a 121
+//   sempre mostrou — SC-003); valor fora do enum ⇒ nenhum.
 //   `effectiveMeasure` do core fica intacto (pedido pós-dose da 100).
 // SaMD: nenhum estado fala de atraso, risco ou janela.
 
@@ -106,8 +107,8 @@ const MEASURE_SET = new Set<string>(TRACKED_MEASURES as readonly string[])
 
 /** FR-016 · RC3 E-12. */
 export function widgetMeasure(protocol: object | null | undefined, isWedge: boolean): WidgetMeasure {
-  if (!protocol || !Object.prototype.hasOwnProperty.call(protocol, 'tracked_measure')) return 'nenhum'
+  if (!protocol) return 'nenhum'
   const value = (protocol as { tracked_measure?: unknown }).tracked_measure
-  if (value === null) return isWedge ? 'peso' : 'nenhum'
+  if (value === null || value === undefined) return isWedge ? 'peso' : 'nenhum'
   return typeof value === 'string' && MEASURE_SET.has(value) ? (value as WidgetMeasure) : 'nenhum'
 }

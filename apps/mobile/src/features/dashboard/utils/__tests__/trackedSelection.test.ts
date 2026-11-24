@@ -114,8 +114,9 @@ describe('trackedStatusLine', () => {
 })
 
 describe('widgetMeasure (E-12)', () => {
-  it('chave ausente ⇒ nenhum', () => {
-    expect(widgetMeasure({ frequency: 'semanal' }, true)).toBe('nenhum')
+  it('chave ausente = NULL (E-12 revisto: wedge segue com peso, como na 121)', () => {
+    expect(widgetMeasure({ frequency: 'semanal' }, true)).toBe('peso')
+    expect(widgetMeasure({ frequency: 'semanal' }, false)).toBe('nenhum')
     expect(widgetMeasure(null, true)).toBe('nenhum')
   })
   it('NULL ⇒ wedge peso / não wedge nenhum', () => {
