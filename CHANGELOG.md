@@ -7,6 +7,15 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Seletor "Acompanhar" e medida por tratamento na Hoje (spec 124, Fatia B)
+
+- **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.36 → **0.34.37**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — superfície nova na Hoje, R-314):
+  - **Mais de um tratamento acompanhado:** quem tem dois ou mais tratamentos com linha Dose na Hoje (GLP-1 e/ou intervalo de 7 dias ou mais) vê o título "ACOMPANHAMENTO" e, ao lado do nome, um botão (⇅) que abre "Acompanhar": uma linha por tratamento com nome, concentração e o estado ("Próxima em 5 dias · ter, 18/11", "Dose prevista hoje", "1ª dose", "Última aplicação registrada · qua, 01/10"). Tocar troca o tratamento do módulo; a escolha vale até fechar o app. Com um tratamento só, a Hoje não muda.
+  - **Qual abre primeiro:** a cada abertura, o módulo mostra o tratamento sem registro há mais de um intervalo; senão o que tem dose hoje; senão a próxima dose mais cedo; no empate, o GLP-1.
+  - **Linha de medida segue o tratamento:** a 2ª linha do módulo mostra a medida escolhida no tratamento. Peso continua com o gráfico em linha; glicemia e pressão ganham a linha com a última medida, "Registrar" e o gráfico da área de Medidas (pressão com sistólica e diastólica); tratamento sem medida não mostra a linha. Sem medida escolhida: GLP-1 = peso, os demais = nenhuma.
+  - Tratamentos do seletor não geram o card "Tratamento cadastrado". O card informativo da escada volta à Hoje quando o tratamento com escada não é o selecionado (a linha Evolução só aparece para o selecionado).
+  - **Analytics:** evento `today_tracking_switched` (`from_kind`, `to_kind` = `wedge` | `injetavel` | `outro`, `auto_default`), sem nome nem id de medicamento.
+
 ### Dose a cada 7 dias ou mais na Hoje (spec 124, Fatia A)
 
 - **Mobile** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.35 → **0.34.36**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — superfície nova na Hoje, R-314):
