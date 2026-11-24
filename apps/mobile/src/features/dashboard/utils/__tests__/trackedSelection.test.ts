@@ -11,7 +11,7 @@ import {
 const TZ = 'America/Sao_Paulo'
 const TODAY = '2026-11-24'
 const weekly = (days: number) => ({ kind: 'weekly' as const, days })
-const daily = { kind: 'daily' as const, days: 1 }
+const daily = { kind: 'daily' as const, days: 1 as const }
 // 12:00 local em GMT-3 = 15:00Z (dia local nunca vira)
 const at = (day: string) => ({ taken_at: `${day}T15:00:00.123456+00:00`, injection_site: null })
 
