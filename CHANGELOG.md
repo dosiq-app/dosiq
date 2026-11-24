@@ -15,6 +15,7 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   - **Linha de medida segue o tratamento:** a 2ª linha do módulo mostra a medida escolhida no tratamento. Peso continua com o gráfico em linha; glicemia e pressão ganham a linha com a última medida, "Registrar" e o gráfico da área de Medidas (pressão com sistólica e diastólica); tratamento sem medida não mostra a linha. Sem medida escolhida: GLP-1 = peso, os demais = nenhuma.
   - Tratamentos do seletor não geram o card "Tratamento cadastrado". O card informativo da escada volta à Hoje quando o tratamento com escada não é o selecionado (a linha Evolução só aparece para o selecionado).
   - **Analytics:** evento `today_tracking_switched` (`from_kind`, `to_kind` = `wedge` | `injetavel` | `outro`, `auto_default`), sem nome nem id de medicamento.
+  - **"Falta 1 passo" (`Fixed`, regressão da spec 125):** remédio de uma escada de titulação — etapa já trocada ou etapa futura — não aparece mais como "falta configurar" na Hoje, nem remédio que já teve dose registrada e cujo tratamento foi encerrado. O card segue só para remédio recém-cadastrado que nunca teve tratamento, etapa ou dose.
 
 ### Dose a cada 7 dias ou mais na Hoje (spec 124, Fatia A)
 

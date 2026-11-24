@@ -166,6 +166,28 @@ describe('useTodaySetup', () => {
     expect(r2.result.current.card).toBeNull()
   })
 
+  // Fix smoke 124 B (24/11, conta QA eu@dosiq.app): escada Mounjaro 5→25 criada junto; só o 20 tem tratamento.
+  it('etapa de escada (passada com dose ou futura sem dose) ou remédio já usado ⇒ sem "falta"', async () => {
+    ;(getRecentMedicines as jest.Mock).mockResolvedValueOnce([
+      { id: 'mj5', name: 'Mounjaro', created_at: iso(TODAY), protocols: [], titration_steps: [{ id: 's1' }], medicine_logs: [{ id: 'l1' }] },
+      { id: 'mj25', name: 'Mounjaro', created_at: iso(TODAY), protocols: [], titration_steps: [{ id: 's5' }], medicine_logs: [] },
+      { id: 'arq', name: 'Arquivado', created_at: iso(TODAY), protocols: [], titration_steps: [], medicine_logs: [{ id: 'l9' }] },
+    ])
+    const { result } = renderHook(() => useTodaySetup({ data: data([]), stale: false }))
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { await Promise.resolve() })
+    expect(result.current.card).toBeNull()
+  })
+
+  it('remédio nunca usado (sem tratamento, etapa nem dose) segue com "falta"', async () => {
+    ;(getRecentMedicines as jest.Mock).mockResolvedValueOnce([
+      { id: 'mj25', name: 'Mounjaro', created_at: iso(TODAY), protocols: [], titration_steps: [{ id: 's5' }], medicine_logs: [] },
+      { id: 'novo', name: 'Vitamina D', created_at: iso(TODAY), protocols: [], titration_steps: [], medicine_logs: [] },
+    ])
+    const { result } = renderHook(() => useTodaySetup({ data: data([]), stale: false }))
+    await waitFor(() => expect(result.current.card).toEqual({ kind: 'falta', medicineId: 'novo' }))
+  })
+
   it('snapshot offline ⇒ nenhum card (falha fechada)', async () => {
     const { result } = renderHook(() => useTodaySetup({ data: data([proto({ medicine: pill })]), stale: true }))
     await act(async () => { await Promise.resolve() })

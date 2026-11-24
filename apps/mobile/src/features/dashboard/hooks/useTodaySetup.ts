@@ -40,6 +40,16 @@ export function scheduleKey(p: any): string {
   return `${SCHEDULE_PREFIX}${p?.id}:${p?.frequency ?? ''}|${p?.interval_days ?? ''}|${days}|${times}|${p?.start_date ?? ''}`
 }
 
+/**
+ * Remédio que NUNCA foi configurado/usado (alvo do "Falta 1 passo"): sem tratamento, sem etapa de escada e sem
+ * dose registrada. `protocols` ausente ⇒ não entra (regra da 125); etapas/doses ausentes = nenhuma (vêm do
+ * mesmo select; o embed devolve sempre array).
+ */
+export function isNeverUsedMedicine(m: any): boolean {
+  const none = (v: unknown) => v == null || (Array.isArray(v) && v.length === 0)
+  return Array.isArray(m?.protocols) && m.protocols.length === 0 && none(m?.titration_steps) && none(m?.medicine_logs)
+}
+
 function uniqueById(list: any[]): any[] {
   const seen = new Set<string>()
   return list.filter((p) => p?.id && !seen.has(p.id) && seen.add(p.id))
@@ -217,7 +227,9 @@ export function useTodaySetup({ data, stale, onScreenProtocolIds = EMPTY }: {
       formMismatches: Object.fromEntries(Object.entries(formMismatches).filter(([id]) => !linkMatchesById[id])),
       linkCandidateIds: Object.keys(linkMatchesById),
       // Sem NENHUM tratamento (pausado conta — smoke 20/11). Campo ausente (resposta antiga) ⇒ não entra.
-      orphanMedicines: recent.filter((m) => !withTreatment.has(m.id) && Array.isArray(m.protocols) && m.protocols.length === 0),
+      // Fix smoke 124 B (24/11): etapa de escada (passada ou futura) ou com dose registrada ⇒ já foi
+      // configurado/usado; parar por indicação clínica não é "falta 1 passo".
+      orphanMedicines: recent.filter((m) => !withTreatment.has(m.id) && isNeverUsedMedicine(m)),
       today: data.localDay ?? getTodayLocal(),
     }
     const pick = pickSetupCard(input)
