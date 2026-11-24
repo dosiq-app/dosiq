@@ -6,6 +6,7 @@ import {
   formatIntakeDose,
   formatLocalDate,
   getEvolutionBadge,
+  getRawNow,
   getUserTime,
   parseISO,
   parseLocalDate,
@@ -138,7 +139,7 @@ export function firstScheduledTime(protocol: { time_schedule?: string[] | null }
  */
 export function dailyRowCopy(
   week: { taken: number; due: number; since: string | null; todayLast: { time: string } | null },
-  { injectable, todayTime, next }: { injectable: boolean; todayTime: string | null; next: { date: string; time: string } | null }
+  { injectable, todayTime, next, today = null }: { injectable: boolean; todayTime: string | null; next: { date: string; time: string } | null; today?: string | null }
 ): { primary: string; secondary: string | null } {
   const unit = injectable ? (week.due === 1 ? 'aplicação' : 'aplicações') : week.due === 1 ? 'dose' : 'doses'
   const period = week.since ? `desde o início (${weekdayDate(week.since)})` : 'nos últimos 7 dias'
@@ -146,7 +147,8 @@ export function dailyRowCopy(
   let head: string | null = null
   if (week.todayLast) head = `${injectable ? 'Aplicado' : 'Tomado'} hoje · ${week.todayLast.time}`
   else if (todayTime) head = `Hoje às ${todayTime}`
-  else if (next) head = `Próxima · ${weekdayDate(next.date)} às ${next.time}`
+  // Smoke 124 A (PO 23/11): linha fechada com dia relativo — "amanhã" pesa menos que "ter, 24/11".
+  else if (next) head = `Próxima · ${today && next.date === shiftDay(today, 1) ? 'amanhã' : weekdayDate(next.date)} às ${next.time}`
   if (!head) return { primary: count ?? '', secondary: null }
   return { primary: head, secondary: count }
 }
@@ -288,4 +290,60 @@ export function evolutionDetail(
     ? null
     : { dose: stepDose(current), since: sinceText(startDay, todayLocal), nextText: nextDay ? `próxima:\n${weekdayDate(nextDay)}` : null }
   return { bar: { done: current.position + 1, total: sorted.length }, stageDoses, stageCalendar, currentDose, steps }
+}
+
+// ─── 124 A (smoke 23/11) · dose que nunca existiu não é dose ─────────────────────
+
+/** "HH:mm" local de agora (relógio de parede do fuso) — o `nowTime` das frases de setup. */
+export function localNowTime(tz: string, now: Date = getRawNow()): string {
+  const local = getUserTime(now, tz)
+  return `${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * Calendário EFETIVO da L1 diária: o gerador só materializa ocorrência depois que o tratamento existe
+ * (`dose_instances`), então horário de antes do cadastro não é dose — nem "Hoje às 08:00" para quem
+ * cadastrou às 10:00, nem dia devido antes do cadastro ("0 de 7"). O card de estoque já seguia isso
+ * (`listUpcomingOccurrences`). `created_at` ausente ⇒ calendário de sempre.
+ */
+export function effectiveDailySchedule(
+  protocol: { start_date?: string | null; created_at?: string | null; time_schedule?: string[] | null } | null | undefined,
+  today: string,
+  tz: string
+): { startDay: string | null; todayTimes: string[] } {
+  const times = (protocol?.time_schedule ?? []).filter((t) => typeof t === 'string' && /^\d{2}:\d{2}/.test(t)).map((t) => t.slice(0, 5)).sort()
+  const createdIso = protocol?.created_at
+  const createdDate = createdIso ? parseISO(createdIso) : null
+  const created = createdDate && !Number.isNaN(createdDate.getTime()) ? getUserTime(createdDate, tz) : null
+  const createdDay = created ? formatLocalDate(created) : null
+  const createdTime = created ? `${String(created.getHours()).padStart(2, '0')}:${String(created.getMinutes()).padStart(2, '0')}` : null
+  const start = protocol?.start_date ?? null
+  const startDay = [start, createdDay].filter((d): d is string => !!d).sort().pop() ?? null
+  const todayTimes = createdDay === today && createdTime ? times.filter((t) => t > createdTime) : times
+  return { startDay, todayTimes }
+}
+
+/**
+ * Smoke 124 A (PO 23/11): com as ocorrências GRAVADAS carregadas, o calendário da L1 diária sai delas —
+ * dose que não existe em `dose_instances` (antes do cadastro, durante pausa, antes de reativar) não é
+ * dose. Dia passado sem linha ⇒ não previsto; hoje ⇒ horários das ocorrências de hoje (`skipped_paused`
+ * fora). `null` ⇒ leitura indisponível: o chamador cai em `effectiveDailySchedule`.
+ */
+export function instanceDailySchedule(
+  instances: ReadonlyArray<{ scheduled_for: string; status: string }> | null | undefined,
+  today: string,
+  tz: string
+): { days: Set<string>; todayTimes: string[] } | null {
+  if (!Array.isArray(instances)) return null
+  const days = new Set<string>()
+  const todayTimes: string[] = []
+  for (const inst of instances) {
+    const d = inst?.scheduled_for ? parseISO(inst.scheduled_for) : null
+    if (!d || Number.isNaN(d.getTime()) || inst.status === 'skipped_paused') continue
+    const local = getUserTime(d, tz)
+    const day = formatLocalDate(local)
+    days.add(day)
+    if (day === today) todayTimes.push(`${String(local.getHours()).padStart(2, '0')}:${String(local.getMinutes()).padStart(2, '0')}`)
+  }
+  return { days, todayTimes: todayTimes.sort() }
 }

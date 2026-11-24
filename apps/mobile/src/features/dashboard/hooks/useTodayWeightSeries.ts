@@ -3,6 +3,8 @@
 // roda com `enabled`. "Tratamento" lê sob demanda, paginada até a página vir incompleta (AP-186).
 // 1 ponto por dia local, a pesagem mais recente do dia — a mesma regra do detalhe (069 E-9).
 // Erro nunca vira vazio (padrão 069 B-5): `error` = 'network' | 'other'.
+// 124 A (smoke 23/11): stale-while-revalidate da janela 30d (`weekCache`) — a linha nasce com a última
+// série/pesagem guardada; `loading` só quando não há série nenhuma; falha com série guardada não vira erro.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { InteractionManager } from 'react-native'
@@ -10,6 +12,9 @@ import { formatLocalDate, getTodayLocal, getUserTime, parseISO, shiftDay } from 
 import { measuresRepo } from '@measures/services/measuresRepo'
 import { getGlp1JourneyStart } from '@dashboard/services/dashboardService'
 import { isNetworkError } from '@shared/utils/networkError'
+import { hydrateWeekCache, readWeekCache, weekCacheKey, writeWeekCache } from '@dashboard/utils/weekCache'
+
+type RecentCache = { recent: WeightPoint[]; last: WeightLast | null }
 
 export type { WeightWindow } from '@dashboard/utils/treatmentWeek'
 export type WeightPoint = { day: string; kg: number }
@@ -62,33 +67,41 @@ export function useTodayWeightSeries({
   reloadKey?: unknown
 }) {
   // States
-  const [recent, setRecent] = useState<WeightPoint[] | null>(null)
+  const cacheKey = enabled && userId ? weekCacheKey(userId, 'peso', timezone) : null
+  const initial = readWeekCache<RecentCache>(cacheKey)
+  const [recent, setRecent] = useState<WeightPoint[] | null>(initial?.recent ?? null)
   const [full, setFull] = useState<WeightPoint[] | null>(null)
-  const [last, setLast] = useState<WeightLast | null>(null)
+  const [last, setLast] = useState<WeightLast | null>(initial?.last ?? null)
   const [error, setError] = useState<'network' | 'other' | null>(null)
   const [loading, setLoading] = useState(false)
   const [journeyStart, setJourneyStart] = useState<string | null>(null)
   const reqRef = useRef(0)
   const fullLoadedRef = useRef(false)
+  const hasRecentRef = useRef(!!initial)
 
   // Handlers
   const loadRecent = useCallback(async () => {
     const req = ++reqRef.current
-    setLoading(true)
+    if (!hasRecentRef.current) setLoading(true)
     try {
       // Meia-noite LOCAL de 30 dias atrás (R-020): cobre a janela 30d inteira em dias locais.
       const fromTs = parseISO(`${shiftDay(getTodayLocal(timezone), -30)}T00:00:00`).toISOString()
       const [rows, latest] = await Promise.all([listAllWeights(fromTs), measuresRepo.getLatest('peso')])
       if (req !== reqRef.current) return
-      setRecent(dailyWeightPoints(rows, timezone))
-      setLast(latest && Number.isFinite(latest.value) ? { kg: latest.value, measuredAt: latest.measured_at } : null)
+      const points = dailyWeightPoints(rows, timezone)
+      const lastValue = latest && Number.isFinite(latest.value) ? { kg: latest.value, measuredAt: latest.measured_at } : null
+      setRecent(points)
+      setLast(lastValue)
       setError(null)
+      hasRecentRef.current = true
+      if (cacheKey) writeWeekCache(cacheKey, { recent: points, last: lastValue })
     } catch (err) {
-      if (req === reqRef.current) setError(isNetworkError(err) ? 'network' : 'other')
+      // Com série guardada na tela, falha de revalidação não troca dado por erro.
+      if (req === reqRef.current && !hasRecentRef.current) setError(isNetworkError(err) ? 'network' : 'other')
     } finally {
       if (req === reqRef.current) setLoading(false)
     }
-  }, [timezone])
+  }, [timezone, cacheKey])
 
   const loadTreatment = useCallback(async () => {
     const req = ++reqRef.current
@@ -121,7 +134,22 @@ export function useTodayWeightSeries({
     if (fullLoadedRef.current) await loadTreatment()
   }, [loadRecent, loadTreatment])
 
-  // Effects — depois do 1º paint (MOBILE_PERFORMANCE), e de novo a cada recarga da Hoje.
+  // Effects
+  // Cold start: série guardada no aparelho enquanto a rede não volta.
+  useEffect(() => {
+    if (!cacheKey || hasRecentRef.current) return undefined
+    let alive = true
+    hydrateWeekCache<RecentCache>(cacheKey).then((value) => {
+      if (!alive || !value || hasRecentRef.current) return
+      hasRecentRef.current = true
+      setRecent(value.recent)
+      setLast(value.last)
+      setLoading(false)
+    })
+    return () => { alive = false }
+  }, [cacheKey])
+
+  // Depois do 1º paint (MOBILE_PERFORMANCE), e de novo a cada recarga da Hoje.
   useEffect(() => {
     if (!enabled) return
     const task = InteractionManager.runAfterInteractions(() => { void reload() })

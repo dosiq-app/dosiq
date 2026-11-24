@@ -17,6 +17,7 @@ jest.mock('@dosiq/core', () => ({
 }))
 
 import { DAILY_RECENT_LIMIT, recentLimitFor, useTreatmentWeekDose } from '../useTreatmentWeekDose'
+import { clearWeekCacheMemory } from '@dashboard/utils/weekCache'
 
 const P = '11111111-1111-4111-8111-111111111111'
 const M = '22222222-2222-4222-8222-222222222222'
@@ -31,6 +32,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  clearWeekCacheMemory() // 124 A: cache das linhas é do processo — isola os casos
   jest.restoreAllMocks()
   jest.clearAllMocks()
   jest.clearAllTimers()
@@ -57,7 +59,9 @@ describe('useTreatmentWeekDose (PO-20)', () => {
     expect(mockList).toHaveBeenCalledWith({ protocolId: P, medicineId: M, limit: 20 })
     expect(mockWindow).toHaveBeenCalledTimes(1)
     const [, from, to] = mockWindow.mock.calls[0] as [string, Date, Date]
-    expect(to.getTime()).toBeLessThanOrEqual(Date.now()) // nunca futuro: não é âncora
+    // Emenda 124 A (PO 23/11): vai até +24 h — as ocorrências de HOJE dizem se há dose hoje. Continua
+    // sem âncora no diário (nenhum "Já apliquei"); só não passa de amanhã.
+    expect(to.getTime()).toBeLessThanOrEqual(Date.now() + 86_400_000)
     expect(to.getTime() - from.getTime()).toBeGreaterThanOrEqual(7 * 86_400_000)
     expect(result.current.pastInstances).toEqual([{ protocol_id: P, scheduled_for: '2026-11-17T11:00:00Z', status: 'taken' }])
     expect(result.current.truncated).toBe(true)
@@ -83,5 +87,62 @@ describe('useTreatmentWeekDose (PO-20)', () => {
     expect(mockList).toHaveBeenCalledWith({ protocolId: P, medicineId: M, limit: 4 })
     expect(mockWindow).toHaveBeenCalledTimes(1)
     expect(result.current.truncated).toBe(false)
+  })
+})
+
+describe('useTreatmentWeekDose — cache das linhas (124 A, smoke 23/11)', () => {
+  const props = { enabled: true, cadenceKind: 'weekly' as const, userId: 'u', protocolId: P, medicineId: M }
+  const rows = [{ id: 'l1', taken_at: '2026-11-01T12:00:00+00:00', injection_site: null, medicine_id: M, protocol_id: P }]
+
+  it('2ª montagem nasce com o último resultado (sem loading) e revalida por baixo', async () => {
+    mockList.mockResolvedValue(rows)
+    mockWindow.mockResolvedValue([{ id: 'i1', protocol_id: P, status: 'pending', scheduled_for: '2026-11-30T12:00:00Z', tolerance_minutes: 100 }])
+    const first = renderHook(() => useTreatmentWeekDose(props))
+    await waitFor(() => expect(first.result.current.loading).toBe(false))
+    expect(first.result.current.upcoming).toHaveLength(1)
+    first.unmount()
+
+    let release: (v: any) => void = () => {}
+    mockList.mockImplementation(() => new Promise((r) => { release = r }))
+    const second = renderHook(() => useTreatmentWeekDose(props))
+    expect(second.result.current.loading).toBe(false)
+    expect(second.result.current.recent).toEqual(rows)
+    // Ocorrência futura NUNCA vem do cache: "Já apliquei" só com leitura atual (ADR-130).
+    expect(second.result.current.upcoming).toEqual([])
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2))
+    release([...rows, { ...rows[0], id: 'l0' }])
+    await waitFor(() => expect(second.result.current.recent).toHaveLength(2))
+  })
+
+  it('falha com cache ⇒ segue o dado guardado, sem erro; sem cache ⇒ erro (nunca falso vazio)', async () => {
+    mockList.mockRejectedValue(new Error('boom'))
+    const cold = renderHook(() => useTreatmentWeekDose(props))
+    await waitFor(() => expect(cold.result.current.loading).toBe(false))
+    expect(cold.result.current.error).toBe('other')
+    cold.unmount()
+
+    mockList.mockResolvedValue(rows)
+    const warm = renderHook(() => useTreatmentWeekDose(props))
+    await waitFor(() => expect(warm.result.current.recent).toEqual(rows))
+    warm.unmount()
+
+    mockList.mockRejectedValue(new Error('boom'))
+    const again = renderHook(() => useTreatmentWeekDose({ ...props, reloadKey: 2 }))
+    expect(again.result.current.recent).toEqual(rows)
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(3))
+    await new Promise((r) => setTimeout(r, 0))
+    expect(again.result.current.error).toBeNull()
+    expect(again.result.current.recent).toEqual(rows)
+  })
+
+  it('cache é por usuário: outra conta não herda', async () => {
+    mockList.mockResolvedValue(rows)
+    const a = renderHook(() => useTreatmentWeekDose(props))
+    await waitFor(() => expect(a.result.current.loading).toBe(false))
+    a.unmount()
+    mockList.mockImplementation(() => new Promise(() => {}))
+    const b = renderHook(() => useTreatmentWeekDose({ ...props, userId: 'outra' }))
+    expect(b.result.current.loading).toBe(true)
+    expect(b.result.current.recent).toEqual([])
   })
 })

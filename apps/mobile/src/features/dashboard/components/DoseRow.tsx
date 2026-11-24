@@ -19,6 +19,7 @@ import BodyMapView from '@shared/components/data/BodyMapView'
 import { formatLocalDate, getKnownInjectionSiteLabel, getUserTime, parseISO, type DailyWindowSummary, type WeeklyDoseSummary } from '@dosiq/core'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 import WeekStrip from '@dashboard/components/WeekStrip'
+import LoadingDots from '@shared/components/feedback/LoadingDots'
 import { doseRowCopy, siteShort, weekdayDate } from '@dashboard/utils/treatmentWeek'
 import type { RecentApplicationRow } from '@dashboard/hooks/useTreatmentWeekDose'
 
@@ -204,7 +205,8 @@ export default function DoseRow({
           </View>
           <View style={styles.flex}>
             <Text style={styles.title}>Dose</Text>
-            {loading && !ready ? <View style={styles.skeletonLine} testID="dose-row-loading" /> : null}
+            {/* 124 A (smoke 23/11): 1ª carga sem cache = "Carregando…" animado, não barra cinza parada. */}
+            {loading && !ready ? <LoadingDots testID="dose-row-loading" /> : null}
             {error ? <Text style={styles.neutral}>{`Não foi possível carregar ${injectable ? 'as aplicações' : 'as doses'}.`}</Text> : null}
             {copy?.primary ? <Text style={styles.value} testID="dose-row-primary">{copy.primary}</Text> : null}
             {copy?.secondary ? <Text style={styles.neutral} testID="dose-row-secondary">{copy.secondary}</Text> : null}
@@ -227,7 +229,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 13, fontWeight: '700', color: colors.text.secondary },
   value: { fontSize: 16, fontWeight: '700', color: colors.text.primary, marginTop: 2 },
   neutral: { fontSize: 13, color: colors.text.secondary, marginTop: 2 },
-  skeletonLine: { height: 16, width: 160, borderRadius: 4, backgroundColor: colors.bg.screen, marginTop: 4 },
   action: { minHeight: 40, paddingHorizontal: spacing[3], borderRadius: borderRadius.md, borderWidth: 1, borderColor: colors.brand.primary, justifyContent: 'center' },
   actionText: { fontSize: 14, fontWeight: '700', color: colors.brand.primary },
   body: { marginTop: spacing[3], gap: spacing[3] },

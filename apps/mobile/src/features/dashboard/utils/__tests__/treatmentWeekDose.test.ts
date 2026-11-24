@@ -292,3 +292,61 @@ describe('124 A — L1 com intervalo do tratamento (dias desde / até)', () => {
     for (const t of all) expect(t).not.toMatch(/atrasad|risco|proteç|janela|eficáci|perdeu|sem registro/)
   })
 })
+
+// ─── 124 A smoke (23/11): dose que nunca existiu não é dose ─────────────────────
+import { effectiveDailySchedule } from '../treatmentWeek'
+
+describe('effectiveDailySchedule (smoke 124 A)', () => {
+  const p = { start_date: '2026-11-16', time_schedule: ['08:00', '20:00'] }
+  it('cadastrado hoje às 10:00 (13:00Z) ⇒ início hoje; 08:00 de hoje não existiu', () => {
+    expect(effectiveDailySchedule({ ...p, created_at: '2026-11-23T13:00:00Z' }, '2026-11-23', TZ)).toEqual({ startDay: '2026-11-23', todayTimes: ['20:00'] })
+  })
+  it('cadastrado hoje depois do último horário ⇒ nenhuma dose hoje', () => {
+    expect(effectiveDailySchedule({ ...p, created_at: '2026-11-23T23:30:00Z' }, '2026-11-23', TZ).todayTimes).toEqual([])
+  })
+  it('cadastrado antes do 1º horário ⇒ dia inteiro conta', () => {
+    expect(effectiveDailySchedule({ ...p, created_at: '2026-11-23T09:00:00Z' }, '2026-11-23', TZ).todayTimes).toEqual(['08:00', '20:00'])
+  })
+  it('cadastrado em outro dia ⇒ início = maior entre start_date e o cadastro; hoje inteiro', () => {
+    expect(effectiveDailySchedule({ ...p, created_at: '2026-11-20T12:00:00Z' }, '2026-11-23', TZ)).toEqual({ startDay: '2026-11-20', todayTimes: ['08:00', '20:00'] })
+    expect(effectiveDailySchedule({ ...p, created_at: '2026-11-01T12:00:00Z' }, '2026-11-23', TZ).startDay).toBe('2026-11-16')
+  })
+  it('R-020: cadastro 23:30 de domingo em GMT-3 (02:30Z de segunda) é domingo', () => {
+    expect(effectiveDailySchedule({ ...p, created_at: '2026-11-23T02:30:00Z' }, '2026-11-22', TZ)).toEqual({ startDay: '2026-11-22', todayTimes: [] })
+  })
+  it('sem created_at ⇒ calendário de sempre', () => {
+    expect(effectiveDailySchedule(p, '2026-11-23', TZ)).toEqual({ startDay: '2026-11-16', todayTimes: ['08:00', '20:00'] })
+  })
+})
+
+describe('dailyRowCopy — próxima com dia relativo (smoke 124 A, PO 23/11)', () => {
+  const week = { taken: 0, due: 0, since: null, todayLast: null }
+  it('amanhã ⇒ "Próxima · amanhã às 08:00"; depois ⇒ data', () => {
+    expect(dailyRowCopy(week, { injectable: false, todayTime: null, next: { date: '2026-11-24', time: '08:00' }, today: '2026-11-23' }).primary).toBe('Próxima · amanhã às 08:00')
+    expect(dailyRowCopy(week, { injectable: false, todayTime: null, next: { date: '2026-11-25', time: '08:00' }, today: '2026-11-23' }).primary).toBe('Próxima · qua, 25/11 às 08:00')
+  })
+})
+
+import { instanceDailySchedule } from '../treatmentWeek'
+
+describe('instanceDailySchedule (smoke 124 A — pausa/reativação, PO 23/11)', () => {
+  it('reativado hoje à noite: sem ocorrência hoje ⇒ nenhuma dose hoje; dias sem linha fora', () => {
+    const s = instanceDailySchedule([{ scheduled_for: '2026-11-24T11:00:00+00:00', status: 'pending' }], '2026-11-23', TZ)
+    expect(s?.todayTimes).toEqual([])
+    expect(s?.days.has('2026-11-23')).toBe(false)
+    expect(s?.days.has('2026-11-20')).toBe(false)
+  })
+  it('hoje com ocorrências (qualquer status, menos skipped_paused) ⇒ horários locais', () => {
+    const s = instanceDailySchedule([
+      { scheduled_for: '2026-11-23T23:00:00Z', status: 'pending' },
+      { scheduled_for: '2026-11-23T11:00:00Z', status: 'taken' },
+      { scheduled_for: '2026-11-23T15:00:00Z', status: 'skipped_paused' },
+      { scheduled_for: '2026-11-21T11:00:00Z', status: 'missed' },
+    ], '2026-11-23', TZ)
+    expect(s?.todayTimes).toEqual(['08:00', '20:00'])
+    expect([...(s?.days ?? [])].sort()).toEqual(['2026-11-21', '2026-11-23'])
+  })
+  it('leitura indisponível (null) ⇒ null (fallback no created_at)', () => {
+    expect(instanceDailySchedule(null, '2026-11-23', TZ)).toBeNull()
+  })
+})

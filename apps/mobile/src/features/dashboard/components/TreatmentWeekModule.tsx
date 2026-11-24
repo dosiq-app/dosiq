@@ -40,6 +40,9 @@ import {
   chartAxisFrom,
   dailyRowCopy,
   defaultWeightWindow,
+  effectiveDailySchedule,
+  instanceDailySchedule,
+  localNowTime,
   evolutionDetail,
   evolutionRowCopy,
   firstScheduledTime,
@@ -65,6 +68,44 @@ type Props = {
   onAdjustTreatment?: (protocolId: string) => void
   /** 124 A: tratamento do módulo é wedge? Não wedge ⇒ "ACOMPANHAMENTO", só L1 (cadência ≥ 7 d). */
   isWedge?: boolean
+}
+
+/**
+ * L1 diária (121 C · AC-16/17): janela móvel de 7 d; dose de hoje só conta depois da janela.
+ * Smoke 124 A: horário que nunca virou ocorrência não é dose (nem "hoje", nem devida). Fonte = ocorrências
+ * gravadas (PO 23/11: cobre pausa/reativação); leitura indisponível ⇒ fallback pelo `created_at`.
+ */
+function buildDailyView({ protocol, recent, truncated, pastInstances, injectable, today, timezone }: {
+  protocol: any
+  recent: any[]
+  truncated: boolean
+  pastInstances: any[] | null
+  injectable: boolean
+  today: string
+  timezone: string
+}) {
+  const eff = effectiveDailySchedule(protocol, today, timezone)
+  const inst = instanceDailySchedule(pastInstances, today, timezone)
+  const todayTimes = inst ? inst.todayTimes : eff.todayTimes
+  // Início efetivo = hoje ⇒ a janela é só hoje: os horários contados são os que existiram.
+  const planned = Array.isArray(protocol?.time_schedule) ? protocol.time_schedule : []
+  const week = summarizeDailyWindow({
+    applications: recent,
+    isScheduled: (day) => (inst ? inst.days.has(day) : isProtocolActiveOnDate(protocol, day)),
+    timesOfDay: inst || eff.startDay === today ? todayTimes : planned,
+    startDay: eff.startDay,
+    truncated,
+    pastInstances,
+    todayLocal: today,
+    now: getRawNow(),
+    tz: timezone,
+  })
+  const todayScheduled = isProtocolActiveOnDate(protocol, today) && todayTimes.length > 0
+  const upcoming = listUpcomingOccurrences(protocol, 1).occurrences[0] ?? null
+  // Hoje: próximo horário ainda por vir; todos passados ⇒ o 1º do dia que EXISTIU (fato neutro, sem "atrasado").
+  const todayTime = todayScheduled ? (upcoming?.date === today ? upcoming.time : firstScheduledTime({ time_schedule: todayTimes })) : null
+  const copy = dailyRowCopy(week, { injectable, todayTime, next: todayScheduled ? null : upcoming, today })
+  return { week, copy }
 }
 
 /**
@@ -109,23 +150,7 @@ function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey
   // depois da janela (decisão PO 17/11). Próxima só se hoje não é dia previsto.
   const daily = useMemo(() => {
     if (!isDaily || dose.loading || dose.error) return null
-    const week = summarizeDailyWindow({
-      applications: dose.recent,
-      isScheduled: (day) => isProtocolActiveOnDate(protocol, day),
-      timesOfDay: Array.isArray(protocol?.time_schedule) ? protocol.time_schedule : [],
-      startDay: protocol?.start_date ?? null,
-      truncated: dose.truncated,
-      pastInstances: dose.pastInstances,
-      todayLocal: today,
-      now: getRawNow(),
-      tz: timezone,
-    })
-    const todayScheduled = isProtocolActiveOnDate(protocol, today)
-    const upcoming = listUpcomingOccurrences(protocol, 1).occurrences[0] ?? null
-    // Hoje: próximo horário ainda por vir; todos passados ⇒ o 1º do dia (fato neutro, sem "atrasado").
-    const todayTime = todayScheduled ? (upcoming?.date === today ? upcoming.time : firstScheduledTime(protocol)) : null
-    const copy = dailyRowCopy(week, { injectable, todayTime, next: todayScheduled ? null : upcoming })
-    return { week, copy }
+    return buildDailyView({ protocol, recent: dose.recent, truncated: dose.truncated, pastInstances: dose.pastInstances, injectable, today, timezone })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
   }, [isDaily, dose.loading, dose.error, dose.recent, dose.truncated, dose.pastInstances, protocol, injectable, today, timezone, reloadKey])
   // ADR-130: só ocorrência FUTURA dentro da tolerância; atrasada fica no hero.
@@ -192,9 +217,11 @@ export default function TreatmentWeekModule({
     [points, series.journeyStart, treatmentStart, windowFrom, today]
   )
   // 125 fatia 2 (PO smoke 20/11): antes da 1ª dose, o miolo da L1 é o setup do tratamento (só "Ajustar").
+  // Smoke 124 A: com `nowTime` — horário de hoje já passado não é a "1ª dose" (o card da 125 já passava).
   const setupRows = useMemo(
-    () => (protocol && onAdjustTreatment ? treatmentSetupRows(protocol, protocol.medicine, today) : null),
-    [protocol, onAdjustTreatment, today],
+    () => (protocol && onAdjustTreatment ? treatmentSetupRows(protocol, protocol.medicine, today, localNowTime(timezone)) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
+    [protocol, onAdjustTreatment, today, timezone, reloadKey],
   )
   const lastDay = series.last ? formatLocalDate(getUserTime(parseISO(series.last.measuredAt), timezone)) : null
 

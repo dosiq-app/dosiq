@@ -11,6 +11,9 @@
 //  4. ocorrências do tratamento nos próximos dias (âncora do "Já apliquei", ADR-130). Best-effort:
 //     falha ⇒ sem botão (nunca registro sem ocorrência).
 // Recarrega com `reloadKey` (capturedAt da Hoje): registrar por qualquer via atualiza a linha.
+// 124 A (smoke 23/11): stale-while-revalidate — L1 e L3 nascem com o último resultado guardado
+// (`weekCache`, memória + aparelho) e a leitura atualiza por baixo. Sem cache: `loading` (1ª carga).
+// Falha com cache: mantém o dado guardado (o erro só aparece para quem nunca carregou).
 
 import { useCallback, useEffect, useState } from 'react'
 import { InteractionManager } from 'react-native'
@@ -20,6 +23,7 @@ import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { listRecentApplications } from '@dose/services/doseService'
 import { getLadderForProtocol } from '@treatments/services/titrationService'
 import { isNetworkError } from '@shared/utils/networkError'
+import { hydrateWeekCache, readWeekCache, weekCacheKey, writeWeekCache } from '@dashboard/utils/weekCache'
 
 const RECENT_LIMIT = 4
 /** 121 C (PO-20): diário lê a semana na MESMA chamada — 7 d × 2 registros, teto do core (20). */
@@ -58,7 +62,8 @@ async function loadPastInstances(userId: string, protocolId: string): Promise<an
   try {
     const repo = createDoseInstanceRepository({ client: supabase as any })
     const now = getRawNow()
-    const rows = await repo.getWindow(userId, parseTimestamp(now.getTime() - PAST_WINDOW_MS), now)
+    // Smoke 124 A: até +24 h — as ocorrências de HOJE (inclusive as que ainda vêm) dizem se há dose hoje.
+    const rows = await repo.getWindow(userId, parseTimestamp(now.getTime() - PAST_WINDOW_MS), parseTimestamp(now.getTime() + 86_400_000))
     return (rows ?? []).filter((r: any) => r?.protocol_id === protocolId)
   } catch {
     return null
@@ -113,10 +118,21 @@ export function useTreatmentWeekDose({
   // Estado CARIMBADO com o tratamento (RC5): troca de tratamento nunca mostra/ancora no anterior.
   const [stamped, setStamped] = useState<{ key: string | null; value: WeekDoseState }>({ key: null, value: EMPTY })
   const key = protocolId ? `${protocolId}:${medicineId ?? ''}` : null
-  const state = stamped.key === key ? stamped.value : EMPTY
+  const cacheKey = enabled && userId && key ? weekCacheKey(userId, 'dose', key, cadenceKind, doseEnabled ? '1' : '0') : null
+  const [hydrated, setHydrated] = useState<{ key: string | null; value: WeekDoseState | null }>({ key: null, value: null })
+  const cached = readWeekCache<WeekDoseState>(cacheKey) ?? (hydrated.key === cacheKey ? hydrated.value : null)
+  const state = stamped.key === key ? stamped.value : (cached ?? EMPTY)
   const [tick, setTick] = useState(0)
 
   // Effects
+  // Cold start: lê o último resultado do aparelho enquanto a rede não volta.
+  useEffect(() => {
+    if (!cacheKey || readWeekCache(cacheKey)) return undefined
+    let alive = true
+    hydrateWeekCache<WeekDoseState>(cacheKey).then((value) => { if (alive && value) setHydrated({ key: cacheKey, value }) })
+    return () => { alive = false }
+  }, [cacheKey])
+
   useEffect(() => {
     if (!enabled || !userId || !protocolId) return undefined
     let alive = true
@@ -136,7 +152,18 @@ export function useTreatmentWeekDose({
         doseEnabled && daily ? loadPastInstances(userId, protocolId) : Promise.resolve(null),
       ])
       if (!alive) return
-      setStamped({ key: `${protocolId}:${medicineId ?? ''}`, value: { loading: false, error: recentRes.error, recent: recentRes.rows, truncated: recentRes.rows.length >= limit, ladder, upcoming, pastInstances } })
+      const stampKey = `${protocolId}:${medicineId ?? ''}`
+      const storeKey = weekCacheKey(userId, 'dose', stampKey, cadenceKind, doseEnabled ? '1' : '0')
+      const previous = readWeekCache<WeekDoseState>(storeKey)
+      if (recentRes.error && previous) {
+        // Falha com dado guardado: segue mostrando o guardado (nunca troca dado por erro).
+        setStamped({ key: stampKey, value: previous })
+        return
+      }
+      const value: WeekDoseState = { loading: false, error: recentRes.error, recent: recentRes.rows, truncated: recentRes.rows.length >= limit, ladder, upcoming, pastInstances }
+      // Sem `upcoming` no cache: o "Já apliquei" só ancora em ocorrência lida AGORA (ADR-130).
+      if (!recentRes.error) writeWeekCache(storeKey, { ...value, upcoming: [] })
+      setStamped({ key: stampKey, value })
     })
     return () => {
       alive = false
