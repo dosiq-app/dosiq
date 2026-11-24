@@ -22,10 +22,12 @@ import ScreenContainer from '@shared/components/ui/ScreenContainer'
 import LoadingState from '@shared/components/states/LoadingState'
 import EmptyState from '@shared/components/states/EmptyState'
 import ErrorState from '@shared/components/states/ErrorState'
-import { getPeriodFromTime, getNow, getUserTime, parseISO, getTodayLocal, DEFAULT_TZ, summarizeTrackedProfile } from '@dosiq/core'
+import { getPeriodFromTime, getNow, getUserTime, parseISO, getTodayLocal, DEFAULT_TZ, summarizeTrackedProfile, isInjectable } from '@dosiq/core'
 import { useTodayMeasures } from '@measures/hooks/useTodayMeasures'
 import AdherenceDayCard from '@dashboard/components/AdherenceDayCard'
 import TreatmentWeekModule from '@dashboard/components/TreatmentWeekModule'
+import { useTrackedSelection } from '@dashboard/hooks/useTrackedSelection'
+import { moduleConcentration, trackedStatusLine } from '@dashboard/utils/trackedSelection'
 import TimeBlockSeparator from '@dashboard/components/TimeBlockSeparator'
 import DoseTimelineCard from '@dashboard/components/DoseTimelineCard'
 import EvolutionSwitchSection from '@dashboard/components/EvolutionSwitchSection'
@@ -559,17 +561,43 @@ function TodayPrioritySection({
   )
 }
 
+const EMPTY: any[] = []
+
 // 121 A: perfil (FR-001) → o que a Hoje mostra. `nenhum` ⇒ Hoje de sempre (INV-4). No wedge a Agenda
 // fica enquanto há dose hoje (G-A2/H-4: caminho de correção do dia da 120 C).
 function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal, now }: any) {
   const profile = wedge?.profile ?? 'nenhum'
   const isWedge = profile === 'wedge'
   const hasDoseToday = timeline.some((item: any) => item.kind !== 'measure')
-  // 124 A: o módulo é do wedge mais recente; sem wedge, do não wedge com cadência ≥ 7 d (misto segue no
-  // wedge até a fatia B). Sem tratamento do módulo ⇒ Hoje de sempre (INV-4).
-  const moduleId = wedge?.moduleProtocolId ?? null
+  // 124 A: o módulo é do wedge mais recente; sem wedge, do não wedge com cadência ≥ 7 d. Sem tratamento
+  // do módulo ⇒ Hoje de sempre (INV-4).
+  // 124 B (FR-012/014): com > 1 elegível, o módulo segue a seleção (padrão por regra, manual na sessão);
+  // enquanto as leituras não voltam, vale a regra da A (fallback).
+  const timezone = data?.timezone || DEFAULT_TZ
+  const eligible = wedge?.eligible ?? EMPTY
+  const tracked = useTrackedSelection({
+    userId: data?.user?.id ?? null,
+    eligible,
+    protocols,
+    fallbackId: wedge?.moduleProtocolId ?? null,
+    todayLocal: getTodayLocal(timezone),
+    timezone,
+    reloadKey: data?.capturedAt,
+  })
+  const moduleId = (tracked.multi ? tracked.selectedId : null) ?? wedge?.moduleProtocolId ?? null
   const wedgeProtocol = moduleId ? protocols.find((p: any) => p.id === moduleId) ?? null : null
-  const moduleIsWedge = wedge?.moduleIsWedge ?? false
+  const selectedEligible = eligible.find((e: any) => e.id === moduleId)
+  const moduleIsWedge = selectedEligible ? selectedEligible.isWedge : (wedge?.moduleIsWedge ?? false)
+  const pickerItems = useMemo(() => tracked.candidates.map((c) => {
+    const p = protocols.find((x: any) => x.id === c.id)
+    const injectable = isInjectable(p?.medicine)
+    return { id: c.id, name: p?.medicine?.name ?? p?.name ?? 'Tratamento', concentration: moduleConcentration(p?.medicine), statusLine: trackedStatusLine(c.status, injectable), injectable }
+  }), [tracked.candidates, protocols])
+  // FR-018: troca curta; a L1 recarrega, a altura do card fica (L1 âncora no topo).
+  const onSelectTracked = useCallback((id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+    tracked.select(id)
+  }, [tracked.select])
   const weekModule = !wedgeProtocol && profile === 'nenhum' ? null : (
     <TreatmentWeekModule
       userId={data?.user?.id ?? null}
@@ -584,11 +612,16 @@ function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal, 
       onOpenTreatment={navigateToTreatmentDetail}
       onAdjustTreatment={openTreatmentEdit}
       isWedge={moduleIsWedge}
+      pickerItems={pickerItems}
+      onSelectTracked={onSelectTracked}
     />
   )
   // Smoke 121 B: tratamento cuja escada a L3 já mostra — o card neutro da 029 dele sai da Hoje.
+  // 124 B: só o SELECIONADO (a L3 só existe para ele; trocar p/ o mensal devolve o card — PO 24/11).
   const weekProtocolId = weekModule ? (wedgeProtocol?.id ?? null) : null
-  return { isWedge, showAgenda: !isWedge || hasDoseToday, weekModule, weekProtocolId }
+  // FR-017: todo tratamento do seletor conta como "na tela" para o "Tratamento cadastrado" da 125.
+  const trackedProtocolIds = weekModule ? eligible.map((e: any) => e.id) : EMPTY
+  return { isWedge, showAgenda: !isWedge || hasDoseToday, weekModule, weekProtocolId, trackedProtocolIds }
 }
 
 function TodayScreenContent({
@@ -646,13 +679,13 @@ function TodayScreenContent({
   const userId = data?.user?.id ?? ''
   const lastTodayMeasure = todayMeasures?.[0] ?? null
 
-  const { isWedge, showAgenda, weekModule, weekProtocolId } = useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal, now })
+  const { isWedge, showAgenda, weekModule, weekProtocolId, trackedProtocolIds } = useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal, now })
   // 125 fatia 2: um card de setup por vez; enquanto houver, a Adesão some (AC6.7 — nada de "0%" no dia 1).
   // "Tratamento cadastrado" só do que NÃO está na tela (PO smoke 20/11): o tratamento do widget (setup no
   // miolo da L1) e quem tem dose na agenda de hoje ficam fora; o Confira não (incoerência é aviso).
   const onScreenProtocolIds = useMemo(
-    () => [weekProtocolId, ...timeline.map((d: any) => d?.protocol?.id)].filter(Boolean) as string[],
-    [weekProtocolId, timeline],
+    () => [weekProtocolId, ...trackedProtocolIds, ...timeline.map((d: any) => d?.protocol?.id)].filter(Boolean) as string[],
+    [weekProtocolId, trackedProtocolIds, timeline],
   )
   const setup = useTodaySetup({ data, stale, onScreenProtocolIds })
   const setupTime = getNow()

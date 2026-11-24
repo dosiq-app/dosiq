@@ -146,7 +146,7 @@ function SetupSummary({ setup, injectable }: { setup: NonNullable<Props['setup']
 function HistoryLink({ injectable, onPress }: { injectable: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" style={styles.historyLink} testID="dose-row-history">
-      <Text style={styles.actionText}>{injectable ? 'Ver aplicações anteriores' : 'Ver doses anteriores'}</Text>
+      <Text style={styles.actionText}>{injectable ? 'Ver todas as aplicações' : 'Ver todas as doses'}</Text>
     </Pressable>
   )
 }

@@ -291,10 +291,15 @@ export async function getRecentMedicines(userId, days) {
     // 2026-11-20, pg_constraint); `protocols.id` com SELECT de `authenticated`.
     // Smoke 20/11: excluir é ARQUIVAR (`archived_at`) — remédio e tratamento. Remédio arquivado sai; tratamento
     // arquivado não conta como "tem tratamento". Colunas e SELECT de `authenticated` conferidos em prod e QA.
-    .select('id, name, presentation, created_at, protocols(id, archived_at)')
+    // Fix 125 (smoke 124 B, 24/11): remédio de escada (etapa passada OU futura) ou já usado não é "falta
+    // configurar". FK única titration_steps→medicines e medicine_logs→medicines, SELECT de `authenticated`
+    // (prod e QA, pg_constraint/has_table_privilege 2026-11-24). Só o id e 1 linha de cada (existência).
+    .select('id, name, presentation, created_at, protocols(id, archived_at), titration_steps(id), medicine_logs(id)')
     .eq('user_id', userId)
     .is('archived_at', null)
     .gte('created_at', since)
+    .limit(1, { referencedTable: 'titration_steps' })
+    .limit(1, { referencedTable: 'medicine_logs' })
     .order('created_at')
 
   if (error) throw error

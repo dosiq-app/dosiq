@@ -169,16 +169,16 @@ describe('DoseRow', () => {
 })
 
 describe('DoseRow — 124 A (FR-009/FR-010, PO-4)', () => {
-  it('semanal aberto com registro: link "Ver aplicações anteriores" abre o sheet', () => {
+  it('semanal aberto com registro: link "Ver todas as aplicações" abre o sheet', () => {
     const onOpenHistory = jest.fn()
     const s = render(<DoseRow {...base} open onOpenHistory={onOpenHistory} />)
-    fireEvent.press(s.getByText('Ver aplicações anteriores'))
+    fireEvent.press(s.getByText('Ver todas as aplicações'))
     expect(onOpenHistory).toHaveBeenCalledTimes(1)
   })
 
-  it('não injetável: "Ver doses anteriores" e nenhum mapa mesmo com local gravado', () => {
+  it('não injetável: "Ver todas as doses" e nenhum mapa mesmo com local gravado', () => {
     const s = render(<DoseRow {...base} open injectable={false} onOpenHistory={jest.fn()} />)
-    expect(s.getByText('Ver doses anteriores')).toBeTruthy()
+    expect(s.getByText('Ver todas as doses')).toBeTruthy()
     expect(s.queryByTestId('bodymap-view-mock')).toBeNull()
   })
 
