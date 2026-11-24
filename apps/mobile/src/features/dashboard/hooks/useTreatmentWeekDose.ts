@@ -154,7 +154,9 @@ export function useTreatmentWeekDose({
       if (!alive) return
       const stampKey = `${protocolId}:${medicineId ?? ''}`
       const storeKey = weekCacheKey(userId, 'dose', stampKey, cadenceKind, doseEnabled ? '1' : '0')
-      const previous = readWeekCache<WeekDoseState>(storeKey)
+      // RC6 #976: cold start offline — erro rápido pode chegar antes da hidratação; consulta o disco.
+      const previous = readWeekCache<WeekDoseState>(storeKey) ?? (recentRes.error ? await hydrateWeekCache<WeekDoseState>(storeKey) : null)
+      if (!alive) return
       if (recentRes.error && previous) {
         // Falha com dado guardado: segue mostrando o guardado (nunca troca dado por erro).
         setStamped({ key: stampKey, value: previous })

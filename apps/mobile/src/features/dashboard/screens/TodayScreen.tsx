@@ -561,7 +561,7 @@ function TodayPrioritySection({
 
 // 121 A: perfil (FR-001) → o que a Hoje mostra. `nenhum` ⇒ Hoje de sempre (INV-4). No wedge a Agenda
 // fica enquanto há dose hoje (G-A2/H-4: caminho de correção do dia da 120 C).
-function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal }: any) {
+function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal, now }: any) {
   const profile = wedge?.profile ?? 'nenhum'
   const isWedge = profile === 'wedge'
   const hasDoseToday = timeline.some((item: any) => item.kind !== 'measure')
@@ -578,6 +578,7 @@ function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal }
       treatmentStart={wedge?.wedgeStart ?? null}
       timezone={data?.timezone || DEFAULT_TZ}
       reloadKey={data?.capturedAt}
+      nowKey={now instanceof Date ? now.getTime() : 0}
       protocol={wedgeProtocol}
       onRegisterEarly={(instance: any) => setBulkModal(earlyRegisterModal(instance, wedgeProtocol, data?.timezone || DEFAULT_TZ))}
       onOpenTreatment={navigateToTreatmentDetail}
@@ -591,7 +592,7 @@ function useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal }
 }
 
 function TodayScreenContent({
-  data, stale, loading, refresh,
+  data, stale, loading, refresh, now,
   timeline, carryOver, lookAhead, protocols, scheduledProtocols, stats, hasAnyTreatment, nextDoseLabel,
   isComplex, shifts, groupedTimeline, countsByShift,
   expandedShifts, toggleShift,
@@ -645,7 +646,7 @@ function TodayScreenContent({
   const userId = data?.user?.id ?? ''
   const lastTodayMeasure = todayMeasures?.[0] ?? null
 
-  const { isWedge, showAgenda, weekModule, weekProtocolId } = useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal })
+  const { isWedge, showAgenda, weekModule, weekProtocolId } = useTreatmentWeekSlot({ wedge, timeline, protocols, data, setBulkModal, now })
   // 125 fatia 2: um card de setup por vez; enquanto houver, a Adesão some (AC6.7 — nada de "0%" no dia 1).
   // "Tratamento cadastrado" só do que NÃO está na tela (PO smoke 20/11): o tratamento do widget (setup no
   // miolo da L1) e quem tem dose na agenda de hoje ficam fora; o Confira não (incoerência é aviso).
@@ -888,7 +889,7 @@ export default function TodayScreen({ route, navigation }) {
   // 090 D-3: dose do lembrete recebida pelo canal (`subscribePendingDose`), consumida ao abrir a modal
   const [deliveredDose, setDeliveredDose] = useState(null)
 
-  const { data, loading, error, stale, refresh } = useTodayData()
+  const { data, loading, error, stale, refresh, now } = useTodayData()
 
   // Pre-resolve optional chains do data para reduzir complexidade ciclomática
   const {
@@ -1028,7 +1029,7 @@ export default function TodayScreen({ route, navigation }) {
 
   return (
     <TodayScreenContent
-      data={data} stale={stale} loading={loading} refresh={refresh}
+      data={data} stale={stale} loading={loading} refresh={refresh} now={now}
       timeline={timelineWithMeasures} carryOver={carryOver} lookAhead={lookAhead} protocols={protocols} scheduledProtocols={scheduledProtocols} stats={stats}
       hasAnyTreatment={hasAnyTreatment} nextDoseLabel={nextDoseLabel}
       refreshTodayMeasures={refreshTodayMeasures} todayMeasures={todayMeasures}

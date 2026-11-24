@@ -66,6 +66,8 @@ type Props = {
   onOpenTreatment?: (protocolId: string) => void
   /** 125 fatia 2: "Ajustar" do miolo da L1 antes da 1ª dose → edição do tratamento. */
   onAdjustTreatment?: (protocolId: string) => void
+  /** RC6 #976 (AP-366): tick de minuto da Hoje (`useTodayData.now`) — reavalia "agora" sem relógio próprio. */
+  nowKey?: number
   /** 124 A: tratamento do módulo é wedge? Não wedge ⇒ "ACOMPANHAMENTO", só L1 (cadência ≥ 7 d). */
   isWedge?: boolean
 }
@@ -112,13 +114,15 @@ function buildDailyView({ protocol, recent, truncated, pastInstances, injectable
  * L1/L3 do módulo (121 B/C): elegibilidade por cadência (FR-040), leituras e derivações puras do core.
  * Separado do componente para manter a ordem States → Memos legível (e a complexidade baixa).
  */
-function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey }: {
+function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey, nowKey }: {
   protocol: any
   isWedge: boolean
   userId: string | null
   timezone: string
   today: string
   reloadKey?: unknown
+  /** RC6 #976 (AP-366): minuto corrente — reavalia "agora" com a Hoje aberta. */
+  nowKey: number
 }) {
   // 124 A (FR-013): wedge = qualquer cadência conhecida; não wedge = só ≥ 7 d (nunca diário).
   const cadenceOf = trackableCadence(protocol, isWedge)
@@ -152,11 +156,11 @@ function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey
     if (!isDaily || dose.loading || dose.error) return null
     return buildDailyView({ protocol, recent: dose.recent, truncated: dose.truncated, pastInstances: dose.pastInstances, injectable, today, timezone })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
-  }, [isDaily, dose.loading, dose.error, dose.recent, dose.truncated, dose.pastInstances, protocol, injectable, today, timezone, reloadKey])
+  }, [isDaily, dose.loading, dose.error, dose.recent, dose.truncated, dose.pastInstances, protocol, injectable, today, timezone, reloadKey, nowKey])
   // ADR-130: só ocorrência FUTURA dentro da tolerância; atrasada fica no hero.
   // RC6: instante REAL (`getRawNow`) contra `scheduled_for` absoluto — `getNow` é relógio de parede do fuso.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
-  const earlyAnchor = useMemo(() => (doseEligible && !isDaily ? resolveEarlyAnchorInstance(dose.upcoming, getRawNow()) : null), [doseEligible, isDaily, dose.upcoming, reloadKey])
+  const earlyAnchor = useMemo(() => (doseEligible && !isDaily ? resolveEarlyAnchorInstance(dose.upcoming, getRawNow()) : null), [doseEligible, isDaily, dose.upcoming, reloadKey, nowKey])
   const evolution = useMemo(() => evolutionRowCopy(dose.ladder, today, timezone), [dose.ladder, today, timezone])
   const evolutionOpen = useMemo(
     () => evolutionDetail(dose.ladder, nextDay, cadence, timezone, today, isDaily ? 'daily' : 'weekly'),
@@ -190,7 +194,7 @@ function ModuleHeader({ medicineName, medicine, isWedge }: { medicineName: strin
 
 export default function TreatmentWeekModule({
   userId, profile, medicineName, treatmentStart, timezone, reloadKey, protocol = null, onRegisterEarly, onOpenTreatment,
-  onAdjustTreatment, isWedge = true,
+  onAdjustTreatment, isWedge = true, nowKey = 0,
 }: Props) {
   // States
   const [windowChoice, setWindowChoice] = useState<WeightWindow | null>(null)
@@ -199,11 +203,11 @@ export default function TreatmentWeekModule({
   // 124 A: peso (L2) é do wedge até a fatia B — sem leitura fora dele.
   const series = useTodayWeightSeries({ enabled: isWedge, userId, timezone, treatmentStart, reloadKey })
   // Memos
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey vira o dia após recarga da Hoje
-  const today = useMemo(() => getTodayLocal(timezone), [timezone, reloadKey])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey/nowKey viram o dia com a Hoje aberta
+  const today = useMemo(() => getTodayLocal(timezone), [timezone, reloadKey, nowKey])
   const yesterday = shiftDay(today, -1)
   const { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel } = useWeekDoseView({
-    protocol, isWedge, userId, timezone, today, reloadKey,
+    protocol, isWedge, userId, timezone, today, reloadKey, nowKey,
   })
   const windowSel = windowChoice ?? defaultWeightWindow(series.recent, today)
   const windowFrom =
@@ -221,7 +225,7 @@ export default function TreatmentWeekModule({
   const setupRows = useMemo(
     () => (protocol && onAdjustTreatment ? treatmentSetupRows(protocol, protocol.medicine, today, localNowTime(timezone)) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
-    [protocol, onAdjustTreatment, today, timezone, reloadKey],
+    [protocol, onAdjustTreatment, today, timezone, reloadKey, nowKey],
   )
   const lastDay = series.last ? formatLocalDate(getUserTime(parseISO(series.last.measuredAt), timezone)) : null
 

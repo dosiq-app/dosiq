@@ -135,6 +135,25 @@ describe('useTreatmentWeekDose — cache das linhas (124 A, smoke 23/11)', () =>
     expect(again.result.current.recent).toEqual(rows)
   })
 
+  it('RC6 #976: cold start offline — erro rápido não vence o dado do disco', async () => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage')
+    const disk = new Map<string, string>()
+    AsyncStorage.setItem.mockImplementation((k: string, v: string) => { disk.set(k, v); return Promise.resolve() })
+    AsyncStorage.getItem.mockImplementation((k: string) => Promise.resolve(disk.get(k) ?? null))
+    mockList.mockResolvedValue(rows)
+    const warm = renderHook(() => useTreatmentWeekDose(props))
+    await waitFor(() => expect(warm.result.current.recent).toEqual(rows))
+    warm.unmount()
+    clearWeekCacheMemory() // processo novo: só o disco tem o dado
+    mockList.mockRejectedValue(new Error('net'))
+    const cold = renderHook(() => useTreatmentWeekDose(props))
+    await waitFor(() => expect(cold.result.current.recent).toEqual(rows))
+    expect(cold.result.current.error).toBeNull()
+    // Mock global do jest-setup: devolve o disco vazio aos próximos casos.
+    AsyncStorage.setItem.mockImplementation(() => Promise.resolve())
+    AsyncStorage.getItem.mockImplementation(() => Promise.resolve(null))
+  })
+
   it('cache é por usuário: outra conta não herda', async () => {
     mockList.mockResolvedValue(rows)
     const a = renderHook(() => useTreatmentWeekDose(props))

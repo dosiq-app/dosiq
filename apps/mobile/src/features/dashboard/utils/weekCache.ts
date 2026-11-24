@@ -26,6 +26,8 @@ export async function hydrateWeekCache<T>(key: string): Promise<T | null> {
   try {
     const raw = await AsyncStorage.getItem(key)
     if (!raw) return null
+    // RC6: leitura de rede pode ter gravado dado mais novo enquanto o getItem corria — ele vence.
+    if (memory.has(key)) return memory.get(key) as T
     const value = JSON.parse(raw) as T
     memory.set(key, value)
     return value

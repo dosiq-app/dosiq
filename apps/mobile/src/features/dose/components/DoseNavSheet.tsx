@@ -9,7 +9,7 @@
 // Entrada única: link no rodapé da L1 aberta (FR-010).
 
 import { useCallback, useEffect, useState } from 'react'
-import { Modal, View, Text, Pressable, StyleSheet } from 'react-native'
+import { Modal, View, Text, Pressable, StyleSheet, Platform, StatusBar } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
@@ -48,6 +48,12 @@ function useNeighbors(current: NavDose | null, protocolId: string | null, medici
   // States — resultado CARIMBADO com o pedido (E-16): resposta de dose/pedido antigo nunca vence, e
   // "carregando" é derivado (carimbo ≠ chave atual), sem setState síncrono no effect.
   const [tick, setTick] = useState(0)
+  // RC6 #976: cada abertura é um pedido novo — reabrir na mesma dose não reaproveita resultado/erro antigo.
+  const [prevEnabled, setPrevEnabled] = useState(enabled)
+  if (enabled !== prevEnabled) {
+    setPrevEnabled(enabled)
+    if (enabled) setTick((t) => t + 1)
+  }
   const key = enabled && current ? `${current.id}|${current.taken_at}|${tick}` : null
   const [stamped, setStamped] = useState<{ key: string | null; value: Neighbors }>({ key: null, value: LOADING })
   const state = stamped.key === key ? stamped.value : LOADING
@@ -142,6 +148,7 @@ export default function DoseNavSheet({ visible, onClose, initial, protocolId, me
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={close} statusBarTranslucent>
       <View style={styles.root}>
+        {Platform.OS === 'android' ? <View style={{ height: StatusBar.currentHeight ?? 0 }} /> : null}
         <Pressable style={styles.backdrop} onPress={close} accessibilityLabel="Fechar" />
         <SafeAreaView edges={['bottom']} style={styles.sheet} testID="dose-nav-sheet">
           <View style={styles.handle} />

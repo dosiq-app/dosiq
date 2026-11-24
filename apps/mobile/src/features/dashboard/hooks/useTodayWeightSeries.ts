@@ -78,6 +78,7 @@ export function useTodayWeightSeries({
   const reqRef = useRef(0)
   const fullLoadedRef = useRef(false)
   const hasRecentRef = useRef(!!initial)
+  const keyRef = useRef(cacheKey)
 
   // Handlers
   const loadRecent = useCallback(async () => {
@@ -96,8 +97,16 @@ export function useTodayWeightSeries({
       hasRecentRef.current = true
       if (cacheKey) writeWeekCache(cacheKey, { recent: points, last: lastValue })
     } catch (err) {
-      // Com série guardada na tela, falha de revalidação não troca dado por erro.
-      if (req === reqRef.current && !hasRecentRef.current) setError(isNetworkError(err) ? 'network' : 'other')
+      // Com série guardada na tela, falha de revalidação não troca dado por erro. RC6 #976: cold start
+      // offline — o erro pode chegar antes da hidratação; consulta o disco antes de mostrar erro.
+      const stored = !hasRecentRef.current && cacheKey ? await hydrateWeekCache<RecentCache>(cacheKey) : null
+      if (req !== reqRef.current) return
+      if (stored && !hasRecentRef.current) {
+        hasRecentRef.current = true
+        setRecent(stored.recent)
+        setLast(stored.last)
+        setError(null)
+      } else if (!hasRecentRef.current) setError(isNetworkError(err) ? 'network' : 'other')
     } finally {
       if (req === reqRef.current) setLoading(false)
     }
@@ -136,17 +145,32 @@ export function useTodayWeightSeries({
 
   // Effects
   // Cold start: série guardada no aparelho enquanto a rede não volta.
+  // RC6 #976: troca de chave (conta/fuso) descarta a série da chave anterior e relê.
   useEffect(() => {
+    const changed = keyRef.current !== cacheKey
+    keyRef.current = cacheKey
+    if (changed) {
+      hasRecentRef.current = false
+      reqRef.current += 1 // resposta da chave anterior nunca vence
+    }
     if (!cacheKey || hasRecentRef.current) return undefined
     let alive = true
     hydrateWeekCache<RecentCache>(cacheKey).then((value) => {
-      if (!alive || !value || hasRecentRef.current) return
+      if (!alive || hasRecentRef.current) return
+      if (!value) {
+        if (changed) { setRecent(null); setLast(null) }
+        if (changed && enabled) void loadRecent()
+        return
+      }
       hasRecentRef.current = true
       setRecent(value.recent)
       setLast(value.last)
+      setError(null)
       setLoading(false)
+      if (changed && enabled) void loadRecent()
     })
     return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só a troca de chave dispara
   }, [cacheKey])
 
   // Depois do 1º paint (MOBILE_PERFORMANCE), e de novo a cada recarga da Hoje.
