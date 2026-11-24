@@ -263,5 +263,6 @@ export function useTodayData() {
     }
   }, [load])
 
-  return { data: enhancedData, loading, error, stale, isDaySegregated, refresh: load }
+  // 124 A (RC6 #976): `now` exposto — o módulo da Hoje reavalia no MESMO tick (um relógio só).
+  return { data: enhancedData, loading, error, stale, isDaySegregated, refresh: load, now }
 }

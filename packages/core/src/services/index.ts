@@ -23,7 +23,7 @@ export {
 } from './timelineService'
 
 export { createDoseLogService } from './doseLogService'
-export type { RecentApplication } from './doseLogService'
+export type { RecentApplication, ApplicationCursor } from './doseLogService'
 
 // Caminho canônico do skip (spec 067 Slice B / ADR-092) — a guarda de janela vive na RPC
 export {
@@ -169,11 +169,13 @@ export {
   SMALL_SAMPLE_THRESHOLD,
   classifyWedge,
   summarizeWedgeProfile,
+  summarizeTrackedProfile,
+  trackableCadence,
   normalizeClassCode,
   inferMeasure,
   effectiveMeasure,
 } from './trackedMeasure'
-export type { Measure, EffectiveMeasure, WedgeBucket, GrowthCohortKey, WedgeProfile, WedgeProfileProtocol, WedgeProfileSummary } from './trackedMeasure'
+export type { Measure, EffectiveMeasure, WedgeBucket, GrowthCohortKey, WedgeProfile, WedgeProfileProtocol, WedgeProfileSummary, TrackedProfileProtocol, TrackedProfileSummary, TrackedEligible } from './trackedMeasure'
 
 // Aritmética de dia local (YYYY-MM-DD) da série — o card da 069-B precisa das mesmas contas da ponte.
 export { shiftDay, daysBetween } from './report/reportFormat'

@@ -11,6 +11,7 @@
  */
 import { THERAPEUTIC_CLASS_CODE_REGEX } from '../schemas/medicineSchema'
 import { TRACKED_MEASURES, type TrackedMeasure } from '../schemas/protocolSchema'
+import { doseCadence, weeklyCadenceDays, type DoseCadence } from '../utils/doseCadence'
 
 export type Measure = Exclude<TrackedMeasure, 'nenhum'>
 
@@ -150,4 +151,71 @@ export function summarizeWedgeProfile(
     wedgeProtocolId: latest.id,
     wedgeStart: starts[0] ?? null,
   }
+}
+
+// ─── 124 A · elegíveis do módulo da Hoje (FR-005/FR-013) ─────────────────────────
+
+/**
+ * Cadência que dá L1 a um tratamento (FR-013): wedge = qualquer cadência conhecida (121 C, inclui
+ * diário); não wedge = só ≥ 7 dias (`weeklyCadenceDays`). Diário não wedge fica fora (AC-9).
+ */
+export function trackableCadence(
+  protocol: { frequency?: string | null; interval_days?: number | null } | null | undefined,
+  isWedge: boolean
+): DoseCadence | null {
+  if (isWedge) return doseCadence(protocol)
+  const days = weeklyCadenceDays(protocol)
+  return days ? { kind: 'weekly', days } : null
+}
+
+export interface TrackedProfileProtocol extends WedgeProfileProtocol {
+  frequency?: string | null
+  interval_days?: number | null
+}
+
+export interface TrackedEligible {
+  id: string
+  isWedge: boolean
+  cadence: DoseCadence
+}
+
+export interface TrackedProfileSummary extends WedgeProfileSummary {
+  /** Tratamentos com L1 (FR-013), na ordem recebida. A fatia B escolhe entre eles. */
+  eligible: TrackedEligible[]
+  /** Tratamento do módulo na fatia A: o wedge mais recente; sem wedge, o não wedge elegível iniciado
+   *  mais recentemente (empate ⇒ maior `id`). `null` ⇒ sem módulo. */
+  moduleProtocolId: string | null
+  moduleIsWedge: boolean
+}
+
+function latestStarted<T extends { id: string; start_date?: string | null }>(list: readonly T[]): T | null {
+  if (list.length === 0) return null
+  return list.reduce((a, b) => {
+    const sa = a.start_date ?? ''
+    const sb = b.start_date ?? ''
+    if (sa !== sb) return sb > sa ? b : a
+    return b.id > a.id ? b : a
+  })
+}
+
+/**
+ * Perfil da Hoje com a elegibilidade da 124 (FR-005/FR-013). Campos do wedge = `summarizeWedgeProfile`
+ * intacto (PO-6). Wedge sem cadência conhecida segue com o módulo (121), só não entra em `eligible`.
+ */
+export function summarizeTrackedProfile(
+  protocols: ReadonlyArray<TrackedProfileProtocol>,
+  classCodeByMedicine: Readonly<Record<string, string | null | undefined>>
+): TrackedProfileSummary {
+  const wedge = summarizeWedgeProfile(protocols, classCodeByMedicine)
+  const eligible: TrackedEligible[] = []
+  const nonWedge: TrackedProfileProtocol[] = []
+  for (const p of protocols) {
+    const isWedge = !!p.medicine_id && classifyWedge(classCodeByMedicine[p.medicine_id]) === 'glp1_antiobesidade'
+    const cadence = trackableCadence(p, isWedge)
+    if (!cadence) continue
+    eligible.push({ id: p.id, isWedge, cadence })
+    if (!isWedge) nonWedge.push(p)
+  }
+  if (wedge.wedgeProtocolId) return { ...wedge, eligible, moduleProtocolId: wedge.wedgeProtocolId, moduleIsWedge: true }
+  return { ...wedge, eligible, moduleProtocolId: latestStarted(nonWedge)?.id ?? null, moduleIsWedge: false }
 }

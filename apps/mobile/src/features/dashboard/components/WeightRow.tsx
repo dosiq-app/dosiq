@@ -21,6 +21,7 @@ import { EVENTS, ENTRY_POINTS, SURFACES } from '@platform/analytics/analyticsEve
 import { clientUuid } from '@shared/utils/clientUuid'
 import { isNetworkError } from '@shared/utils/networkError'
 import { selectionTap } from '@shared/utils/haptics'
+import LoadingDots from '@shared/components/feedback/LoadingDots'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 import { WEIGHT_RANGE_MSG, formatKg1, whenLabel, type WeightWindow } from '@dashboard/utils/treatmentWeek'
 import type { WeightLast, WeightPoint } from '@dashboard/hooks/useTodayWeightSeries'
@@ -48,7 +49,7 @@ type Props = {
   onSaved: () => void
 }
 
-function WeightRowHead({ open, onToggle, summary, changeLine, empty }: { open: boolean; onToggle: () => void; summary: string | null; changeLine: string | null; empty: boolean }) {
+function WeightRowHead({ open, onToggle, summary, changeLine, empty, pending }: { open: boolean; onToggle: () => void; summary: string | null; changeLine: string | null; empty: boolean; pending: boolean }) {
   return (
     <Pressable
       onPress={onToggle}
@@ -63,6 +64,7 @@ function WeightRowHead({ open, onToggle, summary, changeLine, empty }: { open: b
       </View>
       <View style={styles.flex}>
         <Text style={styles.title}>Peso</Text>
+        {pending ? <LoadingDots testID="weight-row-pending" /> : null}
         {summary ? <Text style={styles.value} testID="weight-row-summary">{summary}</Text> : null}
         {changeLine ? <Text style={styles.neutral} testID="weight-row-change">{changeLine}</Text> : null}
         {empty ? <Text style={styles.neutral}>Nenhuma pesagem ainda</Text> : null}
@@ -147,7 +149,8 @@ function WeightChartArea({ points, error, loading, onRetry, windowFrom, today }:
       </Pressable>
     )
   }
-  if (points === null || loading) return <View style={styles.skeleton} testID="weight-row-loading" />
+  // 124 A: com série guardada/na tela, recarga não pisca o gráfico; skeleton só sem série nenhuma.
+  if (points === null) return loading ? <View style={styles.skeleton} testID="weight-row-loading" /> : null
   if (points.length >= 2) return <WeightLineChart points={points} from={windowFrom} to={today} />
   return (
     <View style={styles.placeholder} testID={points.length === 1 ? 'weight-row-single' : 'weight-row-none'}>
@@ -189,7 +192,7 @@ export default function WeightRow(props: Props) {
   return (
     <View style={styles.root} testID="week-row-peso">
       <View style={styles.head}>
-        <WeightRowHead open={open} onToggle={onToggle} summary={lastText} changeLine={changeLine} empty={empty} />
+        <WeightRowHead open={open} onToggle={onToggle} summary={lastText} changeLine={changeLine} empty={empty} pending={points === null && !error} />
         {!showField && lastText ? (
           <Pressable onPress={() => { selectionTap(); setEditing(true) }} style={styles.action} accessibilityRole="button" testID="weight-row-register">
             <Text style={styles.actionText}>Registrar</Text>

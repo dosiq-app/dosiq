@@ -163,7 +163,31 @@ describe('DoseRow', () => {
     expect(s.getByText('Registrada há 3 dias · sex, 13/11')).toBeTruthy()
     expect(s.getByText('Registrar')).toBeTruthy()
     expect(s.queryByText('Já apliquei')).toBeNull()
-    expect(s.getByText('ÚLTIMOS 2 REGISTROS')).toBeTruthy()
+    expect(s.getByText('ÚLTIMAS 2 DOSES')).toBeTruthy()
     expect(s.queryByTestId('bodymap-view-mock')).toBeNull()
+  })
+})
+
+describe('DoseRow — 124 A (FR-009/FR-010, PO-4)', () => {
+  it('semanal aberto com registro: link "Ver aplicações anteriores" abre o sheet', () => {
+    const onOpenHistory = jest.fn()
+    const s = render(<DoseRow {...base} open onOpenHistory={onOpenHistory} />)
+    fireEvent.press(s.getByText('Ver aplicações anteriores'))
+    expect(onOpenHistory).toHaveBeenCalledTimes(1)
+  })
+
+  it('não injetável: "Ver doses anteriores" e nenhum mapa mesmo com local gravado', () => {
+    const s = render(<DoseRow {...base} open injectable={false} onOpenHistory={jest.fn()} />)
+    expect(s.getByText('Ver doses anteriores')).toBeTruthy()
+    expect(s.queryByTestId('bodymap-view-mock')).toBeNull()
+  })
+
+  it('sem link: fechada, sem registro (setup/vazio), diário, ou sem handler', () => {
+    expect(render(<DoseRow {...base} onOpenHistory={jest.fn()} />).queryByTestId('dose-row-history')).toBeNull()
+    expect(render(<DoseRow {...base} open recent={[]} onOpenHistory={jest.fn()} />).queryByTestId('dose-row-history')).toBeNull()
+    expect(render(<DoseRow {...base} open />).queryByTestId('dose-row-history')).toBeNull()
+    const week = { days: [], taken: 0, due: 0, since: null, todayLast: null }
+    const daily = { week, copy: { primary: 'x', secondary: null } }
+    expect(render(<DoseRow {...base} open summary={null} daily={daily} onOpenHistory={jest.fn()} />).queryByTestId('dose-row-history')).toBeNull()
   })
 })
