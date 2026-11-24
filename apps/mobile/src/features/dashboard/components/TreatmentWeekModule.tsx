@@ -15,7 +15,6 @@ import { View, Text, Pressable, StyleSheet } from 'react-native'
 import * as LucideIcons from 'lucide-react-native'
 const { ChevronsUpDown } = LucideIcons as any
 import {
-  formatConcentration,
   formatIntakeDose,
   formatLocalDate,
   getRawNow,
@@ -57,7 +56,7 @@ import {
   type WeightWindow,
 } from '@dashboard/utils/treatmentWeek'
 import { treatmentSetupRows } from '@dashboard/utils/setupCopy'
-import { widgetMeasure } from '@dashboard/utils/trackedSelection'
+import { moduleConcentration, widgetMeasure } from '@dashboard/utils/trackedSelection'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 
 type Props = {
@@ -202,13 +201,6 @@ function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey
   )
   const nextDoseLabel = protocol ? formatIntakeDose(protocol.dosage_per_intake, protocol.intake_unit, protocol.medicine) || null : null
   return { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel, todayOpen }
-}
-
-/** Concentração do selo (mesmo pill do card do remédio). */
-export function moduleConcentration(medicine: any): string | null {
-  return medicine?.dosage_per_pill
-    ? formatConcentration(medicine.dosage_per_pill, medicine.dosage_unit, medicine.concentration_volume_ml)
-    : null
 }
 
 /**

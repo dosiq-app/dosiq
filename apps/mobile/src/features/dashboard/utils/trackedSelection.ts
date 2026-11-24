@@ -10,7 +10,7 @@
 //   `effectiveMeasure` do core fica intacto (pedido pós-dose da 100).
 // SaMD: nenhum estado fala de atraso, risco ou janela.
 
-import { TRACKED_MEASURES, daysDifference, summarizeWeeklyDose, isInjectable, type DoseCadence, type WeeklyApplication } from '@dosiq/core'
+import { TRACKED_MEASURES, daysDifference, formatConcentration, summarizeWeeklyDose, isInjectable, type DoseCadence, type WeeklyApplication } from '@dosiq/core'
 import { weekdayDate } from '@dashboard/utils/treatmentWeek'
 
 export type TrackedKind = 'wedge' | 'injetavel' | 'outro'
@@ -111,4 +111,11 @@ export function widgetMeasure(protocol: object | null | undefined, isWedge: bool
   const value = (protocol as { tracked_measure?: unknown }).tracked_measure
   if (value === null || value === undefined) return isWedge ? 'peso' : 'nenhum'
   return typeof value === 'string' && MEASURE_SET.has(value) ? (value as WidgetMeasure) : 'nenhum'
+}
+
+/** Concentração do selo do cabeçalho e da linha do sheet (mesmo pill do card do remédio). */
+export function moduleConcentration(medicine: any): string | null {
+  return medicine?.dosage_per_pill
+    ? formatConcentration(medicine.dosage_per_pill, medicine.dosage_unit, medicine.concentration_volume_ml)
+    : null
 }
