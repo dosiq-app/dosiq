@@ -14,6 +14,7 @@ import {
   formatIntakeDose,
   formatLocalDate,
   getRawNow,
+  parseTimestamp,
   getTodayLocal,
   getUserTime,
   isInjectable,
@@ -42,6 +43,7 @@ import {
   defaultWeightWindow,
   effectiveDailySchedule,
   instanceDailySchedule,
+  todayOccurrenceOpen,
   localNowTime,
   evolutionDetail,
   evolutionRowCopy,
@@ -70,6 +72,18 @@ type Props = {
   nowKey?: number
   /** 124 A: tratamento do módulo é wedge? Não wedge ⇒ "ACOMPANHAMENTO", só L1 (cadência ≥ 7 d). */
   isWedge?: boolean
+}
+
+/** Instante do tick da Hoje (`useTodayData.now`); sem ele, o instante real. */
+function instantOf(nowKey: number): Date {
+  return nowKey ? parseTimestamp(nowKey) : getRawNow()
+}
+
+/** `nowTime` do setup pela MESMA regra do título: aberta ⇒ hoje vale; fechada ⇒ hoje não; sem leitura ⇒ relógio. */
+function setupNowTime(todayOpen: boolean | null, timezone: string): string | undefined {
+  if (todayOpen === true) return undefined
+  if (todayOpen === false) return '24:00'
+  return localNowTime(timezone)
 }
 
 /**
@@ -142,10 +156,20 @@ function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey
   })
   // Próxima = 1º dia do calendário ainda em aberto: "Já apliquei" adiantado resolve a ocorrência
   // futura e o calendário puro não sabe disso (achado do smoke 121 B, ADR-130).
-  const nextDay = useMemo(
-    () => (protocol ? resolveNextOpenDay(listUpcomingDoseDates(protocol, 3).dates, dose.upcoming, timezone) : null),
-    [protocol, dose.upcoming, timezone]
+  // Smoke 124 A (PO 23/11): dose de hoje ainda vale? Regra do hero — título e miolo leem daqui.
+  const todayOpen = useMemo(
+    () => todayOccurrenceOpen(isDaily ? dose.pastInstances : dose.upcoming, today, timezone, instantOf(nowKey)),
+    [isDaily, dose.pastInstances, dose.upcoming, today, timezone, nowKey]
   )
+  const nextDay = useMemo(() => {
+    if (!protocol) return null
+    const dates = listUpcomingDoseDates(protocol, 3).dates
+    // Hoje fechou (janela passou/resolvida) ou leitura ok sem ocorrência de hoje ⇒ hoje não é a próxima.
+    const dropToday = todayOpen === false || (todayOpen === null && !isDaily && dose.upcoming.length > 0)
+    // Aberta ⇒ hoje entra mesmo com o horário passado (o calendário puro já o descartou pelo relógio).
+    const base = todayOpen === true && !dates.includes(today) ? [today, ...dates] : dates
+    return resolveNextOpenDay(dropToday ? base.filter((d) => d !== today) : base, dose.upcoming, timezone)
+  }, [protocol, dose.upcoming, timezone, todayOpen, isDaily, today])
   const doseSummary = useMemo(() => {
     if (!doseEligible || isDaily || dose.loading || dose.error) return null
     return summarizeWeeklyDose({ applications: dose.recent, nextDay, intervalDays: cadence, todayLocal: today, tz: timezone })
@@ -167,7 +191,7 @@ function useWeekDoseView({ protocol, isWedge, userId, timezone, today, reloadKey
     [dose.ladder, nextDay, cadence, timezone, today, isDaily]
   )
   const nextDoseLabel = protocol ? formatIntakeDose(protocol.dosage_per_intake, protocol.intake_unit, protocol.medicine) || null : null
-  return { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel }
+  return { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel, todayOpen }
 }
 
 /** D13: sobrelinha + nome (19/800) + chip de concentração (mesmo pill do card do remédio), sem ícone. */
@@ -206,7 +230,7 @@ export default function TreatmentWeekModule({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey/nowKey viram o dia com a Hoje aberta
   const today = useMemo(() => getTodayLocal(timezone), [timezone, reloadKey, nowKey])
   const yesterday = shiftDay(today, -1)
-  const { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel } = useWeekDoseView({
+  const { doseEligible, injectable, daily, dose, doseSummary, earlyAnchor, evolution, evolutionOpen, nextDoseLabel, todayOpen } = useWeekDoseView({
     protocol, isWedge, userId, timezone, today, reloadKey, nowKey,
   })
   const windowSel = windowChoice ?? defaultWeightWindow(series.recent, today)
@@ -223,9 +247,9 @@ export default function TreatmentWeekModule({
   // 125 fatia 2 (PO smoke 20/11): antes da 1ª dose, o miolo da L1 é o setup do tratamento (só "Ajustar").
   // Smoke 124 A: com `nowTime` — horário de hoje já passado não é a "1ª dose" (o card da 125 já passava).
   const setupRows = useMemo(
-    () => (protocol && onAdjustTreatment ? treatmentSetupRows(protocol, protocol.medicine, today, localNowTime(timezone)) : null),
+    () => (protocol && onAdjustTreatment ? treatmentSetupRows(protocol, protocol.medicine, today, setupNowTime(todayOpen, timezone)) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reloadKey reavalia o "agora"
-    [protocol, onAdjustTreatment, today, timezone, reloadKey, nowKey],
+    [protocol, onAdjustTreatment, today, timezone, reloadKey, nowKey, todayOpen],
   )
   const lastDay = series.last ? formatLocalDate(getUserTime(parseISO(series.last.measuredAt), timezone)) : null
 

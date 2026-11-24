@@ -76,7 +76,9 @@ async function loadUpcoming(userId: string, protocolId: string, lookaheadDays: n
     // RC6: instante real — `getNow` desloca para o relógio de parede do fuso.
     const now = getRawNow()
     const to = parseTimestamp(now.getTime() + lookaheadDays * 86_400_000)
-    const rows = await repo.getWindow(userId, now, to)
+    // Smoke 124 A: desde −24 h — a ocorrência de HOJE que já passou do horário mas segue na janela
+    // (hero "Ainda dá tempo") diz se hoje ainda vale. A âncora ignora passado (resolveEarlyAnchorInstance).
+    const rows = await repo.getWindow(userId, parseTimestamp(now.getTime() - 86_400_000), to)
     return (rows ?? []).filter((r: any) => r?.protocol_id === protocolId)
   } catch {
     return []

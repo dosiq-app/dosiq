@@ -350,3 +350,27 @@ describe('instanceDailySchedule (smoke 124 A — pausa/reativação, PO 23/11)',
     expect(instanceDailySchedule(null, '2026-11-23', TZ)).toBeNull()
   })
 })
+
+import { todayOccurrenceOpen } from '../treatmentWeek'
+
+describe('todayOccurrenceOpen — smoke 124 A (PO 23/11): título e miolo pela regra do hero', () => {
+  const tz = 'America/Sao_Paulo'
+  const today = '2026-11-23'
+  // 23:20 local = 02:20Z do dia 24; tolerância 120 min ⇒ janela até 01:20 local.
+  const inst = (status: string, tolerance_minutes: number | null = 120) => ({ scheduled_for: '2026-11-24T02:20:00Z', status, tolerance_minutes })
+
+  it('pending dentro da janela depois do horário ⇒ aberta (hoje ainda vale)', () => {
+    expect(todayOccurrenceOpen([inst('pending')], today, tz, new Date('2026-11-24T02:25:00Z'))).toBe(true)
+  })
+  it('janela passou ⇒ fechada', () => {
+    expect(todayOccurrenceOpen([inst('pending')], today, tz, new Date('2026-11-24T04:21:00Z'))).toBe(false)
+  })
+  it('resolvida (taken) ⇒ fechada', () => {
+    expect(todayOccurrenceOpen([inst('taken')], today, tz, new Date('2026-11-24T02:25:00Z'))).toBe(false)
+  })
+  it('sem ocorrência de hoje (ou só skipped_paused) ⇒ null', () => {
+    expect(todayOccurrenceOpen([], today, tz, new Date('2026-11-24T02:25:00Z'))).toBeNull()
+    expect(todayOccurrenceOpen([inst('skipped_paused')], today, tz, new Date('2026-11-24T02:25:00Z'))).toBeNull()
+    expect(todayOccurrenceOpen(null, today, tz, new Date('2026-11-24T02:25:00Z'))).toBeNull()
+  })
+})

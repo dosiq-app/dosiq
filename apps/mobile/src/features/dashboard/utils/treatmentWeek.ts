@@ -347,3 +347,29 @@ export function instanceDailySchedule(
   }
   return { days, todayTimes: todayTimes.sort() }
 }
+
+/**
+ * Smoke 124 A (PO 23/11, pós-RC6): a dose de HOJE ainda vale? Mesma regra do hero ("Ainda dá tempo"):
+ * ocorrência gravada de hoje `pending` com agora < horário + tolerância. Título ("Primeira aplicação ·
+ * dia") e miolo ("1ª aplicação") leem DAQUI — antes um usava o calendário e o outro o relógio, e
+ * divergiam depois do horário. `true` aberta · `false` hoje existe mas fechou/resolveu · `null` nenhuma
+ * ocorrência de hoje na leitura (o chamador decide pelo horário).
+ */
+export function todayOccurrenceOpen(
+  instances: ReadonlyArray<{ scheduled_for: string; status: string; tolerance_minutes?: number | null }> | null | undefined,
+  today: string,
+  tz: string,
+  now: Date
+): boolean | null {
+  let seen = false
+  for (const inst of instances ?? []) {
+    const d = inst?.scheduled_for ? parseISO(inst.scheduled_for) : null
+    if (!d || Number.isNaN(d.getTime()) || inst.status === 'skipped_paused') continue
+    if (formatLocalDate(getUserTime(d, tz)) !== today) continue
+    seen = true
+    const tol = Number(inst.tolerance_minutes)
+    const end = d.getTime() + (Number.isFinite(tol) && tol > 0 ? tol : 0) * 60_000
+    if (inst.status === 'pending' && now.getTime() < end) return true
+  }
+  return seen ? false : null
+}
