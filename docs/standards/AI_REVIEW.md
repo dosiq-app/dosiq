@@ -1,7 +1,7 @@
 ---
 title: "AI Review (RC5/RC6) — operação pós-Gemini"
 description: "Protocolo de revisão de código por IA em 4 camadas após descontinuação do Gemini bot, incluindo RC5 (self-review) e RC6 (review independente)."
-version: "1.4.1"
+version: "1.5.0"
 status: active
 category: standard
 audience:
@@ -13,13 +13,13 @@ tags:
   - rc5
   - rc6
 created_at: "2026-07-18"
-updated_at: "2026-11-23"
+updated_at: "2026-11-25"
 epic: "056"
 ---
 
 # AI Review (RC5/RC6) — operação pós-Gemini
 
-> Extraído do CLAUDE.md em 2026-07-18; atualizado em 2026-11-23. Arquitetura: ADR-069 (accepted). Specs: 034, 056, 058, 060, 078, 080 (+ melhorias `A1–A5`, `B1–B2`, `C2`, `A4` shift-left).
+> Extraído do CLAUDE.md em 2026-07-18; atualizado em 2026-11-25. Arquitetura: ADR-069 (accepted). Specs: 034, 056, 058, 060, 078, 080 (+ melhorias `A1–A5`, `B1–B4`, `C2/C4/C6`, `A4` shift-left, e `devflow v3.5.0`).
 > O `gemini-code-assist[bot]` foi descontinuado em 2026-07-17; o substituto é em camadas.
 
 ## As 4 camadas
@@ -54,8 +54,10 @@ Motores (`engine-core.sh 1.3.0`): `agy` primário (`gemini-4-neon-medium` base, 
 
 | Cenário do PR / revisão | Comando recomendado | O que acontece |
 |---|---|---|
+| **Referência rápida no Coding (C1 — pré-código)** | `node scripts/select-rules.mjs --paths <target_files...> --format card --limit 15` | Carrega ~15 Review Cards (`when \| inv \| bad -> fix`, ~4–5 KB) para os arquivos que você vai editar, evitando varrer `321 KB` de índices. |
+| **Self-review pré-PR (RC5)** | `node scripts/select-rules.mjs --diff-file <diff> --format card --limit 10` | Checklist rápido de `bad -> fix` focado nos hunks do diff antes de abrir o PR. |
 | **PR Tier 1** (`<8` arquivos, sem `rename`) | `bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post` | Só Pass A (`agy`): chunks `HOT` vão em `gemini-4-neon-high` (`10m`), `NORMAL`/`COLD` em `neon-medium` (`8m`). |
-| **PR Tier 2** (`>=8` arquivos ou com `rename`/migração) | `bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post` | Pass A (`agy` + escalonamento `HOT`) + Pass B (`claude` full-context focado em Ext #7/#8). |
+| **PR Tier 2** (`>=8` arquivos ou com `rename`/migração) | `bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post` | Pass A (`agy` + escalonamento `HOT`) + Pass B (`claude` full-context focado em Ext #7/#8/#9 — inclui qualidade de testes, `executive_summary` global e `RC6_SPEC_FILE` opcional). |
 | **Quota do `claude` baixa/esgotada** | `RC6_ENGINE_CLAUDE=0 bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> --post` | Pass A (`agy` inteiro em `neon-medium` sem duplicar `high`) + Pass B (`agy` em `neon-high` nos chunks `HOT`/`NORMAL` e `neon-medium` em `COLD`). |
 | **Quota do `agy` (Gemini) curta / `claude` liberado (Tier 1 ou Tier 2)** | `RC6_ENGINE_AGY=0 bash ~/SKILLS/devflow/scripts/ai-review.sh <PR#> [--tier1\|--tier2] --post` | Desliga `agy` (`RC6_SKIP_PROBE` automático); Pass A roda no `claude` por chunk preservando Review Cards `A2`, seletor `A1/A5`, grafo `B1` e callees `B2`. Em Tier 2, soma o Pass B full-context no `claude` (`reviewers_min=2`). Opcional: `RC6_CLAUDE_MODEL=opus`. |
 | **PR grande (`>8` chunks) ou arquivo central cortado** | Inspecionar `coverage.not_reviewed` e re-rodar com `RC6_MAX_CHUNKS=10` (ou `12`) | `rank_chunks.py` prioriza os 8 chunks de maior risco; se um arquivo crítico cair fora, subir o cap explicitamente e declarar no PR. |
@@ -95,9 +97,7 @@ Refutado é **rebaixado, não escondido**: continua publicado, some só de
 O campo `refutation` traz a saída literal que justificou — refutação sem evidência citável é tratada
 como bug do gate e o finding é preservado.
 
-**Cobertura hoje: 2 classes** (`compile` via `tsc`, `schema` via curl no PostgREST). As classes de FP
-que mais recorreram na série — atribuição em move-only, security-framing, inferência por ausência —
-**não são verificáveis por ferramenta** e continuam fora, por desenho.
+**Cobertura hoje (`C4`):** além de `compile` (`tsc`) e `schema` (curl no PostgREST), o gate cobre `comment_only` (refuta achado sobre comentário preservando prompt-injection), `rule_id_warning` (alerta ID inexistente sem refutar) e `corroborated_by_tool` (`tsc`/`eslint`). As classes de FP sem verificador determinístico (atribuição em move-only, inferência por ausência) continuam fora, por desenho.
 
 ### 🔻 Pendências que só fecham em PR real — instruções para quem rodar o RC6
 
@@ -132,12 +132,16 @@ O preâmbulo (`CLAUDE.md` + `SELECTED MEMORIES` + índices `R`/`AP` + `DETAIL_FI
 | `RC6_PACK_FILTER` | **`auto`** | Envia só os packs (`data_and_schema`, `react_and_ui`, `mobile_and_platform`, `infra_and_deploy`, `process_and_testing`, `notifications`, `test_hygiene`, `tooling_and_build`) dos caminhos do chunk. **`auto`** filtra **só o chunk** que passaria de `RC6_AUTO_FILTER_ABOVE` (`150000`). **Fail-safe:** caminho não-mapeado ⇒ catálogo inteiro; `CLAUDE.md` nunca é filtrado. |
 | `RC6_SELECTOR` | **`1`** | (`=0` desliga) Ativa `scripts/select-rules.mjs` injetando o bloco `SELECTED MEMORIES` ranqueado pelo diff (+ `--related-paths` quando `RC6_SELECTOR_RELATED=1`). |
 | `RC6_SELECTOR_LIMIT` | `5` | Quantidade máxima de regras/APs selecionadas pelo seletor por chamada. |
-| `RC6_SELECTOR_FORMAT` | `""` | Vazio = texto integral (`full`). Use `card` para instruir `--format card` (`Review Cards <=450 B` quando presentes em `compiled_rules_index.json`, com fallback automático para `full`). |
+| `RC6_SELECTOR_FORMAT` | **`card`** | Emite `--format card` (`Review Cards <=450 B`, `499` cards ativos em `compiled_rules_index.json`, com fallback automático para `full`); defina `full` para texto integral. |
 | `RC6_SELECTOR_RELATED` | `1` | Repassa os arquivos vizinhos de 1 hop (`chunk_i.related`, até 15 caminhos não presentes no chunk) via `--related-paths` ao seletor (`adj_path` ativa quando há `diff_trigger` real). |
 | `RC6_RULE_GRAPH` | `0` *(opt-in)* | Em `select-rules.mjs`, `=1` (ou `--graph`) liga o boost de grafo documental (`docNeighbors`) + histórico (`events.jsonl`), limitado a `<=20%` (`<=5.0` pts) e bloqueado para globs boilerplate sem evidência. Recomendado manter `0` até o lote completo de Review Cards/triggers no índice compilado. |
 | `RC6_CHUNK_SCOPE` | **`1`** | **`A1` (default ativo):** roda `select-rules.mjs` e `DETAIL_FILES` (`RC6_DETAIL_MAX=24000`) **por chunk** (com dedupe local entre `DETAIL` e `SELECTED` e válvula de corte pós-montagem sob `RC6_CTX_TOTAL_MAX`). Reservas de planejamento: `RC6_CHUNK_DETAIL_RESERVE=6000`, `RC6_CHUNK_SEL_RESERVE=12000`. `=0` restaura o escopo global legado. |
 | `RC6_GRAPH_CHUNK` | **`1`** | **`B1` (default ativo):** empacota chunks por coesão de grafo (`rc6_graph_context.py chunk`) via `.graftroom/.graph/wiring.json` + fallback regex/`tsconfig`/barrels + pareamento `teste ↔ alvo`, em vez de ordem alfabética (`=0` restaura ordem sequencial). |
 | `RC6_CALLEES` | **`1`** | **`B2` (default ativo):** fatia definições externas chamadas nos hunks (`rc6_graph_context.py callees`, arquivos não modificados/fora do chunk) sob `===== EXTERNAL CALLEES =====`, respeitando a folga até `RC6_CALLEES_MAX_BYTES` (`12000`). `=0` desliga. |
+| `RC6_DIFF_LINE_NUMS` | **`1`** | **`B3` (default ativo):** anota linhas `+`/contexto do diff com número de linha `RIGHT` (`HEAD`). |
+| `RC6_CONTRACTS` / `RC6_CONTRACTS_MAX_BYTES` | **`1`** / `6000` | **`B4` (default ativo):** injeta `CON-NNN`/`ADR-NNN` ativos tocados pelo chunk. |
+| `RC6_LANG` | `pt-BR` | Padroniza o idioma dos campos em prosa (`summary`, `issue`, `causation`, `fix`, `executive_summary`), mantendo chaves JSON, `file`, `snippet` e enums intactos. |
+| `RC6_SPEC_FILE` | `auto` | Caminho de spec (ou `plans/specs/*/spec.md` único alterado no PR) injetado apenas no Pass B (`<=3000B`, fail-open). |
 | `RC6_ADAPTIVE_EFFORT` | **`auto`** | **`C2`:** classifica chunks via `rank_chunks.py` (`HOT`, `NORMAL`, `COLD`, limiar `RC6_EFFORT_HOT_MIN=4`). Em Tier 1 ou Tier 2 + `claude`, chunks `HOT` no Pass A sobem para `RC6_AGY_HOT_MODEL` (`gemini-4-neon-high`, `RC6_AGY_HOT_TIMEOUT=10m`). Em Tier 2 `agy`-only, Pass A usa modelo base (`neon-medium`, sem duplicar `high`) e Pass B rebaixa apenas chunks `COLD` (`__tests__`, `_dev`, fixtures) para o modelo base. `=0` ou `RC6_AGY_MODEL` explícito trava modelo fixo. |
 | `RC6_MAX_CHUNKS` | **`8`** | Teto de chunks revisados (`rank_chunks.py` seleciona os de maior risco; acima do teto `coverage.partial=true` e `not_reviewed` lista os descartados). |
 | `RC6_MEASURE` | `0` | `=1` monta preâmbulo + chunks (`B1`/`B2`/`A1`) + ranking, imprime contabilidade em bytes e **PARA antes do engine** (`$0` de quota). Use `RC6_KEEP_PREAMBLE=1` para dumpar o preâmbulo em `/tmp/rc6_preamble.txt`. |
@@ -328,12 +332,13 @@ sobre um diff não-confiável). Absorvemos as estratégias:
 > (frontmatter estruturado + `compiled_rules_index.json` + `select-rules.ts`), o que torna o preâmbulo
 > **O(1)** no acervo e aposenta o clamp — junto com a classe de bug do #798, que é consequência
 > direta de truncar. RAG/embedding foi avaliado e descartado por ora (resolve ranking, não orçamento;
-> perde a auditabilidade de *por que* uma regra entrou); `graftroom_learn` foi descartado como
+> perde a auditabilidade de *por que* uma regra entrou; spike offline `A6` em 2026-11-25 com `embeddinggemma-2:440m-mxfp8-text-vision` + RRF no corpus `C7` de 17 PRs fechou `NO-GO`: `A1_s@5=7/28` vs `prod 8/28`); `graftroom_learn` foi descartado como
 > substrato. Racional completo na 060 §Alternativas.
 
 ## Regras de operação (aprendidas em produção)
 
 - **Checklist de veredito após todo RC6:** antes de declarar revisão limpa, confira o arquivo JSON (`RC6_JSON_OUT`) e a linha `VERDICT:` no stderr:
+  - `executive_summary` (veredicto de produto, risco `low|medium|high` e checklist de QA manual) e `test_coverage_alert` (arquivos em `core/`/`services/`/`schemas/`/`shared-data/`/`storage/`/`api/`/`server/` alterados sem arquivo de teste no PR);
   - `coverage.partial` (`false` esperado; se `true`, checar `coverage.not_reviewed` e `coverage.not_reviewed_by_type`);
   - `coverage.truncated_chunks` (`0` esperado; `>0` ou `truncated=` no `VERDICT` indica que Turn 1 do `agy` bateu o teto de `~79.6K` tokens — baixar `RC6_CTX_TOTAL_MAX` ou dividir o chunk);
   - `coverage.selector.status` (`ok`; se `failed` ou `empty`, inspecionar `reason`);
@@ -368,7 +373,7 @@ sobre um diff não-confiável). Absorvemos as estratégias:
   cobre a forma; a revisão cobre o mínimo.
 - **Conferir `base=` no stderr.** O script usa `origin/main` (fetch automático), mas offline cai
   pro main local — desatualizado, revisa o diff errado em silêncio (caso #756).
-- **Finding `introduced:true` critical/high** → corrigir ou justificar ANTES de pedir aprovação.
+- **Finding `introduced:true` critical/high (Regra de Desempate `v3.5.0`)** → corrigir ou refutar com **prova verificável** ANTES de pedir aprovação (teste/comando executado para lógica/edge case, ou citação direta `arquivo:linha` da definição real para contrato/campo/filtro; nunca justificativa textual solta). Sem prova, corrigir ou escalar ao operador.
   `pre-existing` não bloqueia o PR.
 - **Alegação de "não compila" / "erro de sintaxe" é verificável em segundos — não aceitar de graça.**
   Rodar `tsc -p <tsconfig> --noEmit` (+ `strict-island.sh` se cross-program) e conferir a linha citada.
