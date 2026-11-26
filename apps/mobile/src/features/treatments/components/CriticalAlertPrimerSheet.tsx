@@ -11,14 +11,11 @@ import { colors, spacing, borderRadius, typography } from '@shared/styles/tokens
  * (spec 054 FR-002/FR-008b). O iOS pergunta uma vez só: negado ali, só em Ajustes. Por isso o
  * contexto vem antes, e "Agora não" não gasta o diálogo.
  *
- * Variante `android` (054, emenda FR-008): o mesmo sheet substitui o modal do guia de tela cheia
- * (Android 14+/Xiaomi) — "Continuar" abre os Ajustes e o sheet fica, para a pessoa voltar e fechar.
+ * O guia de tela cheia do Android saiu daqui para o `FullScreenGuideSheet` (128 A): aquele tem estado
+ * medido e releitura; este é só o pré-diálogo do iOS.
  */
 interface CriticalAlertPrimerSheetProps {
   visible: boolean
-  variant?: 'ios' | 'android'
-  /** Android: texto do passo extra (genérico ou Xiaomi). */
-  androidMessage?: string
   /** Push negado: lembretes do servidor seguem desligados; só o alarme do aparelho toca (S6). */
   pushDenied: boolean
   onContinue: () => void
@@ -27,13 +24,10 @@ interface CriticalAlertPrimerSheetProps {
 
 export default function CriticalAlertPrimerSheet({
   visible,
-  variant = 'ios',
-  androidMessage = '',
   pushDenied,
   onContinue,
   onDismiss,
 }: CriticalAlertPrimerSheetProps) {
-  const isAndroid = variant === 'android'
   return (
     <Modal
       visible={visible}
@@ -51,13 +45,12 @@ export default function CriticalAlertPrimerSheet({
           <View style={styles.icon}>
             <BellRing size={24} color={colors.brand.primary} strokeWidth={2} />
           </View>
-          <Text style={styles.title}>{isAndroid ? 'Falta um passo no seu celular' : 'Alarme que toca mesmo no silencioso'}</Text>
+          <Text style={styles.title}>Alarme que toca mesmo no silencioso</Text>
           <Text style={styles.body}>
-            {isAndroid
-              ? androidMessage
-              : 'Para doses que não podem ser esquecidas, o iPhone pode tocar o alarme alto mesmo no silencioso e no Foco. Na próxima tela, toque em Permitir.'}
+            Para doses que não podem ser esquecidas, o iPhone pode tocar o alarme alto mesmo no silencioso e no Foco. Na
+            próxima tela, toque em Permitir.
           </Text>
-          {!isAndroid && pushDenied ? (
+          {pushDenied ? (
             <Text style={styles.note}>
               As notificações do dosiq estão desligadas: os lembretes comuns continuam sem chegar, mas o
               alarme crítico deste aparelho vai tocar.
@@ -67,17 +60,17 @@ export default function CriticalAlertPrimerSheet({
             style={({ pressed }) => [styles.cta, pressed && styles.pressed]}
             onPress={onContinue}
             accessibilityRole="button"
-            accessibilityLabel={isAndroid ? 'Abrir configurações' : 'Continuar'}
+            accessibilityLabel="Continuar"
           >
-            <Text style={styles.ctaText}>{isAndroid ? 'Abrir configurações' : 'Continuar'}</Text>
+            <Text style={styles.ctaText}>Continuar</Text>
           </Pressable>
           <Pressable
             style={({ pressed }) => [styles.dismiss, pressed && styles.pressed]}
             onPress={onDismiss}
             accessibilityRole="button"
-            accessibilityLabel={isAndroid ? 'Fechar' : 'Agora não'}
+            accessibilityLabel="Agora não"
           >
-            <Text style={styles.dismissText}>{isAndroid ? 'Fechar' : 'Agora não'}</Text>
+            <Text style={styles.dismissText}>Agora não</Text>
           </Pressable>
         </SafeAreaView>
       </View>

@@ -5,6 +5,18 @@ import { Linking } from 'react-native'
 
 const mockStatus = jest.fn()
 const mockOpenAlarm = jest.fn()
+const mockCheck = jest.fn(async () => {})
+jest.mock('@treatments/hooks/useFullScreenCheck', () => ({
+  useFullScreenCheck: () => ({
+    visible: false,
+    family: 'xiaomi',
+    rows: [],
+    recheckResult: null,
+    check: () => mockCheck(),
+    openSettings: jest.fn(),
+    dismiss: jest.fn(),
+  }),
+}))
 jest.mock('@platform/alarms/alarmService', () => ({ getCriticalAlarmDeviceStatus: () => mockStatus(), openAlarmChannelSettings: () => mockOpenAlarm() }))
 const mockEnablePush = jest.fn()
 jest.mock('@platform/notifications/pushPermission', () => ({ requestPushOrOpenSettings: (...a: any[]) => mockEnablePush(...a) }))
@@ -95,20 +107,9 @@ describe('CriticalAlarmCard — faixa por gravidade', () => {
   })
 })
 
-// 054 emenda FR-008: variante Android do sheet substitui o guia de tela cheia.
-describe('CriticalAlertPrimerSheet — variante android', () => {
+// 128 A: a variante Android saiu para o FullScreenGuideSheet; aqui fica só o pré-diálogo do iOS.
+describe('CriticalAlertPrimerSheet — iOS', () => {
   const Sheet = require('../CriticalAlertPrimerSheet').default
-  it('mostra o passo extra e "Abrir configurações" chama onContinue', () => {
-    const onContinue = jest.fn()
-    const { getByText } = render(
-      <Sheet visible variant="android" androidMessage="Ligue tela cheia" pushDenied={false} onContinue={onContinue} onDismiss={jest.fn()} />
-    )
-    expect(getByText('Falta um passo no seu celular')).toBeTruthy()
-    expect(getByText('Ligue tela cheia')).toBeTruthy()
-    fireEvent.press(getByText('Abrir configurações'))
-    expect(onContinue).toHaveBeenCalled()
-  })
-
   it('iOS mantém o texto do alarme crítico e a nota de push negado', () => {
     const { getByText } = render(<Sheet visible pushDenied onContinue={jest.fn()} onDismiss={jest.fn()} />)
     expect(getByText('Alarme que toca mesmo no silencioso')).toBeTruthy()
@@ -176,6 +177,27 @@ describe('CriticalAlarmCard — canal sem aviso na tela (C-32)', () => {
     fireEvent.press(await findByText('Alarme sem aviso na tela'))
     expect(getByText(/não aparece na tela/)).toBeTruthy()
     expect(mockOpenAlarm).toHaveBeenCalledTimes(1) // U-1: canal do alarme direto
+  })
+})
+
+// 128 A (smoke g06 2026-11-24): tela cheia negada — toca, mas sem despertador na tela bloqueada.
+describe('CriticalAlarmCard — sem tela cheia (128 A)', () => {
+  it('🔴 C-9: faixa "Alarme sem tela cheia" abre o sheet de tela cheia (não os Ajustes direto); copy sem "Toque para"', async () => {
+    RN.Platform.OS = 'android'
+    mockStatus.mockResolvedValue({ kind: 'degraded', fix: 'settings', reason: 'full_screen' })
+    const { findByText, getByText, queryByText } = render(<CriticalAlarmCard criticalAlarm onToggle={jest.fn()} />)
+    fireEvent.press(await findByText('Alarme sem tela cheia'))
+    expect(getByText('Toca, mas não aparece como despertador com o celular bloqueado.')).toBeTruthy()
+    expect(queryByText(/Toque para/)).toBeNull()
+    expect(mockCheck).toHaveBeenCalledTimes(1)
+    expect(mockOpenAlarm).not.toHaveBeenCalled()
+  })
+
+  it('global: plural', async () => {
+    RN.Platform.OS = 'android'
+    mockStatus.mockResolvedValue({ kind: 'degraded', fix: 'settings', reason: 'full_screen' })
+    const { findByText } = render(<CriticalAlarmCard criticalAlarm={false} scope="global" />)
+    expect(await findByText('Os alarmes tocam, mas não aparecem como despertador com o celular bloqueado.')).toBeTruthy()
   })
 })
 

@@ -54,12 +54,8 @@ import { displayedTrackedMeasure } from '@treatments/utils/trackedMeasureField'
 import { moreOptionsFilled, MORE_OPTIONS_EMPTY_SUMMARY } from '@treatments/utils/moreOptionsSummary'
 import CriticalAlertPrimerSheet from '@treatments/components/CriticalAlertPrimerSheet'
 import { useCriticalAlarmToggle } from '@treatments/hooks/useCriticalAlarmToggle'
-import {
-  needsFullScreenIntentAccess,
-  openFullScreenIntentSettings,
-} from '@platform/alarms/alarmService'
-import { resolveOemFamily } from '@platform/device/oemFamily'
-import { getFullScreenGuide, guideToPlainText } from '@features/oemAssistant/oemBatteryGuides'
+import FullScreenGuideSheet from '@treatments/components/FullScreenGuideSheet'
+import { useFullScreenCheck } from '@treatments/hooks/useFullScreenCheck'
 
 /** Teto de bolas renderizadas — acima disso vira "+N" (escada longa não pode estourar a linha). */
 const EVO_DOTS_MAX = 8
@@ -714,8 +710,8 @@ export default function ProtocolFormBody({
   onStartDateChange,
   onEndDateChange,
 }) {
-  const [guideVisible, setGuideVisible] = useState(false)
-  const [guideMsg, setGuideMsg] = useState('')
+  // 128 A: sheet de tela cheia pela leitura real do aparelho (antes: sempre no Android 14+).
+  const fullScreen = useFullScreenCheck()
   // 125 1b (AC5.3): dia da aplicação do injetável não diário, só na criação.
   const applicationDay = useApplicationDay({ form, presentation: medicine?.presentation, disabled: isEditMode })
   const {
@@ -733,13 +729,11 @@ export default function ProtocolFormBody({
   } = useProtocolFormDerived(form, medicine)
   const setCritical = useCallback((value: boolean) => form.handleChange('critical_alarm', value), [form])
   const setTrackedMeasure = useCallback((value) => form.handleChange('tracked_measure', value), [form])
+  const { check: checkFullScreen } = fullScreen
+  // Gate único (RC3 E-3): fato ≠ true ⇒ sheet; Xiaomi sem o guia MIUI visto ⇒ sheet (PO Q-1 = b).
   const showFullScreenGuide = useCallback(() => {
-    // Checar se precisa de acesso especial de alarme em tela cheia (Android 14+ / Xiaomi)
-    if (!needsFullScreenIntentAccess()) return
-    // 068 E-4/D-1: copy vem do dono único, sem marcação crua.
-    setGuideMsg(guideToPlainText(getFullScreenGuide(resolveOemFamily())))
-    setGuideVisible(true)
-  }, [])
+    void checkFullScreen()
+  }, [checkFullScreen])
   // 054 FR-008b: fluxo do toggle por plataforma/estado de permissão vive no hook.
   const criticalToggle = useCriticalAlarmToggle({ setCritical, onEnabledAndroid: showFullScreenGuide })
   const showWeekdays = frequencyRequiresWeekdays(form.values.frequency)
@@ -819,14 +813,14 @@ export default function ProtocolFormBody({
         onPlanFieldChange={onPlanFieldChange}
       />
 
-      {/* 054 (emenda FR-008): o guia de tela cheia do Android é a variante do mesmo sheet. */}
-      <CriticalAlertPrimerSheet
-        variant="android"
-        visible={guideVisible}
-        androidMessage={guideMsg}
-        pushDenied={false}
-        onContinue={() => openFullScreenIntentSettings()}
-        onDismiss={() => setGuideVisible(false)}
+      {/* 128 A: sheet próprio, com estado medido e releitura na volta dos Ajustes. */}
+      <FullScreenGuideSheet
+        visible={fullScreen.visible}
+        family={fullScreen.family}
+        rows={fullScreen.rows}
+        recheckResult={fullScreen.recheckResult}
+        onOpenSettings={fullScreen.openSettings}
+        onDismiss={fullScreen.dismiss}
       />
     </>
   )

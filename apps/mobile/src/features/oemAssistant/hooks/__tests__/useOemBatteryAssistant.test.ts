@@ -185,7 +185,9 @@ describe('useOemBatteryAssistant', () => {
   })
 
   it('expõe os fatos da checklist (sem powerManagerActivity)', async () => {
-    mockProbe.mockResolvedValue(facts({ batteryOptimized: true, hibernationEnabled: true, notificationsAllowed: false }))
+    mockProbe.mockResolvedValue(
+      facts({ batteryOptimized: true, hibernationEnabled: true, notificationsAllowed: false, fullScreenAllowed: false, criticalArmedIds: ['c1'] })
+    )
     const { result } = renderHook(() => useOemBatteryAssistant())
     await waitFor(() =>
       expect(result.current.facts).toEqual({
@@ -193,6 +195,10 @@ describe('useOemBatteryAssistant', () => {
         backgroundRestricted: false,
         batteryOptimized: true,
         hibernationEnabled: true,
+        // 128 A: tela cheia + armados chegam à checklist (item só com crítico armado).
+        fullScreenAllowed: false,
+        lockScreenAllowed: null, // 128 C-6: só Xiaomi lê
+        criticalArmedIds: ['c1'],
       })
     )
   })

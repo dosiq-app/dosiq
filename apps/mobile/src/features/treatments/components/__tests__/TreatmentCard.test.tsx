@@ -38,11 +38,20 @@ describe('TreatmentCard — agendado (086)', () => {
     expect(queryByText(/Começa em/)).toBeNull()
   })
 
-  it('pausado com início futuro ⇒ "Pausado", não "Começa em"', () => {
-    const { getByText, queryByText } = render(
+  // 128 C (PO-C1): um selo só — o "Tratamento pausado" do EvolutionBadge; o "Pausado" duplicado sai.
+  it('pausado com início futuro ⇒ só "Tratamento pausado", sem "Pausado" nem "Começa em"', () => {
+    const { getAllByText, queryByText } = render(
       <TreatmentCard treatment={{ ...base, active: false, start_date: '2026-10-10' }} tabStatus="pausado" onPress={jest.fn()} />
     )
-    expect(getByText('Pausado')).toBeTruthy()
+    expect(getAllByText('Tratamento pausado')).toHaveLength(1)
+    expect(queryByText('Pausado')).toBeNull()
     expect(queryByText(/Começa em/)).toBeNull()
+  })
+
+  it('finalizado ⇒ "Finalizado" segue (AC-C2)', () => {
+    const { getByText } = render(
+      <TreatmentCard treatment={{ ...base, active: false }} tabStatus="finalizado" onPress={jest.fn()} />
+    )
+    expect(getByText(/^Finalizado/)).toBeTruthy()
   })
 })

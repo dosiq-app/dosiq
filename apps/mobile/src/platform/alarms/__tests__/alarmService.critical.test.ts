@@ -30,6 +30,14 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: () => mockGetPermissions(),
 }))
 const mockLogEvent = jest.fn()
+let mockFullScreen: boolean | null = null
+jest.mock('@platform/device/fullScreenIntent', () => ({ canUseFullScreenIntent: () => mockFullScreen }))
+let mockLockScreen: boolean | null = null
+jest.mock('@platform/device/miuiLockScreen', () => ({ canShowOnLockScreenMiui: () => mockLockScreen }))
+let mockFamily = 'generic'
+jest.mock('@platform/device/oemFamily', () => ({ resolveOemFamily: () => mockFamily }))
+const mockOpenAppDetails = jest.fn(async () => true)
+jest.mock('@platform/device/oemBatterySettings', () => ({ openAppDetailsSettings: () => mockOpenAppDetails() }))
 jest.mock('@platform/analytics/productAnalytics', () => ({ logEvent: (...a: any[]) => mockLogEvent(...a) }))
 
 import {
@@ -300,6 +308,35 @@ describe('getCriticalAlarmDeviceStatus — canal Android (C-25)', () => {
     expect(await getCriticalAlarmDeviceStatus()).toEqual({ kind: 'degraded', fix: 'settings', reason: 'channel_no_popup' })
   })
 
+  it('🔴 HIGH (4) + tela cheia negada ⇒ degraded full_screen, nunca blocked (128 A)', async () => {
+    mockFullScreen = false
+    mockedChannel.mockResolvedValueOnce({ importance: 4 })
+    expect(await getCriticalAlarmDeviceStatus()).toEqual({ kind: 'degraded', fix: 'settings', reason: 'full_screen' })
+    mockFullScreen = null
+  })
+
+  it('🔴 C-6: HIGH (4) + "Mostrar na Tela de bloqueio" negada (HyperOS) ⇒ degraded full_screen', async () => {
+    mockFullScreen = true
+    mockLockScreen = false
+    mockedChannel.mockResolvedValueOnce({ importance: 4 })
+    expect(await getCriticalAlarmDeviceStatus()).toEqual({ kind: 'degraded', fix: 'settings', reason: 'full_screen' })
+    mockFullScreen = null
+    mockLockScreen = null
+  })
+
+  it('HIGH (4) + tela cheia ilegível (null) ⇒ active — não afirma sem medir (128 A)', async () => {
+    mockFullScreen = null
+    mockedChannel.mockResolvedValueOnce({ importance: 4 })
+    expect(await getCriticalAlarmDeviceStatus()).toEqual({ kind: 'active' })
+  })
+
+  it('DEFAULT (3) + tela cheia negada ⇒ channel_no_popup prevalece (128 A)', async () => {
+    mockFullScreen = false
+    mockedChannel.mockResolvedValueOnce({ importance: 3 })
+    expect(await getCriticalAlarmDeviceStatus()).toEqual({ kind: 'degraded', fix: 'settings', reason: 'channel_no_popup' })
+    mockFullScreen = null
+  })
+
   it('HIGH (4) ⇒ active', async () => {
     mockedChannel.mockResolvedValueOnce({ importance: 4 })
     expect(await getCriticalAlarmDeviceStatus()).toEqual({ kind: 'active' })
@@ -334,5 +371,22 @@ describe('getCriticalAlarmDeviceStatus — nada decidido ainda (C-33)', () => {
     mockedSettings.mockResolvedValueOnce({ authorizationStatus: 0, ios: { criticalAlert: 0 } })
     mockGetPermissions.mockResolvedValueOnce({ status: 'denied', canAskAgain: false })
     expect(await getCriticalAlarmDeviceStatus()).toEqual({ kind: 'blocked', reason: 'push' })
+  })
+})
+
+// 128 C-6: no Xiaomi as chaves de tela cheia moram em Informações do app › Outras permissões.
+describe('openFullScreenIntentSettings — destino por marca (128 C-6)', () => {
+  const RN = require('react-native')
+  afterEach(() => {
+    mockFamily = 'generic'
+  })
+  it('Xiaomi ⇒ Informações do app (qualquer versão do Android)', async () => {
+    RN.Platform.OS = 'android'
+    mockFamily = 'xiaomi'
+    const sendIntent = jest.spyOn(RN.Linking, 'sendIntent').mockResolvedValue(undefined)
+    const { openFullScreenIntentSettings } = require('../alarmService')
+    expect(await openFullScreenIntentSettings()).toBe(true)
+    expect(mockOpenAppDetails).toHaveBeenCalledTimes(1)
+    expect(sendIntent).not.toHaveBeenCalled()
   })
 })

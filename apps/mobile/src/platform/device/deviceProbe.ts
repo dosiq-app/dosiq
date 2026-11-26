@@ -18,6 +18,8 @@ import {
 } from '@platform/alarms/alarmService'
 import { isBackgroundRestricted } from './backgroundRestriction'
 import { isAppHibernationEnabled } from './appHibernation'
+import { canUseFullScreenIntent } from './fullScreenIntent'
+import { canShowOnLockScreenMiui } from './miuiLockScreen'
 
 export interface DeviceFacts {
   /** O alarme pode aparecer: push utilizável, ou (iOS) alerta crítico autorizado (054 C-11). */
@@ -36,6 +38,16 @@ export interface DeviceFacts {
   powerManagerActivity: string | null
   /** Android 11+: hibernação do app ligada ("Gerenciar o app fora de uso") — só 068, nunca capacidade. */
   hibernationEnabled: boolean | null
+  /**
+   * Android 14+: "Notificações em tela cheia" liberada (<14 ⇒ true). Só 068/128 A — fora da
+   * capacidade: sem ela o alarme ainda toca, só não abre por cima da tela bloqueada. iOS: null.
+   */
+  fullScreenAllowed: boolean | null
+  /**
+   * Xiaomi/HyperOS: "Mostrar na Tela de bloqueio" (MIUIOP 10020). Fora do MIUI/HyperOS ou ilegível: null
+   * (128 C-6 — sem ela o alarme toca mas não abre a tela cheia com o celular bloqueado).
+   */
+  lockScreenAllowed: boolean | null
 }
 
 /** Executa a leitura; erro ⇒ `null` (fail-safe). @private */
@@ -80,6 +92,8 @@ export async function probeDevice(): Promise<DeviceFacts> {
     batteryOptimized: isAndroid ? await _safe(() => notifee.isBatteryOptimizationEnabled()) : null,
     powerManagerActivity: isAndroid ? ((await _safe(() => notifee.getPowerManagerInfo()))?.activity ?? null) : null,
     hibernationEnabled: isAndroid ? await isAppHibernationEnabled() : null,
+    fullScreenAllowed: isAndroid ? canUseFullScreenIntent() : null,
+    lockScreenAllowed: isAndroid ? canShowOnLockScreenMiui() : null,
   }
 }
 

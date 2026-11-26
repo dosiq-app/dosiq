@@ -27,7 +27,8 @@ import { useConsentSuppressed } from '@platform/consent/useConsentSuppressed'
 import { getActiveProtocols, getUserSettings, getMedicinesData } from '@dashboard/services/dashboardService'
 import { navigationRef } from '@navigation/navigationRef'
 import { ROUTES } from '@navigation/routes'
-import { useAlarmScheduler } from './useAlarmScheduler'
+import { useAlarmScheduler, runAlarmSyncNow, SYNC_STEP_TIMEOUT_MS as LOAD_STEP_TIMEOUT_MS, SYNC_RETRY_MS as LOAD_RETRY_MS } from './useAlarmScheduler'
+import { withTimeout } from '@shared/utils/withTimeout'
 import { handleAlarmAction } from './quickDoseRegistration'
 import { emitReminderOpened, localReminderSource } from '@platform/analytics/reminderEvents'
 import { onAlarmResync } from './alarmResyncBus'
@@ -238,7 +239,7 @@ function openAlarmScreen(notification) {
 }
 
 export default function AlarmSchedulerBridge() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   // 046: consentimento revogado desarma os alarmes locais (lembrete de dose é tratamento de dado de
   // saúde). isAlarmEnabled=false faz o useAlarmScheduler cancelAll — sem reprogramar no reload.
   const consentSuppressed = useConsentSuppressed(user?.id ?? null)
@@ -250,6 +251,15 @@ export default function AlarmSchedulerBridge() {
   const [prevUserId, setPrevUserId] = useState(user?.id ?? null)
   const userId = user?.id ?? null
   const coldStartHandled = useRef(false) // cold-start tratado 1x por ciclo de vida (#893)
+  // 128 C-5: leituras penduradas (medido: 160 s no getMedicinesData, POCO) seguravam o load e o
+  // alarme da dose recém-editada nunca era agendado. Load obsoleto não sobrescreve o mais novo.
+  const loadGen = useRef(0)
+  const loadRetry = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadRef = useRef<((isRetry?: boolean, syncNow?: boolean) => Promise<void>) | null>(null)
+  const consentRef = useRef(consentSuppressed)
+  useEffect(() => {
+    consentRef.current = consentSuppressed
+  }, [consentSuppressed])
 
   // Padrão de derived state: reset síncrono sem useEffect (sem render extra).
   // React executa no mesmo render e descarta o output, re-renderizando com novo estado.
@@ -315,30 +325,53 @@ export default function AlarmSchedulerBridge() {
   }, [])
 
   // Refetch protocolos + tz. setState → useAlarmScheduler reagenda (deps protocols).
-  const load = useCallback(async () => {
+  const load = useCallback(async (isRetry = false, syncNow = false) => {
     if (!userId) return
+    const gen = ++loadGen.current
+    if (loadRetry.current) clearTimeout(loadRetry.current)
+    loadRetry.current = null
+    const step = <T,>(p: Promise<T>, what: string) => withTimeout(p, LOAD_STEP_TIMEOUT_MS, `load: ${what} sem resposta`)
     try {
-      const settings = await getUserSettings(userId)
+      const settings = await step(getUserSettings(userId), 'getUserSettings')
       const userTz = settings?.timezone || DEFAULT_TZ
       // YYYY-MM-DD no fuso do usuário via helper canônico do core (getTodayLocal).
       // NÃO usar toLocaleDateString({timeZone}) — no Hermes/Android o suporte a tz
       // é limitado e a opção pode ser ignorada → data errada (paridade useTodayData).
       const dateStr = getTodayLocal(userTz)
-      const protos = await getActiveProtocols(userId, dateStr)
+      const protos = await step(getActiveProtocols(userId, dateStr), 'getActiveProtocols')
       // Enriquecer com o medicine aninhado — buildDoseItemsFromInstances lê
       // protocol.medicine.name (senão "Desconhecido"). getActiveProtocols traz
       // só medicine_id; junta via getMedicinesData (mesmo padrão do dashboard).
       const list = Array.isArray(protos) ? protos : []
       const medIds = [...new Set(list.map((p) => p.medicine_id).filter(Boolean))]
-      const medsById = medIds.length ? await getMedicinesData(medIds) : {}
+      const medsById = medIds.length ? await step(getMedicinesData(medIds), 'getMedicinesData') : {}
       const enriched = list.map((p) => ({ ...p, medicine: medsById[p.medicine_id] || null }))
+      if (gen !== loadGen.current) return // outro load começou depois: ele é a verdade
+      // 128 C-8: pedido pelo salvamento ⇒ reagenda AQUI, aguardado, antes do toast (o app ainda está
+      // aberto). Antes do setState: o efeito do scheduler que ele dispara vem depois, sem cortar este.
+      if (syncNow) {
+        const isAlarmEnabled = enriched.some((p) => p.critical_alarm === true) && !consentRef.current
+        await runAlarmSyncNow({ isAlarmEnabled, userId, protocols: enriched, tz: userTz }).catch((err) => {
+          if (__DEV__) console.warn('[AlarmSchedulerBridge] sync do salvamento falhou', err?.message)
+        })
+      }
       setTz(userTz)
       setProtocols(enriched)
       setLoaded(true)
     } catch (err) {
       if (__DEV__) console.warn('[AlarmSchedulerBridge] load falhou', err?.message)
+      // 1 nova tentativa: quem salvou e saiu do app não dispara outro load antes da dose.
+      if (!isRetry && gen === loadGen.current) loadRetry.current = setTimeout(() => void loadRef.current?.(true), LOAD_RETRY_MS)
     }
   }, [userId])
+
+  useEffect(() => {
+    loadRef.current = load
+  }, [load])
+
+  useEffect(() => () => {
+    if (loadRetry.current) clearTimeout(loadRetry.current)
+  }, [])
 
   // Carrega na montagem + retorno de background (Spec 010: sem gate global de enabled).
   useEffect(() => {
@@ -367,11 +400,13 @@ export default function AlarmSchedulerBridge() {
 
   // Re-sync sob demanda: mutação de tratamento (criar/editar/pausar/excluir)
   // altera as dose_instances → refetch + reagenda (FR-006 / insumo E).
-  useEffect(() => onAlarmResync(load), [load])
+  useEffect(() => onAlarmResync(() => load(false, true)), [load])
 
   // Gate: não executa o scheduler antes do primeiro load bem-sucedido — evita
   // cancelAll prematuro enquanto protocols ainda é [] (race condition no mount).
-  return loaded ? (
+  // 128 C-5: sessão ainda restaurando ≠ deslogado. Sem esta espera, `user=null` na abertura caía no
+  // caminho de logout e o scheduler apagava todos os alarmes até o 1º sync terminar.
+  return loaded && !authLoading ? (
     <AlarmScheduler isAlarmEnabled={hasCriticalProtocol && !consentSuppressed} userId={userId} protocols={protocols} tz={tz} />
   ) : null
 }

@@ -41,7 +41,7 @@ describe('OemBatteryAssistantScreen', () => {
     const { getByText, getByLabelText } = render(<OemBatteryAssistantScreen />)
     expect(getByText('Para o alarme tocar na hora')).toBeTruthy()
     expect(getByText(/Falta 1 ajuste/)).toBeTruthy()
-    expect(getByLabelText(/^Bateria sem restrições, pendente:/)).toBeTruthy()
+    expect(getByLabelText(/^Tirar as restrições de bateria, pendente:/)).toBeTruthy()
     expect(getByLabelText('Pausa por falta de uso desligada, feito')).toBeTruthy()
   })
 
@@ -105,7 +105,7 @@ describe('OemBatteryAssistantScreen', () => {
 
   it('tocar em qualquer item (✓ ou ○) abre as configurações do app', async () => {
     const { getByLabelText } = render(<OemBatteryAssistantScreen />)
-    fireEvent.press(getByLabelText(/^Bateria sem restrições, pendente:/))
+    fireEvent.press(getByLabelText(/^Tirar as restrições de bateria, pendente:/))
     await waitFor(() => expect(mockOpenApp).toHaveBeenCalledTimes(1))
     fireEvent.press(getByLabelText('Pausa por falta de uso desligada, feito'))
     await waitFor(() => expect(mockOpenApp).toHaveBeenCalledTimes(2))
@@ -118,7 +118,7 @@ describe('OemBatteryAssistantScreen', () => {
     expect(queryByText('Tudo certo')).toBeNull()
     expect(getByText(/Não conseguimos conferir/)).toBeTruthy()
     expect(getByLabelText('Notificações ligadas, feito')).toBeTruthy()
-    expect(getByLabelText(/^Uso em segundo plano liberado, confira manualmente:/)).toBeTruthy()
+    expect(getByLabelText(/^Liberar o uso em segundo plano, confira manualmente:/)).toBeTruthy()
     expect(getByText('Confira manualmente')).toBeTruthy()
     expect(getByText('Abrir configurações do app')).toBeTruthy()
   })
@@ -134,7 +134,7 @@ describe('OemBatteryAssistantScreen', () => {
     mockHook.facts = { ...baseFacts, notificationsAllowed: false, batteryOptimized: false }
     const { getByLabelText, getByText } = render(<OemBatteryAssistantScreen />)
     expect(getByText(/Falta 1 ajuste/)).toBeTruthy()
-    fireEvent.press(getByLabelText(/^Notificações ligadas, pendente:/))
+    fireEvent.press(getByLabelText(/^Ligar as notificações, pendente:/))
     await waitFor(() => expect(mockOpenApp).toHaveBeenCalledTimes(1))
   })
 

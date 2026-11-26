@@ -54,7 +54,7 @@ describe('buildChecklist', () => {
     const c = buildChecklist('xiaomi', f({ batteryOptimized: true, hibernationEnabled: true }))
     expect(ids(c)).toEqual(['notifications:ok', 'battery:pend', 'hibernation:pend'])
     expect(c.pending).toBe(2)
-    expect(c.tips.length).toBe(2)
+    expect(c.tips.length).toBe(3) // 128 C-6: + "Notificações na Tela de bloqueio" (ilegível)
   })
 
   it('xiaomi restrito pelo SO ⇒ item de segundo plano aparece', () => {
@@ -124,5 +124,50 @@ describe('summarizeChecklist (068 PR 2 — tela e linha do Perfil)', () => {
     expect(summarizeChecklist(buildChecklist('samsung', f({ batteryOptimized: true })), false).label).toBe('Falta 1 ajuste')
     const two = buildChecklist('xiaomi', f({ batteryOptimized: true, hibernationEnabled: true }))
     expect(summarizeChecklist(two, false)).toEqual({ status: 'pending', label: 'Faltam 2 ajustes' })
+  })
+})
+
+// 128 A · PO-A6 (RC2 D-9): item de tela cheia, medido, só com alarme crítico armado.
+describe('buildChecklist — tela cheia (128 A)', () => {
+  const armed = { criticalArmedIds: ['c1'] }
+  it('sem alarme crítico armado ⇒ sem o item, mesmo com tela cheia negada', () => {
+    expect(ids(buildChecklist('generic', f({ fullScreenAllowed: false, criticalArmedIds: [] })))).not.toContain('fullScreen:pend')
+    expect(ids(buildChecklist('generic', f({ fullScreenAllowed: false, criticalArmedIds: null })))).toEqual([
+      'notifications:ok',
+      'background:ok',
+      'hibernation:ok',
+    ])
+  })
+  it('armado: negada ⇒ ○ e conta; liberada ⇒ ✓; desconhecida ⇒ manual (fora da contagem)', () => {
+    const pend = buildChecklist('generic', f({ ...armed, fullScreenAllowed: false }))
+    expect(ids(pend)).toContain('fullScreen:pend')
+    expect(pend.pending).toBe(1)
+    expect(ids(buildChecklist('xiaomi', f({ ...armed, fullScreenAllowed: true })))).toContain('fullScreen:ok')
+    const manual = buildChecklist('samsung', f({ ...armed, fullScreenAllowed: null }))
+    expect(ids(manual)).toContain('fullScreen:manual')
+    expect(manual.pending).toBe(0)
+  })
+  it('linha do Perfil conta a pendência de tela cheia', () => {
+    expect(summarizeChecklist(buildChecklist('motorola', f({ ...armed, fullScreenAllowed: false })), false)).toEqual({
+      status: 'pending',
+      label: 'Falta 1 ajuste',
+    })
+  })
+})
+
+// 128 C-6 (matriz POCO 2026-11-26): "Mostrar na Tela de bloqueio" do HyperOS, legível (MIUIOP 10020).
+describe('buildChecklist — tela de bloqueio do Xiaomi (128 C-6)', () => {
+  const armed = { criticalArmedIds: ['c1'] }
+  it('negada ⇒ ○ e conta; liberada ⇒ ✓', () => {
+    const pend = buildChecklist('xiaomi', f({ ...armed, fullScreenAllowed: true, lockScreenAllowed: false }))
+    expect(ids(pend)).toContain('lockScreen:pend')
+    expect(ids(buildChecklist('xiaomi', f({ ...armed, fullScreenAllowed: true, lockScreenAllowed: true })))).toContain('lockScreen:ok')
+  })
+  it('ilegível (null, fora do HyperOS) ⇒ sem item — o padrão da chave é ligado', () => {
+    const c = buildChecklist('generic', f({ ...armed, fullScreenAllowed: true, lockScreenAllowed: null }))
+    expect(ids(c).some((i) => i.startsWith('lockScreen'))).toBe(false)
+  })
+  it('sem alarme crítico armado ⇒ sem o item', () => {
+    expect(ids(buildChecklist('xiaomi', f({ lockScreenAllowed: false, criticalArmedIds: [] }))).some((i) => i.startsWith('lockScreen'))).toBe(false)
   })
 })

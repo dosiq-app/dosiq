@@ -64,14 +64,14 @@ export function useTodaySurfaces({
 
   const raw = pickTodaySurfaces({ hasHero, alerts, stockUpsell: stockUpsellVisible, nudge: !!nudge })
   const activeKeys = new Set(alerts.filter((a) => !a.dismissed).map((a) => a.key))
-  const nextGate = nextSessionGate(gate, raw.alert?.key ?? null, activeKeys)
+  const nextGate = nextSessionGate(gate, [raw.alert?.key, raw.companion?.key], activeKeys)
   // Derivar estado de prop no render (padrão React), não em effect.
   if (nextGate !== gate) setGate(nextGate)
   const gated = nextGate.quiet
-    ? pickTodaySurfaces({ hasHero, alerts, stockUpsell: stockUpsellVisible, nudge: !!nudge, quiet: true })
+    ? pickTodaySurfaces({ hasHero, alerts, stockUpsell: stockUpsellVisible, nudge: !!nudge, quiet: true, shownKeys: nextGate.shownKeys })
     : raw
   const activePromos = new Set([...(stockUpsellVisible ? ['stock_upsell'] : []), ...(nudge ? ['nudge'] : [])])
-  const nextPromoGate = nextSessionGate(promoGate, gated.promo, activePromos)
+  const nextPromoGate = nextSessionGate(promoGate, [gated.promo], activePromos)
   if (nextPromoGate !== promoGate) setPromoGate(nextPromoGate)
   const surfaces = nextPromoGate.quiet ? { ...gated, promo: null } : gated
   const stockCount = (stockAlerts ?? []).length

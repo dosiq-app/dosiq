@@ -10,48 +10,15 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
-const { ChevronLeft, ChevronRight, CircleCheck, Circle, CircleDashed } = LucideIcons as any
+const { ChevronLeft } = LucideIcons as any
 import { useOemBatteryAssistant } from '@features/oemAssistant/hooks/useOemBatteryAssistant'
-import { buildChecklist, pendingLabel, summarizeChecklist, type ChecklistItem } from '@features/oemAssistant/oemChecklist'
+import { buildChecklist, pendingLabel, summarizeChecklist } from '@features/oemAssistant/oemChecklist'
+import ChecklistRow from '@features/oemAssistant/components/ChecklistRow'
+import { openFullScreenIntentSettings } from '@platform/alarms/alarmService'
 import { openAppDetailsSettings, openOemPowerSettings } from '@platform/device/oemBatterySettings'
 import { colors, spacing, borderRadius, typography } from '@shared/styles/tokens'
 
-// A linha inteira é tocável e leva à MESMA tela do CTA principal (decisão PO 2026-11-10): o ✓/○
-// convida ao toque; quem tocar achando que marca o item já cai nas Configurações (voltar = 1 toque).
-function ChecklistRow({ item, last, onPress }: { item: ChecklistItem; last: boolean; onPress: () => void }) {
-  const done = item.state === 'done'
-  const manual = item.state === 'manual'
-  const label = done
-    ? `${item.title}, feito`
-    : manual
-      ? `${item.title}, confira manualmente: ${item.instruction}`
-      : `${item.title}, pendente: ${item.instruction}`
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.row, !last && styles.rowDivider, pressed && styles.rowPressed]}
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint="Abre as configurações do app"
-    >
-      {done ? (
-        <CircleCheck size={22} color={colors.brand.primary} strokeWidth={2} />
-      ) : manual ? (
-        // Manual: nem ✓ nem ○ — o app não leu o ajuste (INV-7 · PO 2026-11-11).
-        <CircleDashed size={22} color={colors.text.secondary} strokeWidth={2} />
-      ) : (
-        <Circle size={22} color={colors.text.secondary} strokeWidth={2} />
-      )}
-      <View style={styles.rowText}>
-        <Text style={done ? styles.rowTitleDone : styles.rowTitle}>{item.title}</Text>
-        {manual && <Text style={styles.rowTag}>Confira manualmente</Text>}
-        {!done && <Text style={styles.rowInstruction}>{item.instruction}</Text>}
-      </View>
-      {/* › só no que pede ação: sinaliza "leva a outra tela", não "marca" (PO 2026-11-10) */}
-      {!done && <ChevronRight size={20} color={colors.text.secondary} style={styles.rowChevron} />}
-    </Pressable>
-  )
-}
+const isFullScreenItem = (id: string) => id === 'fullScreen' || id === 'lockScreen'
 
 export default function OemBatteryAssistantScreen() {
   // 1. States
@@ -76,6 +43,11 @@ export default function OemBatteryAssistantScreen() {
   }, [powerManagerActivity])
   const openAppDetails = useCallback(async () => {
     if (await openAppDetailsSettings()) setVisitedSettings(true)
+  }, [])
+  // 128 A/C-6: tela cheia e tela de bloqueio abrem o destino da marca (notificações do app; no Xiaomi,
+  // Informações do app › Outras permissões); as demais, "Informações do app".
+  const openFullScreen = useCallback(async () => {
+    if (await openFullScreenIntentSettings()) setVisitedSettings(true)
   }, [])
   const dismissForever = useCallback(() => {
     dismiss()
@@ -118,7 +90,13 @@ export default function OemBatteryAssistantScreen() {
         {checklist.items.length > 0 && (
           <View style={styles.list}>
             {checklist.items.map((item, i) => (
-              <ChecklistRow key={item.id} item={item} last={i === checklist.items.length - 1} onPress={openAppDetails} />
+              <ChecklistRow
+                key={item.id}
+                item={item}
+                last={i === checklist.items.length - 1}
+                onPress={isFullScreenItem(item.id) ? openFullScreen : openAppDetails}
+                accessibilityHint={isFullScreenItem(item.id) ? 'Abre as configurações de tela cheia' : undefined}
+              />
             ))}
           </View>
         )}
@@ -207,15 +185,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.default,
   },
-  row: { flexDirection: 'row', gap: spacing[3], alignItems: 'flex-start', padding: spacing[4] },
-  rowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border.default },
-  rowPressed: { opacity: 0.6 },
-  rowChevron: { alignSelf: 'center' },
-  rowText: { flex: 1, gap: 4 },
-  rowTitle: { fontSize: 15, fontWeight: '700', color: colors.text.primary },
-  rowTitleDone: { fontSize: 15, fontWeight: '600', color: colors.text.secondary },
-  rowTag: { fontSize: 12, fontWeight: '600', color: colors.text.secondary },
-  rowInstruction: { fontSize: 14, lineHeight: 20, color: colors.text.primary },
   tips: { gap: spacing[2] },
   tipsTitle: { fontSize: 15, fontWeight: '700', color: colors.text.primary },
   tipRow: { flexDirection: 'row', gap: spacing[2] },

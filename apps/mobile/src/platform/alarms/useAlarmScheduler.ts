@@ -15,6 +15,7 @@
 // imperativamente após mutação de protocolo (FR-006 / insumo E).
 
 import { useEffect } from 'react'
+import { withTimeout } from '@shared/utils/withTimeout'
 import { Platform } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import {
@@ -32,6 +33,13 @@ import { getSnoozeAnchors, getSnoozeAttempts, mergeSnoozeAnchors } from './snooz
 import { readCapability, emitCapability } from '@platform/device/capabilityBulletin'
 
 const LOOK_AHEAD_DAYS = 3 // 72h (cota de alarmes exatos, Android 12+)
+// 128 C-NN (smoke POCO 2026-11-24): uma leitura do Supabase que nunca resolve (nem com erro) prendia o
+// sync inteiro — o alarme da dose recém-editada nunca era agendado e só o push de reserva tocava.
+// Cada leitura tem teto; estourou ⇒ o sync falha (sem tocar nos alarmes já armados) e tenta de novo.
+export const SYNC_STEP_TIMEOUT_MS = 10_000
+export const SYNC_RETRY_MS = 15_000
+// Geração do sync: um sync antigo que destrava DEPOIS de um mais novo não pode sobrescrevê-lo.
+let syncGeneration = 0
 const LOOK_BACK_DAYS = 1 // inclui doses recém-vencidas (cobre soneca de dose no T0/late)
 
 // Auditoria de dose crítica (spec 042): dedupe do `alarm_scheduled`. syncAlarms roda a
@@ -248,31 +256,39 @@ function _groupItemsByTimestamp(items: any[]) {
   return groups
 }
 
-export async function syncAlarms({ userId, protocols, tz }: any) {
+/** Fecha o gap de geração por protocolo ativo; falha de um protocolo não derruba o sync. @private */
+async function _ensureInstancesForActive(protocols: any, repo: any, end: Date, tz: any, step: <T>(p: Promise<T>, what: string) => Promise<T>) {
+  const active = (Array.isArray(protocols) ? protocols : []).filter((p) => p?.active !== false)
+  for (const protocol of active) {
+    try {
+      await step(ensureInstancesUpTo({ protocol, doseInstanceRepo: repo, ts: end, tz }), 'ensureInstancesUpTo')
+    } catch (err: any) {
+      if (__DEV__) console.warn('[useAlarmScheduler] ensureInstancesUpTo falhou', protocol?.id, err?.message)
+    }
+  }
+}
+
+export async function syncAlarms({ userId, protocols, tz, isStale }: any) {
   if (!userId) return
+  const step = <T,>(p: Promise<T>, what: string) => withTimeout(p, SYNC_STEP_TIMEOUT_MS, `syncAlarms: ${what} sem resposta`)
   const repo = createDoseInstanceRepository({ client: supabase as any })
   const now = getRawNow()
   const end = addDays(now, LOOK_AHEAD_DAYS)
   const from = addDays(now, -LOOK_BACK_DAYS)
 
-  const active = (Array.isArray(protocols) ? protocols : []).filter((p) => p?.active !== false)
-  for (const protocol of active) {
-    try {
-      await ensureInstancesUpTo({ protocol, doseInstanceRepo: repo, ts: end, tz })
-    } catch (err: any) {
-      if (__DEV__) console.warn('[useAlarmScheduler] ensureInstancesUpTo falhou', protocol?.id, err?.message)
-    }
-  }
+  await _ensureInstancesForActive(protocols, repo, end, tz, step)
 
-  const instances = await repo.getWindow(userId, from, end)
+  const instances = await step(repo.getWindow(userId, from, end), 'getWindow')
   // Spec 101 C-23: âncora LOCAL da soneca mesclada, como nos bridges. O claim do servidor zera
   // `snoozed_until` até ~1 min ANTES da âncora; um resync nesse intervalo (app aberto pela LA recriada)
   // lia só o banco, via a dose no passado e o `cancelAll` matava o alarme da soneca sem re-armar.
   const rawItems = mergeSnoozeAnchors(
     buildDoseItemsFromInstances(instances, protocols, tz),
-    await getSnoozeAnchors(now.getTime())
+    await step(getSnoozeAnchors(now.getTime()), 'getSnoozeAnchors')
   )
   const items = _filterCriticalAlarmItems(rawItems, now.getTime())
+  // Leituras lentas: outro sync começou depois deste ⇒ ele é a verdade; este sai sem mexer nos alarmes.
+  if (isStale?.()) return
 
   await alarmService.cancelAll()
 
@@ -337,6 +353,19 @@ export async function syncAlarms({ userId, protocols, tz }: any) {
 }
 
 /**
+ * Sync imediato e aguardável (128 C-8): o salvamento espera este antes do toast. Entra na mesma
+ * contagem de geração do hook — um sync do efeito que começar depois torna este obsoleto, e vice-versa.
+ */
+export async function runAlarmSyncNow({ isAlarmEnabled, userId, protocols, tz }: any) {
+  const gen = ++syncGeneration
+  if (!isAlarmEnabled || !userId) {
+    await alarmService.cancelAll()
+    return
+  }
+  await syncAlarms({ userId, protocols, tz, isStale: () => gen !== syncGeneration })
+}
+
+/**
  * Hook: mantém os alarmes em dia enquanto ligado. Re-sincroniza quando muda o
  * estado relevante (toggle, protocolos). Para mutações pontuais de protocolo,
  * chame `syncAlarms()` imperativamente após o write (insumo E).
@@ -345,23 +374,28 @@ export async function syncAlarms({ userId, protocols, tz }: any) {
 export function useAlarmScheduler({ isAlarmEnabled, userId, protocols, tz }) {
   useEffect(() => {
     let cancelled = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
 
-    async function run() {
+    async function run(isRetry = false) {
+      const gen = ++syncGeneration
       try {
         if (!isAlarmEnabled || !userId) {
           await alarmService.cancelAll() // OFF → limpa tudo
           return
         }
         if (cancelled) return // efeito re-disparou durante o await → aborta
-        await syncAlarms({ userId, protocols, tz })
+        await syncAlarms({ userId, protocols, tz, isStale: () => cancelled || gen !== syncGeneration })
       } catch (err) {
         if (__DEV__) console.warn('[useAlarmScheduler] sync falhou', err?.message)
+        // 1 nova tentativa: quem salva e sai do app não volta para disparar outro sync antes da dose.
+        if (!isRetry && !cancelled) retryTimer = setTimeout(() => void run(true), SYNC_RETRY_MS)
       }
     }
 
     run()
     return () => {
       cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
     }
   }, [isAlarmEnabled, userId, protocols, tz])
 }

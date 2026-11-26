@@ -78,6 +78,7 @@ const capable = (over = {}) => ({
   batteryOptimized: true,
   powerManagerActivity: null,
   hibernationEnabled: null,
+  fullScreenAllowed: null,
   ...over,
 })
 
