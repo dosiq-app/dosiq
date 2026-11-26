@@ -60,7 +60,7 @@ describe('FullScreenGuideSheet', () => {
 
   it('ainda pendente na volta: diz o que falta e mantém o CTA', () => {
     const { getByText, getByLabelText } = render(<FullScreenGuideSheet {...props({ recheckResult: 'still_pending' })} />)
-    expect(getByText('Ainda falta ativar "Permitir notificações em tela cheia".')).toBeTruthy()
+    expect(getByText('Ainda falta liberar o item marcado abaixo.')).toBeTruthy()
     expect(getByLabelText('Abrir configurações')).toBeTruthy()
   })
 

@@ -47,8 +47,10 @@ export default function OemBatteryAssistantScreen() {
   // 128 A/C-6: tela cheia e tela de bloqueio abrem o destino da marca (notificações do app; no Xiaomi,
   // Informações do app › Outras permissões); as demais, "Informações do app".
   const openFullScreen = useCallback(async () => {
+    // RC6: Android < 14 não tem a tela de tela cheia — cai nas Informações do app em vez de não fazer nada.
     if (await openFullScreenIntentSettings()) setVisitedSettings(true)
-  }, [])
+    else await openAppDetails()
+  }, [openAppDetails])
   const dismissForever = useCallback(() => {
     dismiss()
     navigation.goBack()

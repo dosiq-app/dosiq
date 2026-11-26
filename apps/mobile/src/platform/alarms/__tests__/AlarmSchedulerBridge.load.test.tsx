@@ -164,6 +164,45 @@ describe('AlarmSchedulerBridge — load', () => {
     )
   })
 
+  it('🔴 RC6: logout com load em voo ⇒ o load antigo não entrega os protocolos de quem saiu', async () => {
+    let release: (v: unknown) => void = () => {}
+    mockMeds = jest.fn(() => new Promise((r) => (release = r)))
+    const { rerender } = render(<AlarmSchedulerBridge />)
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(10)
+    })
+    mockAuth = { user: null, loading: false }
+    rerender(<AlarmSchedulerBridge />)
+    await act(async () => {
+      release({ m1: { name: 'Lantus' } })
+      await jest.advanceTimersByTimeAsync(20_000) // passa também a janela da nova tentativa
+    })
+    expect(lastProps().userId).toBeNull()
+    expect(lastProps().protocols).toEqual([])
+  })
+
+  it('🔴 RC6: logout durante o sync do salvamento ⇒ não aplica o estado do load antigo', async () => {
+    const { rerender } = render(<AlarmSchedulerBridge />)
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(10)
+    })
+    let releaseSync: () => void = () => {}
+    mockSyncNow.mockImplementationOnce(() => new Promise<void>((r) => (releaseSync = r)))
+    mockMeds = jest.fn(async () => ({ m1: { name: 'Novo' } }))
+    await act(async () => {
+      void resyncAlarmsAndWait()
+      await jest.advanceTimersByTimeAsync(10)
+    })
+    mockAuth = { user: null, loading: false }
+    rerender(<AlarmSchedulerBridge />)
+    await act(async () => {
+      releaseSync()
+      await jest.advanceTimersByTimeAsync(10)
+    })
+    expect(lastProps().userId).toBeNull()
+    expect(lastProps().protocols.every((p: any) => p.medicine?.name !== 'Novo')).toBe(true)
+  })
+
   it('resync do salvamento que estoura o teto devolve false (o salvamento conclui mesmo assim)', async () => {
     render(<AlarmSchedulerBridge />)
     await act(async () => {

@@ -41,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   mockRestricted = null
   mockFullScreen = null
+  mockLockScreen = null
   RN.Platform.OS = ORIGINAL_OS
   jest.clearAllMocks()
   jest.clearAllTimers()
@@ -102,6 +103,13 @@ describe('probeDevice', () => {
       fullScreenAllowed: null,
       lockScreenAllowed: null,
     })
+  })
+
+  it('RC6: lockScreenAllowed repassa o que o HyperOS respondeu (true/false)', async () => {
+    mockLockScreen = false
+    expect((await probeDevice()).lockScreenAllowed).toBe(false)
+    mockLockScreen = true
+    expect((await probeDevice()).lockScreenAllowed).toBe(true)
   })
 
   it('iOS: fatos de Android são null; crítico autorizado conta como notificação permitida (C-11)', async () => {

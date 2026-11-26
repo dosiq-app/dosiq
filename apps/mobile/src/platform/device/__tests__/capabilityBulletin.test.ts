@@ -54,6 +54,7 @@ const facts = (over = {}) => ({
   powerManagerActivity: null,
   hibernationEnabled: null,
   fullScreenAllowed: null,
+  lockScreenAllowed: null,
   ...over,
 })
 

@@ -152,7 +152,8 @@ export const FULL_SCREEN_COPY = {
   body: 'Com o celular bloqueado, a dose crítica aparece na tela inteira, como um despertador. Falta liberar isso nas configurações.',
   bodyManual: 'Com o celular bloqueado, a dose crítica aparece na tela inteira, como um despertador. Confira estes ajustes nas configurações.',
   granted: 'Pronto — o alarme aparece na tela bloqueada.',
-  stillPending: 'Ainda falta ativar "Permitir notificações em tela cheia".',
+  // RC6: genérico — vale para o Xiaomi ("Outras permissões") e para qualquer das chaves.
+  stillPending: 'Ainda falta liberar o item marcado abaixo.',
   cta: 'Abrir configurações',
   dismiss: 'Agora não',
   close: 'Fechar',

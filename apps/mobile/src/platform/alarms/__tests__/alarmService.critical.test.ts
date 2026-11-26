@@ -389,4 +389,45 @@ describe('openFullScreenIntentSettings — destino por marca (128 C-6)', () => {
     expect(mockOpenAppDetails).toHaveBeenCalledTimes(1)
     expect(sendIntent).not.toHaveBeenCalled()
   })
+
+  // RC6: o caminho da maioria (Moto, Pixel, Samsung) — notificações do app com o pacote.
+  describe('genérico, Android 14+', () => {
+    const App = require('expo-application')
+    const origVersion = RN.Platform.Version
+    beforeEach(() => {
+      RN.Platform.OS = 'android'
+      Object.defineProperty(RN.Platform, 'Version', { value: 35, configurable: true })
+    })
+    afterEach(() => {
+      Object.defineProperty(RN.Platform, 'Version', { value: origVersion, configurable: true })
+      jest.restoreAllMocks()
+    })
+    it('abre as notificações do app com APP_PACKAGE', async () => {
+      jest.replaceProperty(App, 'applicationId', 'app.dosiq.test')
+      const sendIntent = jest.spyOn(RN.Linking, 'sendIntent').mockResolvedValue(undefined)
+      const { openFullScreenIntentSettings } = require('../alarmService')
+      expect(await openFullScreenIntentSettings()).toBe(true)
+      expect(sendIntent).toHaveBeenCalledWith('android.settings.APP_NOTIFICATION_SETTINGS', [
+        { key: 'android.provider.extra.APP_PACKAGE', value: 'app.dosiq.test' },
+      ])
+      expect(mockOpenAppDetails).not.toHaveBeenCalled()
+    })
+    it('sem applicationId ⇒ cai na lista de tela cheia; se ela falha ⇒ openSettings', async () => {
+      jest.replaceProperty(App, 'applicationId', null)
+      const sendIntent = jest.spyOn(RN.Linking, 'sendIntent').mockRejectedValue(new Error('no activity'))
+      const openSettings = jest.spyOn(RN.Linking, 'openSettings').mockResolvedValue(undefined)
+      const { openFullScreenIntentSettings } = require('../alarmService')
+      expect(await openFullScreenIntentSettings()).toBe(true)
+      expect(sendIntent).toHaveBeenCalledTimes(1)
+      expect(sendIntent).toHaveBeenCalledWith('android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT')
+      expect(openSettings).toHaveBeenCalledTimes(1)
+    })
+    it('Android < 14 ⇒ false (não há tela de tela cheia)', async () => {
+      Object.defineProperty(RN.Platform, 'Version', { value: 33, configurable: true })
+      const sendIntent = jest.spyOn(RN.Linking, 'sendIntent').mockResolvedValue(undefined)
+      const { openFullScreenIntentSettings } = require('../alarmService')
+      expect(await openFullScreenIntentSettings()).toBe(false)
+      expect(sendIntent).not.toHaveBeenCalled()
+    })
+  })
 })

@@ -119,7 +119,9 @@ function loadReviewCardsSidecar(root) {
         }
       }
     }
-  } catch {
+  } catch (err) {
+    // RC6: sidecar corrompido não pode sumir em silêncio — o índice sairia sem os cards.
+    console.warn(`[compile-memory-index] review_cards.json ilegível, cards ignorados: ${err.message}`);
     return map;
   }
   return map;

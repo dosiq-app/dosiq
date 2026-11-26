@@ -127,6 +127,9 @@ export function useFullScreenCheck() {
     const current = readFacts()
     const missing = missingRows(current)
     if (!mounted.current || missing.length === 0) return
+    // RC6: o "Pronto" anterior pode ter deixado o timer de fechar armado — não fecha o sheet novo.
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    closeTimer.current = null
     const fam = readFamily()
     setFamily(fam)
     setFacts(current)

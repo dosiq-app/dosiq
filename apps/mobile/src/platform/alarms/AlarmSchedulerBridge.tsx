@@ -354,6 +354,7 @@ export default function AlarmSchedulerBridge() {
         await runAlarmSyncNow({ isAlarmEnabled, userId, protocols: enriched, tz: userTz }).catch((err) => {
           if (__DEV__) console.warn('[AlarmSchedulerBridge] sync do salvamento falhou', err?.message)
         })
+        if (gen !== loadGen.current) return // RC6: logout/load mais novo durante o sync — não sobrescreve
       }
       setTz(userTz)
       setProtocols(enriched)
@@ -369,9 +370,13 @@ export default function AlarmSchedulerBridge() {
     loadRef.current = load
   }, [load])
 
+  // RC6: troca de usuário (inclui logout) e unmount invalidam o load em voo e a nova tentativa —
+  // senão um load do usuário anterior termina depois e re-arma alarmes de quem saiu.
   useEffect(() => () => {
+    loadGen.current += 1
     if (loadRetry.current) clearTimeout(loadRetry.current)
-  }, [])
+    loadRetry.current = null
+  }, [userId])
 
   // Carrega na montagem + retorno de background (Spec 010: sem gate global de enabled).
   useEffect(() => {
