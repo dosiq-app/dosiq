@@ -263,7 +263,7 @@ export function useNotificationLog(options: UseNotificationLogOptions = {}) {
 export interface RecentDoseLogRow {
   id: string
   protocol_id: string | null
-  taken_at: string
+  taken_at: string | null
 }
 
 export async function fetchRecentDoseLogs(
@@ -276,5 +276,5 @@ export async function fetchRecentDoseLogs(
     .eq('user_id', userId)
     .gte('taken_at', sinceIso)
   if (error) return { data: [], error }
-  return { data: (data ?? []) as RecentDoseLogRow[], error: null }
+  return { data: data ?? [], error: null }
 }

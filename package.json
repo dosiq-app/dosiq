@@ -53,7 +53,7 @@
     "@babel/generator": "^7.28.6",
     "@sentry/node-core": "^10.74.0",
     "@sparticuz/chromium": "153.0.0",
-    "@supabase/supabase-js": "^2.90.1",
+    "@supabase/supabase-js": "2.105.4",
     "dotenv": "^17.2.3",
     "expo-server-sdk": "^6.1.0",
     "framer-motion": "^12.33.0",

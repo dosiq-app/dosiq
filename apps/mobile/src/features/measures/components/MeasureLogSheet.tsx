@@ -193,16 +193,7 @@ function useMeasureSheetState({ editItem, fixedType, defaultType, open }) {
     setPrevOpen(open)
     setPrevEditKey(editKey)
     setPrevTypeSeed(typeSeed)
-    if (open) {
-      setType(typeSeed)
-      setValue(editItem ? String(editItem.value).replace('.', ',') : '')
-      setValueSec(editItem?.value_secondary != null ? String(editItem.value_secondary).replace('.', ',') : '')
-      setContext(editItem?.context ?? null)
-      setMeasuredAt(editItem?.measured_at ? parseISO(editItem.measured_at) : null)
-      setShowDatePicker(false)
-      setErrorMsg(null)
-      setSaving(false)
-    }
+    if (open) reset()
   }
 
   return {

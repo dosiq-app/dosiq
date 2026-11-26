@@ -18,7 +18,11 @@ jest.mock('@dose/services/doseService', () => ({
 
 const mockEq = jest.fn(() => Promise.resolve({ error: null }))
 const mockUpdate = jest.fn(() => ({ eq: mockEq }))
-const mockFrom = jest.fn((_table?: string) => ({ update: mockUpdate }))
+const mockIn = jest.fn((_col: string, _ids: string[]) =>
+  Promise.resolve<{ data: Array<{ id: string; status: string }> | null; error: { message: string } | null }>({ data: [], error: null }),
+)
+const mockSelect = jest.fn((_cols: string) => ({ in: mockIn }))
+const mockFrom = jest.fn((_table?: string) => ({ update: mockUpdate, select: mockSelect }))
 const mockGetUser = jest.fn(() => Promise.resolve({ data: { user: { id: 'user-1' } }, error: null }))
 jest.mock('@platform/supabase/nativeSupabaseClient', () => ({
   supabase: {
@@ -80,7 +84,7 @@ jest.mock('@platform/doseActivity/doseActivitySurfaceService', () => ({
   endDoseActivity: (...a: any[]) => mockEndDoseActivity(...a),
 }))
 
-import { handleAlarmAction, registerTaken, registerSkip } from '../quickDoseRegistration'
+import { handleAlarmAction, registerTaken, registerSkip, fetchDoseInstanceStatuses } from '../quickDoseRegistration'
 import { onDoseChanged } from '../doseChangedBus'
 import { isHandedOffToRegister, __resetRegisterHandoff } from '../registerHandoff'
 import { SURFACE_ACTION } from '@platform/doseActivity/doseActivitySurfaceService'
@@ -587,5 +591,20 @@ describe('registerSkip — pulo tardio com instante declarado (120 C)', () => {
     const res = await registerSkip(ATRASADA, { declaredAt: ATRASADA.scheduledFor })
     expect(res.success).toBe(false)
     expect(res.message).toBeTruthy()
+  })
+})
+
+describe('fetchDoseInstanceStatuses — leitura de status para o auto-dismiss', () => {
+  it('devolve as linhas id/status de dose_instances', async () => {
+    mockIn.mockResolvedValueOnce({ data: [{ id: 'a', status: 'taken' }], error: null })
+    await expect(fetchDoseInstanceStatuses(['a'])).resolves.toEqual([{ id: 'a', status: 'taken' }])
+    expect(mockFrom).toHaveBeenCalledWith('dose_instances')
+    expect(mockSelect).toHaveBeenCalledWith('id,status')
+    expect(mockIn).toHaveBeenCalledWith('id', ['a'])
+  })
+
+  it('erro de leitura ⇒ [] (tela segue aberta; nunca esconde alarme legítimo)', async () => {
+    mockIn.mockResolvedValueOnce({ data: null, error: { message: 'net down' } })
+    await expect(fetchDoseInstanceStatuses(['a'])).resolves.toEqual([])
   })
 })
