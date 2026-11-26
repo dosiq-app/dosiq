@@ -87,14 +87,9 @@ const NO_SUPABASE_IN_UI_SELECTOR = {
   message: 'Proibido chamar supabase.from() direto em screens/ ou components/. Extraia a query para @dosiq/core/repositories (R-231) ou para o service da feature.'
 }
 
-const NO_SETTIMEOUT_IN_EFFECT_SELECTOR = {
-  selector: 'CallExpression[callee.name="useEffect"] CallExpression[callee.name="setTimeout"]',
-  message: 'Proibido setTimeout() dentro de useEffect em screens/components (remendo temporal sujeito a race condition). Use callback de ciclo de vida (onShow/onDismiss), withTimeout() em handler ou hook dedicado em shared/hooks/.'
-}
-
 const NO_SETTIMEOUT_IN_COMPONENTS_SELECTOR = {
-  selector: 'CallExpression[callee.name="setTimeout"]',
-  message: 'Proibido setTimeout() direto em components/ mobile. Use @shared/utils/withTimeout para promessas, @shared/hooks/useModalAutoFocus para foco pós-modal, ou callbacks nativos.'
+  selector: 'CallExpression[callee.name=/^(setTimeout|setInterval)$/], CallExpression[callee.object.name=/^(global|globalThis|window)$/][callee.property.name=/^(setTimeout|setInterval)$/]',
+  message: 'Proibido setTimeout()/setInterval() direto em components/ mobile (remendo temporal sujeito a race condition). Use @shared/utils/withTimeout para promessas, @shared/hooks/useModalAutoFocus para foco pós-modal, callbacks de ciclo de vida (onShow/onDismiss) ou um hook dedicado em shared/hooks/.'
 }
 
 const AP366_LEGACY_MOBILE_SCREENS = [
@@ -519,7 +514,6 @@ export default [
         ...BASE_RESTRICTED_SYNTAX,
         AP366_USEMEMO_NOW_SELECTOR,
         NO_SUPABASE_IN_UI_SELECTOR,
-        NO_SETTIMEOUT_IN_EFFECT_SELECTOR,
         NO_SETTIMEOUT_IN_COMPONENTS_SELECTOR,
       ],
     },
@@ -532,7 +526,6 @@ export default [
         'error',
         ...BASE_RESTRICTED_SYNTAX,
         NO_SUPABASE_IN_UI_SELECTOR,
-        NO_SETTIMEOUT_IN_EFFECT_SELECTOR,
         NO_SETTIMEOUT_IN_COMPONENTS_SELECTOR,
       ],
     },

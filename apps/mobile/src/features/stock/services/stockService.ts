@@ -134,15 +134,4 @@ export const stockService = {
     await emitStockAdded(input?.medicineId, surface)
     return results
   },
-
-  async getActiveLotsByMedicine(medicineId: string) {
-    z.string().uuid().parse(medicineId)
-    const { data, error } = await nativeSupabaseClient
-      .from('stock')
-      .select('id, purchase_id, quantity, opened_at')
-      .eq('medicine_id', medicineId)
-      .gt('quantity', 0)
-    if (error) throw error
-    return data ?? []
-  },
 }
