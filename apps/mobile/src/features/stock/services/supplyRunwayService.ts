@@ -12,8 +12,7 @@ async function getUserId() {
   return user.id
 }
 
-// TODO(040-strict): versão do supabase-js do mobile difere da do core (ver stockService.ts).
 export const supplyRunwayService = createSupplyRunwayRepository({
-  client: nativeSupabaseClient as any,
+  client: nativeSupabaseClient,
   getUserId,
 })

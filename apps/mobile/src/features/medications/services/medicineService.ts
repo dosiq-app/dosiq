@@ -11,11 +11,6 @@ import { supabase } from '../../../platform/supabase/nativeSupabaseClient'
 import { logEvent } from '../../../platform/analytics/productAnalytics'
 import { EVENTS } from '../../../platform/analytics/analyticsEvents'
 
-// TODO(040-strict): apps/mobile pina @supabase/supabase-js 2.91.0 vs ^2.90.1 na
-// factory do core — tipos nominais do client divergem entre versões (private
-// 'supabaseUrl' não bate estruturalmente). Fix real = alinhar versão (fora do lote).
-const typedClient = supabase as any
-
 async function getUserId() {
   const { data, error } = await supabase.auth.getUser()
   const user = data?.user
@@ -26,7 +21,7 @@ async function getUserId() {
 }
 
 const repo = createMedicineRepository({
-  client: typedClient,
+  client: supabase,
   getUserId,
   listSelect: `
     *,

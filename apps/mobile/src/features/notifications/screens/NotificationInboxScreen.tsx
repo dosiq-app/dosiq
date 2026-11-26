@@ -20,10 +20,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { z } from 'zod'
 import { getTodayLocal, getNow, parseISO, daysDifference, cloneDate, addDays, getServerTimestamp, formatLocalDate, getUserTime } from '@dosiq/core'
 import { ROUTES } from '@navigation/routes'
-import { useNotificationLog } from '@shared/hooks/useNotificationLog'
+import { useNotificationLog, fetchRecentDoseLogs } from '@shared/hooks/useNotificationLog'
 import { useUnreadNotificationCount } from '@shared/hooks/useUnreadNotificationCount'
 import { useStockTracking } from '@shared/hooks/useStockTracking'
-import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import NotificationItem from '@notifications/components/NotificationItem'
 import { colors } from '@shared/styles/tokens'
 import SignalDot from '@shared/components/ui/SignalDot'
@@ -379,11 +378,7 @@ export default function NotificationInboxScreen({ navigation, route }) {
   const loadDoseLogs = useCallback(async () => {
     if (!userId) return
     const since = addDays(parseISO(getServerTimestamp()), -7).toISOString()
-    const { data: rows, error: fetchErr } = await supabase
-      .from('medicine_logs')
-      .select('id, protocol_id, taken_at')
-      .eq('user_id', userId)
-      .gte('taken_at', since)
+    const { data: rows, error: fetchErr } = await fetchRecentDoseLogs(userId, since)
     if (fetchErr) {
       if (__DEV__) console.warn('[NotificationInboxScreen] doseLogs fetch error', fetchErr.message)
       return

@@ -24,7 +24,6 @@ import PurchaseCard from '@stock/components/PurchaseCard'
 import { stockService } from '@stock/services/stockService'
 import { medicineService } from '@medications/services/medicineService'
 import { useAuth } from '@platform/auth/hooks/useAuth'
-import { supabase } from '../../../platform/supabase/nativeSupabaseClient'
 import { computeAverageUnitPrice, formatBRL, formatConcentration, isLiquidMedicine, stockUnitLabel, formatNumberPtBR } from '@dosiq/core'
 import { colors, spacing, borderRadius, typography } from '@shared/styles/tokens'
 import { ROUTES } from '@navigation/routes'
@@ -144,12 +143,7 @@ export default function PurchaseHistoryScreen({ route, navigation }) {
         stockService.getPurchasesByMedicine(medicineId),
         medicineService.getById(medicineId).catch(() => null),
         // Busca opened_at por lote para eixo TTL (012 Fase A)
-        supabase
-          .from('stock')
-          .select('id, purchase_id, quantity, opened_at')
-          .eq('medicine_id', medicineId)
-          .gt('quantity', 0)
-          .then(({ data: rows }) => rows ?? []),
+        stockService.getActiveLotsByMedicine(medicineId).catch(() => []),
       ])
       setPurchases(data ?? [])
       setMedicine(med ?? null)

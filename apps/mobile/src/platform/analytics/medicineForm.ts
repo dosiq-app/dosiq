@@ -7,10 +7,7 @@
 // R-295: `medicines.presentation` (text, nullable, CHECK de 7 valores) verificada no banco em
 // 2026-10-04; select executado contra o PostgREST (200).
 import { PRESENTATIONS } from '@dosiq/core'
-import { supabase as supabaseImport } from '@platform/supabase/nativeSupabaseClient'
-
-// TODO(040-strict): mesma duplicata de supabase-js do doseService — nominal typing do client.
-const supabase = supabaseImport as any
+import { supabase } from '@platform/supabase/nativeSupabaseClient'
 
 /**
  * Forma de cada medicamento, numa única query `in()`. Id ausente no resultado ⇒ forma desconhecida.

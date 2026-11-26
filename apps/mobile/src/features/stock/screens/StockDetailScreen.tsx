@@ -27,7 +27,6 @@ import ScreenContainer from '@shared/components/ui/ScreenContainer'
 import { stockService } from '@stock/services/stockService'
 import { supplyRunwayService } from '@stock/services/supplyRunwayService'
 import { medicineService } from '@medications/services/medicineService'
-import { supabase } from '../../../platform/supabase/nativeSupabaseClient'
 import PurchaseCard from '@stock/components/PurchaseCard'
 import StockIndicators from '@stock/components/StockIndicators'
 import StockLevelBadge from '@stock/components/StockLevelBadge'
@@ -275,12 +274,7 @@ function useStockDetailState(route, navigation) {
             stockService.getTotalQuantity(medicineId),
             stockService.getPurchasesByMedicine(medicineId),
             medicineService.getById(medicineId),
-            supabase
-              .from('stock')
-              .select('id, purchase_id, quantity, opened_at')
-              .eq('medicine_id', medicineId)
-              .gt('quantity', 0)
-              .then(({ data }) => data ?? []),
+            stockService.getActiveLotsByMedicine(medicineId).catch(() => []),
             supplyRunwayService.getSteps().catch(() => null),
           ])
           if (cancelled) return

@@ -28,8 +28,6 @@ import {
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { getLadderForProtocol, getUserTimezone } from './titrationService'
 
-// TODO(040-strict): mesma duplicata de @supabase/supabase-js do titrationService — cast de fronteira.
-const typedClient = supabase as any
 
 export const MEASURE_PAGE_SIZE = 1000
 const BIOMARKER_SELECT = 'id, type, value, measured_at'
@@ -104,7 +102,7 @@ export async function loadTreatmentMeasureSeries(
     const toIso = getEndOfDayISO(today, timezone)
     const [weights, ...sliceDays] = await Promise.all([
       readAllPages<MeasureInput>((a, b) =>
-        typedClient
+        supabase
           .from('biomarkers_log')
           .select(BIOMARKER_SELECT)
           .eq('user_id', userId)
@@ -120,7 +118,7 @@ export async function loadTreatmentMeasureSeries(
           // ORDER BY da RPC (day, slot, protocol_id) não é único — a linha também agrupa medicine_id;
           // empate entre páginas duplicaria/pularia linha. Chave completa no cliente (RC6 #866;
           // validado no PostgREST 2026-10-05: 200, coluna inválida ⇒ 42703).
-          typedClient
+          supabase
             .rpc('report_dose_days', { p_from: s.from, p_to: s.to })
             .order('day')
             .order('slot')

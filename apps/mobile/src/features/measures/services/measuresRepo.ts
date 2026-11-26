@@ -13,8 +13,7 @@ async function getUserId() {
   return userId
 }
 
-// TODO(040-strict): supabase client local não tipado como Database (nível B)
-const repo = createBiomarkerRepository({ client: supabase as any, getUserId })
+const repo = createBiomarkerRepository({ client: supabase, getUserId })
 
 // ── Casca de analytics (spec 065 PR D / FR-13 · mesma forma do medicineService) ─────────────────
 // Três telas criam biomarcador (useMeasures, TodayScreen, HistoryScreen — C1.5 G-1): o evento nasce

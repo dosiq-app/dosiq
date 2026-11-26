@@ -30,8 +30,7 @@ async function getUserId() {
   return user.id
 }
 
-// TODO(040-strict): supabase client local não tipado como Database (nível B)
-const exportService = createExportService({ client: supabase as any, getUserId })
+const exportService = createExportService({ client: supabase, getUserId })
 
 const FORMAT_OPTIONS = [
   { value: 'json', label: 'JSON', Icon: FileJson },

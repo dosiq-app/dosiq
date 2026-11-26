@@ -82,6 +82,46 @@ const AP366_USEMEMO_NOW_SELECTOR = {
   message: 'AP-366: getNow()/getRawNow()/nowInSP() dentro de useMemo congela o "agora" no instante da última carga. Use useMinuteClock() ou passe o instante nas deps.'
 }
 
+const NO_SUPABASE_IN_UI_SELECTOR = {
+  selector: 'CallExpression[callee.property.name="from"][callee.object.name=/^(supabase|nativeSupabaseClient|typedClient)$/]',
+  message: 'Proibido chamar supabase.from() direto em screens/ ou components/. Extraia a query para @dosiq/core/repositories (R-231) ou para o service da feature.'
+}
+
+const NO_SETTIMEOUT_IN_EFFECT_SELECTOR = {
+  selector: 'CallExpression[callee.name="useEffect"] CallExpression[callee.name="setTimeout"]',
+  message: 'Proibido setTimeout() dentro de useEffect em screens/components (remendo temporal sujeito a race condition). Use callback de ciclo de vida (onShow/onDismiss), withTimeout() em handler ou hook dedicado em shared/hooks/.'
+}
+
+const NO_SETTIMEOUT_IN_COMPONENTS_SELECTOR = {
+  selector: 'CallExpression[callee.name="setTimeout"]',
+  message: 'Proibido setTimeout() direto em components/ mobile. Use @shared/utils/withTimeout para promessas, @shared/hooks/useModalAutoFocus para foco pós-modal, ou callbacks nativos.'
+}
+
+const AP366_LEGACY_MOBILE_SCREENS = [
+  'apps/mobile/src/features/dashboard/screens/TodayScreen.tsx',
+]
+
+const AP366_LEGACY_MOBILE_COMPONENTS = [
+  'apps/mobile/src/features/dashboard/components/TreatmentWeekModule.tsx',
+  'apps/mobile/src/features/measures/components/ScatterTrend.tsx',
+  'apps/mobile/src/features/treatments/components/NextDoseField.tsx',
+  'apps/mobile/src/features/treatments/components/TreatmentSentenceCard.tsx',
+]
+
+const AP366_LEGACY_WEB_COMPONENTS = [
+  'apps/web/src/features/calendar/components/DoseCalendar.tsx',
+  'apps/web/src/features/measures/components/ScatterTrend.tsx',
+]
+
+const AP366_LEGACY_FILES = [
+  ...AP366_LEGACY_MOBILE_SCREENS,
+  'apps/mobile/src/features/dashboard/hooks/_useTodayDerived.ts',
+  ...AP366_LEGACY_MOBILE_COMPONENTS,
+  ...AP366_LEGACY_WEB_COMPONENTS,
+  'apps/web/src/features/dashboard/hooks/useDashboardContext.tsx',
+  'apps/web/src/features/dashboard/hooks/useSparklineData.ts',
+]
+
 // Testes são isolados dos blocos de produção por whitelist (evita falsos bloqueios de regras de app)
 const TEST_FILE_PATTERNS = [
   '**/__tests__/**/*.{js,jsx,ts,tsx}',
@@ -449,20 +489,66 @@ export default [
     ],
     ignores: [
       ...TEST_FILE_PATTERNS,
-      // Dívida legada pré-existente mapeada em 1.3c
-      'apps/mobile/src/features/dashboard/components/TreatmentWeekModule.tsx',
-      'apps/mobile/src/features/dashboard/hooks/_useTodayDerived.ts',
-      'apps/mobile/src/features/dashboard/screens/TodayScreen.tsx',
-      'apps/mobile/src/features/measures/components/ScatterTrend.tsx',
-      'apps/mobile/src/features/treatments/components/NextDoseField.tsx',
-      'apps/mobile/src/features/treatments/components/TreatmentSentenceCard.tsx',
-      'apps/web/src/features/calendar/components/DoseCalendar.tsx',
-      'apps/web/src/features/dashboard/hooks/useDashboardContext.tsx',
-      'apps/web/src/features/dashboard/hooks/useSparklineData.ts',
-      'apps/web/src/features/measures/components/ScatterTrend.tsx',
+      ...AP366_LEGACY_FILES,
     ],
     rules: {
       'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX, AP366_USEMEMO_NOW_SELECTOR],
+    },
+  },
+  // Guardrails arquiteturais em UI (screens/ e components/) preservando o baseline legado de AP-366
+  {
+    files: ['apps/mobile/src/features/**/screens/**/*.{ts,tsx}'],
+    ignores: [...TEST_FILE_PATTERNS, ...AP366_LEGACY_MOBILE_SCREENS],
+    rules: {
+      'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX, AP366_USEMEMO_NOW_SELECTOR, NO_SUPABASE_IN_UI_SELECTOR],
+    },
+  },
+  {
+    files: AP366_LEGACY_MOBILE_SCREENS,
+    ignores: TEST_FILE_PATTERNS,
+    rules: {
+      'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX, NO_SUPABASE_IN_UI_SELECTOR],
+    },
+  },
+  {
+    files: ['apps/mobile/src/features/**/components/**/*.{ts,tsx}'],
+    ignores: [...TEST_FILE_PATTERNS, ...AP366_LEGACY_MOBILE_COMPONENTS],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...BASE_RESTRICTED_SYNTAX,
+        AP366_USEMEMO_NOW_SELECTOR,
+        NO_SUPABASE_IN_UI_SELECTOR,
+        NO_SETTIMEOUT_IN_EFFECT_SELECTOR,
+        NO_SETTIMEOUT_IN_COMPONENTS_SELECTOR,
+      ],
+    },
+  },
+  {
+    files: AP366_LEGACY_MOBILE_COMPONENTS,
+    ignores: TEST_FILE_PATTERNS,
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...BASE_RESTRICTED_SYNTAX,
+        NO_SUPABASE_IN_UI_SELECTOR,
+        NO_SETTIMEOUT_IN_EFFECT_SELECTOR,
+        NO_SETTIMEOUT_IN_COMPONENTS_SELECTOR,
+      ],
+    },
+  },
+  {
+    files: ['apps/web/src/features/**/components/**/*.{ts,tsx}'],
+    ignores: [...TEST_FILE_PATTERNS, ...AP366_LEGACY_WEB_COMPONENTS],
+    rules: {
+      'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX, AP366_USEMEMO_NOW_SELECTOR, NO_SUPABASE_IN_UI_SELECTOR],
+    },
+  },
+  {
+    files: AP366_LEGACY_WEB_COMPONENTS,
+    ignores: TEST_FILE_PATTERNS,
+    rules: {
+      'no-restricted-syntax': ['error', ...BASE_RESTRICTED_SYNTAX, NO_SUPABASE_IN_UI_SELECTOR],
     },
   },
   // Override 3: Bloco isolado para testes por whitelist — zero regras de app; só parser TS + 3 guardrails sintáticas

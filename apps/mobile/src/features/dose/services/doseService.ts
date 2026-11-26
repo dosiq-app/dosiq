@@ -4,12 +4,7 @@
 // R-121: validação Zod antes de qualquer mutação
 
 import { Platform } from 'react-native'
-import { supabase as supabaseImport } from '@platform/supabase/nativeSupabaseClient'
-
-// TODO(040-strict): apps/mobile pina @supabase/supabase-js 2.91.0 vs ^2.90.1 na
-// root — duplicata de instalação quebra nominal typing do client (protected member
-// 'supabaseUrl' não bate estruturalmente). Fix real = alinhar versão (fora do lote).
-const supabase = supabaseImport as any
+import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { cancelAlarm } from '@platform/alarms/alarmService'
 import { endDoseActivity, showDoseDone, readSurfaceLabel } from '@platform/doseActivity/doseActivitySurfaceService'
 import { triggerDoseActivityRefresh } from '@platform/doseActivity/doseActivityRefreshBus'

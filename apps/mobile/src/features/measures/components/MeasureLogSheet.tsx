@@ -5,7 +5,7 @@
 //
 // v1: glicemia + peso (Planning 2026-06-14). PA fora da UI (schema-ready no core).
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { View, Text, Modal, Pressable, TouchableOpacity, StyleSheet, Platform, StatusBar, KeyboardAvoidingView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker'
@@ -172,6 +172,9 @@ function useMeasureSheetState({ editItem, fixedType, defaultType, open }) {
   const [tempDate, setTempDate] = useState(null)
   const [saving, setSaving] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
+  const [prevOpen, setPrevOpen] = useState(open)
+  const [prevEditKey, setPrevEditKey] = useState(() => editItem?.id ?? null)
+  const [prevTypeSeed, setPrevTypeSeed] = useState(() => fixedType || defaultType)
 
   const reset = useCallback(() => {
     setType(fixedType || defaultType)
@@ -184,14 +187,23 @@ function useMeasureSheetState({ editItem, fixedType, defaultType, open }) {
     setSaving(false)
   }, [fixedType, defaultType, editItem])
 
-  useEffect(() => {
+  const editKey = editItem?.id ?? null
+  const typeSeed = fixedType || defaultType
+  if (open !== prevOpen || editKey !== prevEditKey || typeSeed !== prevTypeSeed) {
+    setPrevOpen(open)
+    setPrevEditKey(editKey)
+    setPrevTypeSeed(typeSeed)
     if (open) {
-      const handle = setTimeout(() => {
-        reset()
-      }, 0)
-      return () => clearTimeout(handle)
+      setType(typeSeed)
+      setValue(editItem ? String(editItem.value).replace('.', ',') : '')
+      setValueSec(editItem?.value_secondary != null ? String(editItem.value_secondary).replace('.', ',') : '')
+      setContext(editItem?.context ?? null)
+      setMeasuredAt(editItem?.measured_at ? parseISO(editItem.measured_at) : null)
+      setShowDatePicker(false)
+      setErrorMsg(null)
+      setSaving(false)
     }
-  }, [open, reset])
+  }
 
   return {
     type, setType,

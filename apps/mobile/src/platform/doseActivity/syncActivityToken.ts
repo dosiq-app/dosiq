@@ -12,7 +12,7 @@ import { getActivityPushToken } from './liveActivityService'
 // Auditoria (042 Slice B): token_captured emitido no foreground (online) — NUNCA grava o token no
 // detail (SEC-3), só marca que a captura ocorreu. Fail-open: emit nunca lança.
 const tokenAudit = createCriticalAuditService({
-  client: supabase as any,
+  client: supabase,
   getUserId: async () => {
     const { data } = await supabase.auth.getUser()
     return data?.user?.id ?? null

@@ -88,8 +88,7 @@ async function _getUserId() {
 
 let _supplyRepo: ReturnType<typeof createSupplyRunwayRepository> | null = null
 function _supplyRepository() {
-  // TODO(040-strict): versão do supabase-js do mobile ≠ do core (ver stockService.ts).
-  if (!_supplyRepo) _supplyRepo = createSupplyRunwayRepository({ client: nativeSupabaseClient as any, getUserId: _getUserId })
+  if (!_supplyRepo) _supplyRepo = createSupplyRunwayRepository({ client: nativeSupabaseClient, getUserId: _getUserId })
   return _supplyRepo
 }
 

@@ -27,9 +27,6 @@ import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { emitTitrationEdited } from './protocolService'
 import type { TitrationStepCreate } from '@dosiq/core'
 
-// TODO(040-strict): mesma duplicata de @supabase/supabase-js do protocolService — cast de fronteira.
- 
-const typedClient = supabase as any
 
 async function getUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser()
@@ -38,7 +35,7 @@ async function getUserId(): Promise<string> {
   return user.id
 }
 
-export const titrationRepo = createTitrationRepository({ client: typedClient, getUserId })
+export const titrationRepo = createTitrationRepository({ client: supabase, getUserId })
 
 /**
  * Unidade de tomada de uma etapa a partir do medicamento (§4.2 "a unidade segue o medicamento").
@@ -208,7 +205,7 @@ const LADDER_SELECT = `
 export async function getLadderForProtocol(protocolId: string): Promise<LadderStepWithMedicine[]> {
   const userId = await getUserId()
 
-  const { data: link, error: linkError } = await typedClient
+  const { data: link, error: linkError } = await supabase
     .from('titration_steps')
     .select('titration_id')
     .eq('protocol_id', protocolId)
@@ -220,7 +217,7 @@ export async function getLadderForProtocol(protocolId: string): Promise<LadderSt
   if (linkError) throw linkError
   if (!link) return []
 
-  const { data, error } = await typedClient
+  const { data, error } = await supabase
     .from('titrations')
     .select(LADDER_SELECT)
     .eq('id', link.titration_id)
@@ -521,17 +518,17 @@ const _REASON_COPY: Record<ConfirmSwitchReason, string> = {
 async function _resyncProtocolInstances(protocolId: string | null): Promise<void> {
   if (!protocolId) return // `dose_change` sem executor vinculado: nada a materializar.
   try {
-    const { data: protocol, error } = await typedClient
+    const { data: protocol, error } = await supabase
       .from('protocols')
       .select('*, titration_steps(id, position, dose, duration_days, status, started_at, medicine_id)')
       .eq('id', protocolId)
       .single()
     if (error || !protocol) return
 
-    const tz = await resolveUserTz(typedClient, protocol.user_id)
+    const tz = await resolveUserTz(supabase, protocol.user_id)
     await resyncProtocolWindow({
       protocol,
-      doseInstanceRepo: createDoseInstanceRepository({ client: typedClient }),
+      doseInstanceRepo: createDoseInstanceRepository({ client: supabase }),
       tz,
     })
   } catch {
@@ -539,14 +536,28 @@ async function _resyncProtocolInstances(protocolId: string | null): Promise<void
   }
 }
 
+interface ConfirmTitrationSwitchRpcPayload {
+  success?: boolean
+  already_confirmed?: boolean
+  transition?: Extract<ConfirmSwitchResult, { ok: true }>['transition']
+  protocol_activated?: string | null
+  protocol_paused?: string | null
+  reason?: string
+}
+
 export async function confirmTitrationSwitch(stepId: string): Promise<ConfirmSwitchResult> {
   if (!stepId) return { ok: false, reason: 'nao_pendente', message: _REASON_COPY.nao_pendente }
 
   try {
-    const { data, error } = await typedClient.rpc('confirm_titration_switch', { p_step_id: stepId })
+    const { data, error } = await supabase.rpc('confirm_titration_switch', { p_step_id: stepId })
     if (error) throw error
 
-    if (data?.success === true) {
+    const payload =
+      data && typeof data === 'object' && !Array.isArray(data)
+        ? (data as ConfirmTitrationSwitchRpcPayload)
+        : null
+
+    if (payload?.success === true) {
       // 🔴 PARIDADE COM O WRITE-PATH (029 F5.5, smoke do PO). A RPC é a única escrita em
       // `protocols` que não passa pelo repositório, logo a única que escapa do
       // `syncInstancesOnWrite`. Sem este resync o protocolo recém-criado nasce SEM instância
@@ -555,19 +566,19 @@ export async function confirmTitrationSwitch(stepId: string): Promise<ConfirmSwi
       //
       // Aqui e não na tela: são 3 chamadores (detalhe do tratamento, card do Hoje e a ação do
       // push) — atrás da RPC, todos herdam.
-      await _resyncProtocolInstances(data.protocol_activated ?? null)
+      await _resyncProtocolInstances(payload.protocol_activated ?? null)
       return {
         ok: true,
         // Caminho normal do double-tap/retry — convergir, nunca sinalizar erro.
-        alreadyConfirmed: data.already_confirmed === true,
-        transition: data.transition ?? null,
-        protocolActivated: data.protocol_activated ?? null,
-        protocolPaused: data.protocol_paused ?? null,
+        alreadyConfirmed: payload.already_confirmed === true,
+        transition: payload.transition ?? null,
+        protocolActivated: payload.protocol_activated ?? null,
+        protocolPaused: payload.protocol_paused ?? null,
       }
     }
 
-    const reason: ConfirmSwitchReason = _REASON_COPY[data?.reason as ConfirmSwitchReason]
-      ? (data.reason as ConfirmSwitchReason)
+    const reason: ConfirmSwitchReason = _REASON_COPY[payload?.reason as ConfirmSwitchReason]
+      ? (payload?.reason as ConfirmSwitchReason)
       : 'nao_pendente'
     return { ok: false, reason, message: _REASON_COPY[reason] }
   } catch {
@@ -625,7 +636,7 @@ export interface PendingSwitchStep {
  */
 export async function getPendingSwitchSteps(): Promise<PendingSwitchStep[]> {
   const userId = await getUserId()
-  const { data, error } = await typedClient
+  const { data, error } = await supabase
     .from('titration_steps')
     .select(PENDING_SWITCH_SELECT)
     .eq('user_id', userId)
@@ -673,7 +684,7 @@ export async function getSwitchOutcomeProtocols(ids: string[]): Promise<SwitchOu
   const wanted = ids.filter(Boolean)
   if (wanted.length === 0) return []
   const userId = await getUserId()
-  const { data, error } = await typedClient
+  const { data, error } = await supabase
     .from('protocols')
     .select(SWITCH_OUTCOME_SELECT)
     .eq('user_id', userId)
@@ -693,7 +704,7 @@ export async function getSwitchOutcomeProtocols(ids: string[]): Promise<SwitchOu
  */
 export async function getUserTimezone(): Promise<string> {
   const userId = await getUserId()
-  const { data, error } = await typedClient
+  const { data, error } = await supabase
     .from('user_settings')
     .select('timezone')
     .eq('user_id', userId)

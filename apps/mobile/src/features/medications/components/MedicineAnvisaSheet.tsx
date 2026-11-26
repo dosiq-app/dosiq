@@ -17,6 +17,7 @@ import { Search, X } from 'lucide-react-native'
 import * as LucideIcons from 'lucide-react-native'
 
 import { useKeyboardVisible } from '@shared/hooks/useKeyboardVisible'
+import { useModalAutoFocus } from '@shared/hooks/useModalAutoFocus'
 import { CmedPresentationStep } from '@medications/components/CmedPresentationStep'
 import { MedicineSearchResultItem } from '@medications/components/MedicineSearchResultItem'
 import { useMedicineSearchFlow, type LinkTarget } from '@medications/hooks/useMedicineSearchFlow'
@@ -79,6 +80,7 @@ export function MedicineAnvisaSheet({
   // no mount: `autoFocus` antes da animação não abre o teclado no Android (FR-012).
   const searchRef = useRef<TextInput>(null)
   const wasPresentationRef = useRef(false)
+  const scheduleFocus = useModalAutoFocus(searchRef, 150)
 
   // Effects
   useEffect(() => {
@@ -106,9 +108,7 @@ export function MedicineAnvisaSheet({
     // 119 B (smoke): aberto já com a busca/lista preenchida, a tarefa é escolher, não digitar —
     // teclado em cima cobre a lista e o 1º toque só o fecha.
     if (initialQuery || initialItem) return
-    // Moto g06 (smoke 119 B): no `onShow` a janela do Modal ainda não tem foco e o `focus()` não
-    // abre o teclado; um tique depois abre.
-    setTimeout(() => searchRef.current?.focus(), 150)
+    scheduleFocus()
   }
 
   function handleClose() {

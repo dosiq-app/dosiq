@@ -120,7 +120,7 @@ async function emitScheduledDedupe(criticalIds, userId, mode: 'critical' | 'norm
     prev = []
   }
   const prevSet = new Set(Array.isArray(prev) ? prev : [])
-  const audit = createCriticalAuditService({ client: supabase as any })
+  const audit = createCriticalAuditService({ client: supabase })
   const toEmit = criticalIds.filter((id) => !prevSet.has(id))
   // Emits independentes e fail-open → paralelos (evita latência serial no resync).
   const results = await Promise.all(
@@ -271,7 +271,7 @@ async function _ensureInstancesForActive(protocols: any, repo: any, end: Date, t
 export async function syncAlarms({ userId, protocols, tz, isStale }: any) {
   if (!userId) return
   const step = <T,>(p: Promise<T>, what: string) => withTimeout(p, SYNC_STEP_TIMEOUT_MS, `syncAlarms: ${what} sem resposta`)
-  const repo = createDoseInstanceRepository({ client: supabase as any })
+  const repo = createDoseInstanceRepository({ client: supabase })
   const now = getRawNow()
   const end = addDays(now, LOOK_AHEAD_DAYS)
   const from = addDays(now, -LOOK_BACK_DAYS)

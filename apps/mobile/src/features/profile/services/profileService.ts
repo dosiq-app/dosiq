@@ -185,7 +185,7 @@ export async function updateTimezone(timezone, { regen = false } = {}) {
     if (error) throw error
 
     if (regen) {
-      await regenActiveProtocolsForTz({ client: supabase as any, userId: user.id, tz: timezone })
+      await regenActiveProtocolsForTz({ client: supabase, userId: user.id, tz: timezone })
     }
     return { success: true, error: null }
   } catch (err) {
@@ -204,7 +204,7 @@ export async function hasFuturePendingDoses() {
   try {
     const { data: user, error: userError } = await getCurrentUser()
     if (userError || !user) return false
-    return await hasFuturePendingDosesCore(supabase as any, user.id)
+    return await hasFuturePendingDosesCore(supabase, user.id)
   } catch {
     return false
   }
@@ -243,7 +243,7 @@ async function getUserId() {
   return user.id
 }
 
-const profileRepo = createProfileRepository({ client: supabase as any, getUserId })
+const profileRepo = createProfileRepository({ client: supabase, getUserId })
 
 /**
  * Buscar dados de perfil (display_name, birth_date, city, state, phone,

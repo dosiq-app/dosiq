@@ -56,7 +56,7 @@ export function isEndingSession(): boolean {
  */
 export async function drainAuditQueue(): Promise<{ remaining: number }> {
   try {
-    const emitter = createCriticalAuditService({ client: supabase as any })
+    const emitter = createCriticalAuditService({ client: supabase })
     const { remaining } = await auditQueue.flush((evt) => {
       if (evt?.event === ALARM_OUT_OF_WINDOW_EVENT) return Promise.resolve(true)
       return emitter.emit(evt as unknown as CriticalAuditEvent)

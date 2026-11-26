@@ -45,7 +45,7 @@ import { reportOutOfWindowAlarm, shouldDropOnRevokedConsent } from './outOfWindo
 // Auditoria de dose crítica (042 Slice B): no foreground, deriva o desfecho iOS (ENG-1 — iOS não
 // roda JS no disparo) e DRENA a fila offline (Android enfileira no headless). Fail-open total.
 const auditQueue = createCriticalAuditQueue()
-const auditEmitter = createCriticalAuditService({ client: supabase as any })
+const auditEmitter = createCriticalAuditService({ client: supabase })
 
 // Dedupe dos desfechos iOS derivados no foreground: enquanto a notificação segue exibida, cada
 // foreground re-derivaria o MESMO alarm_fired/nag_fired → duplicatas no trail (review #700). Guarda
