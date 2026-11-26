@@ -115,6 +115,9 @@ export function useOemBatteryAssistant({ hasTreatment = true, pushUsable }: OemA
           backgroundRestricted: probed.backgroundRestricted ?? null,
           batteryOptimized: probed.batteryOptimized ?? null,
           hibernationEnabled: probed.hibernationEnabled ?? null,
+          fullScreenAllowed: probed.fullScreenAllowed ?? null,
+          lockScreenAllowed: probed.lockScreenAllowed ?? null,
+          criticalArmedIds: probed.criticalArmedIds ?? null,
         })
       }
       return next

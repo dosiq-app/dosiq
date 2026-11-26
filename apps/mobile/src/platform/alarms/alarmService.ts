@@ -25,6 +25,9 @@ import { SURFACE_ID_SUFFIX } from '@platform/doseActivity/doseActivitySurfaceSer
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { reassertIncapableAfterSnooze } from '@platform/device/capabilityBulletin'
 import { resolveOemFamily } from '@platform/device/oemFamily'
+import { canUseFullScreenIntent } from '@platform/device/fullScreenIntent'
+import { canShowOnLockScreenMiui } from '@platform/device/miuiLockScreen'
+import { openAppDetailsSettings } from '@platform/device/oemBatterySettings'
 import notifee, {
   AndroidImportance,
   AndroidVisibility,
@@ -35,6 +38,7 @@ import notifee, {
 } from '@notifee/react-native'
 import { Platform, Linking } from 'react-native'
 import * as Notifications from 'expo-notifications'
+import * as Application from 'expo-application'
 import { colors } from '@shared/styles/tokens'
 import { debugLog } from '@shared/utils/debugLog'
 import { openPushSettings } from '@platform/notifications/pushPermission'
@@ -159,11 +163,12 @@ export async function getCriticalAlertSetting(): Promise<CriticalAlertSetting> {
  *                  para pedir (`request`, nunca perguntado) ou só em Ajustes (`settings`).
  *   - `blocked`  — NÃO toca: notificações negadas (e, no iOS, sem crítico — S6) ou canal Android em NONE.
  *   - `unknown`  — leitura falhou: a UI não afirma nada.
- * Tela cheia do Android 14+ fica fora (sem API no notifee — fase seguinte, módulo nativo).
+ *   - `degraded/full_screen` (Android 14+, 128 A) — toca, mas sem tela cheia com o celular bloqueado. Lido
+ *     pelo módulo nativo; leitura `null` ⇒ não afirma (segue `active`). Nunca `blocked`: o alarme toca.
  */
 export type CriticalAlarmDeviceStatus =
   | { kind: 'active' }
-  | { kind: 'degraded'; fix: 'request' | 'settings'; reason?: 'channel_silenced' | 'channel_no_popup' }
+  | { kind: 'degraded'; fix: 'request' | 'settings'; reason?: 'channel_silenced' | 'channel_no_popup' | 'full_screen' }
   | { kind: 'blocked'; reason: 'push' | 'channel'; canRequest?: true }
   | { kind: 'unknown' }
 
@@ -206,6 +211,11 @@ async function _androidAlarmStatus(pushOk: boolean): Promise<CriticalAlarmDevice
   // som sem âncora visual). Nasce HIGH; só cai para DEFAULT por ajuste da pessoa.
   if (importance === AndroidImportance.DEFAULT) {
     return { kind: 'degraded', fix: 'settings', reason: 'channel_no_popup' }
+  }
+  // 128 A (smoke g06 2026-11-24): depois dos canais — canal sem popup já tira a tela cheia junto.
+  // 128 C-6: no HyperOS "Mostrar na Tela de bloqueio" negado dá o mesmo sintoma (toca, sem tela cheia).
+  if (canUseFullScreenIntent() === false || canShowOnLockScreenMiui() === false) {
+    return { kind: 'degraded', fix: 'settings', reason: 'full_screen' }
   }
   return { kind: 'active' }
 }
@@ -301,31 +311,50 @@ function _logPermissionDecisions(before, after, criticalGranted) {
   }
 }
 
+/** Família Xiaomi sem lançar (falha de leitura = não-Xiaomi). @private */
+function _isXiaomiFamily(): boolean {
+  try {
+    return resolveOemFamily() === 'xiaomi'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Android 14+ (API 34): `USE_FULL_SCREEN_INTENT` virou acesso especial — declarar
- * no manifest não basta, o SO rebaixa pra heads-up até o usuário conceder. Não há
- * API pra checar/conceder programaticamente; abre a tela de configuração do SO.
+ * no manifest não basta, o SO rebaixa pra heads-up até o usuário conceder. CHECAR é
+ * possível (`NotificationManager.canUseFullScreenIntent()`, ver
+ * `@platform/device/fullScreenIntent` — 128 A); CONCEDER não: abre a tela do SO.
  * No-op em < API 34 (concedida por declaração) e no iOS.
  * @returns {Promise<boolean>} true se precisou abrir as configs (API ≥ 34)
  */
 export async function openFullScreenIntentSettings() {
-  if (Platform.OS !== 'android' || Number(Platform.Version) < 34) return false
+  if (Platform.OS !== 'android') return false
+  // 128 C-6 (matriz POCO 2026-11-26): no Xiaomi/HyperOS as duas chaves que tiram a tela cheia ("Abrir
+  // novas janelas enquanto executa em segundo plano" e "Mostrar na Tela de bloqueio") ficam em
+  // Informações do app › Outras permissões — e o HyperOS liga a 1ª à permissão de tela cheia do Android.
+  if (_isXiaomiFamily()) return openAppDetailsSettings()
+  if (Number(Platform.Version) < 34) return false
   try {
-    // Action global de "Notificações em tela cheia" (lista de apps).
-    await Linking.sendIntent('android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT')
+    // Notificações do app: a chave "Permitir notificações em tela cheia" mora ali (smoke Moto g06,
+    // Android 15). A action global de tela cheia sem `package:` no data não resolve em todo OEM e
+    // caía nas Informações do app, a um nível da chave.
+    if (!Application.applicationId) throw new Error('sem applicationId')
+    await Linking.sendIntent('android.settings.APP_NOTIFICATION_SETTINGS', [
+      { key: 'android.provider.extra.APP_PACKAGE', value: Application.applicationId },
+    ])
   } catch {
     try {
-      await Linking.openSettings() // fallback: detalhes do app
+      await Linking.sendIntent('android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT') // lista de apps
     } catch {
-      // best-effort
+      try {
+        await Linking.openSettings() // fallback: detalhes do app
+      } catch {
+        // best-effort
+      }
     }
   }
   return true
-}
-
-/** True se o aparelho exige o acesso especial de full-screen (Android 14+). */
-export function needsFullScreenIntentAccess() {
-  return Platform.OS === 'android' && Number(Platform.Version) >= 34
 }
 
 /**
@@ -929,7 +958,6 @@ export async function cancelAll() {
 
 export const alarmService = {
   openFullScreenIntentSettings,
-  needsFullScreenIntentAccess,
   ensureAlarmCriticalChannel,
   resolveAlarmChannelId,
   migrateLegacyAlarmChannels,

@@ -5,6 +5,10 @@ import { probeDevice, deriveCapability, type DeviceFacts } from '../deviceProbe'
 
 let mockRestricted: boolean | null = null
 jest.mock('../backgroundRestriction', () => ({ isBackgroundRestricted: () => mockRestricted }))
+let mockFullScreen: boolean | null = null
+jest.mock('../fullScreenIntent', () => ({ canUseFullScreenIntent: () => mockFullScreen }))
+let mockLockScreen: boolean | null = null
+jest.mock('../miuiLockScreen', () => ({ canShowOnLockScreenMiui: () => mockLockScreen }))
 
 jest.mock('@platform/alarms/alarmService', () => ({
   ALARM_CRITICAL_CHANNEL_ID: 'dose-alarm-critical-v3',
@@ -25,6 +29,8 @@ const facts = (over: Partial<DeviceFacts> = {}): DeviceFacts => ({
   batteryOptimized: false,
   powerManagerActivity: null,
   hibernationEnabled: null,
+  fullScreenAllowed: null,
+  lockScreenAllowed: null,
   ...over,
 })
 
@@ -34,12 +40,22 @@ beforeEach(() => {
 
 afterEach(() => {
   mockRestricted = null
+  mockFullScreen = null
+  mockLockScreen = null
   RN.Platform.OS = ORIGINAL_OS
   jest.clearAllMocks()
   jest.clearAllTimers()
 })
 
 describe('probeDevice', () => {
+  it('128 A: Android lê tela cheia (true/false) sem entrar na capacidade', async () => {
+    mockFullScreen = false
+    expect((await probeDevice()).fullScreenAllowed).toBe(false)
+    mockFullScreen = true
+    expect((await probeDevice()).fullScreenAllowed).toBe(true)
+    expect(deriveCapability(facts({ fullScreenAllowed: false }), ['a'])?.capable).toBe(true)
+  })
+
   it('Android: lê push, canal NONE, alarme exato negado e ids armados', async () => {
     mocked.getNotificationSettings.mockResolvedValueOnce({ authorizationStatus: 1, android: { alarm: 0 } })
     mocked.getChannel.mockResolvedValueOnce({ importance: 0 })
@@ -56,6 +72,8 @@ describe('probeDevice', () => {
       batteryOptimized: true,
       powerManagerActivity: null,
       hibernationEnabled: null,
+      fullScreenAllowed: null,
+      lockScreenAllowed: null,
     })
   })
 
@@ -82,7 +100,16 @@ describe('probeDevice', () => {
       batteryOptimized: null,
       powerManagerActivity: null,
       hibernationEnabled: null,
+      fullScreenAllowed: null,
+      lockScreenAllowed: null,
     })
+  })
+
+  it('RC6: lockScreenAllowed repassa o que o HyperOS respondeu (true/false)', async () => {
+    mockLockScreen = false
+    expect((await probeDevice()).lockScreenAllowed).toBe(false)
+    mockLockScreen = true
+    expect((await probeDevice()).lockScreenAllowed).toBe(true)
   })
 
   it('iOS: fatos de Android são null; crítico autorizado conta como notificação permitida (C-11)', async () => {
@@ -95,6 +122,8 @@ describe('probeDevice', () => {
     expect(out.exactAlarmAllowed).toBeNull()
     expect(out.batteryOptimized).toBeNull()
     expect(out.backgroundRestricted).toBeNull()
+    expect(out.fullScreenAllowed).toBeNull()
+    expect(out.lockScreenAllowed).toBeNull()
     expect(mocked.getChannel).not.toHaveBeenCalled()
   })
 

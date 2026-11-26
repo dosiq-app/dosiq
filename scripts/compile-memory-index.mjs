@@ -95,9 +95,36 @@ function computeSourceHash(root) {
     }
   }
   entries.sort();
+  const sidecarPath = path.join(root, 'review_cards.json');
+  if (fs.existsSync(sidecarPath)) {
+    const sidecarHash = crypto.createHash('sha256').update(fs.readFileSync(sidecarPath)).digest('hex');
+    entries.push(`review_cards.json:${sidecarHash}`);
+  }
   const hash = crypto.createHash('sha256');
   hash.update(entries.join('\n'));
   return hash.digest('hex');
+}
+
+function loadReviewCardsSidecar(root) {
+  const map = Object.create(null);
+  const sidecarPath = path.join(root, 'review_cards.json');
+  if (!fs.existsSync(sidecarPath)) return map;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(sidecarPath, 'utf-8'));
+    const rawCards = parsed && typeof parsed.cards === 'object' && parsed.cards !== null ? parsed.cards : parsed;
+    if (rawCards && typeof rawCards === 'object') {
+      for (const [id, val] of Object.entries(rawCards)) {
+        if (typeof val === 'string' && val.trim().length > 0) {
+          map[id] = val.trim();
+        }
+      }
+    }
+  } catch (err) {
+    // RC6: sidecar corrompido não pode sumir em silêncio — o índice sairia sem os cards.
+    console.warn(`[compile-memory-index] review_cards.json ilegível, cards ignorados: ${err.message}`);
+    return map;
+  }
+  return map;
 }
 
 /**
@@ -165,6 +192,7 @@ function buildIndex(root) {
   const byTrigger = Object.create(null);
   const hot = [];
   const counts = { total: 0, byDomain: {}, byLayer: { hot: 0, warm: 0, cold: 0 } };
+  const reviewCards = loadReviewCardsSidecar(root);
 
   for (const sub of SUBDIRS) {
     const subDir = path.join(root, sub);
@@ -220,6 +248,9 @@ function buildIndex(root) {
         };
         if (data.layer === 'hot') {
           entry.hot_reason = data.hot_reason;
+        }
+        if (typeof reviewCards[id] === 'string') {
+          entry.review_card = reviewCards[id];
         }
 
         rules[id] = entry;

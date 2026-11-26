@@ -72,13 +72,8 @@ function renderStatusBadge(isPaused, isFinished, endDate, scheduledStart = null)
       </View>
     )
   }
-  if (isPaused) {
-    return (
-      <View style={styles.badgePaused}>
-        <Text style={styles.badgeText}>Pausado</Text>
-      </View>
-    )
-  }
+  // 128 C: pausado não tem selo aqui — o EvolutionBadge do cabeçalho já diz "Tratamento pausado".
+  if (isPaused) return null
   if (isFinished) {
     const dateLabel = endDate ? formatDatePtBR(endDate) : null
     const label = dateLabel ? `Finalizado em ${dateLabel}` : 'Finalizado'
@@ -197,13 +192,6 @@ const styles = StyleSheet.create({
   },
   contentMuted: {
     opacity: 0.7,
-  },
-  // Badge Pausado
-  badgePaused: {
-    backgroundColor: colors.neutral[200],
-    paddingHorizontal: spacing[2],
-    paddingVertical: 2,
-    borderRadius: 4,
   },
   // Badge Agendado (086 D-14) — neutro, mesma forma dos demais
   badgeScheduled: {

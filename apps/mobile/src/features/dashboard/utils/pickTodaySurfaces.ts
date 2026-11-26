@@ -70,6 +70,8 @@ export interface TodaySurfacesInput<P = unknown> {
    * Só `stock_zero` (dose em 24 h sem remédio) fura a espera. Os demais seguem com sinal na casa.
    */
   quiet?: boolean
+  /** 128 D (FR-005): chaves já visíveis nesta sessão — passam a espera junto com `stock_zero`. */
+  shownKeys?: readonly string[]
 }
 
 export interface SuppressedAlert {
@@ -125,18 +127,24 @@ function compareCandidates(a: AlertCandidate, b: AlertCandidate): number {
   return a.key.localeCompare(b.key)
 }
 
-export function pickTodaySurfaces<P = unknown>({ hasHero, alerts, stockUpsell, nudge, quiet = false }: TodaySurfacesInput<P>): TodaySurfaces<P> {
+/** Na espera: `stock_zero` e o que já estava na tela passam; alerta inédito espera o foreground (128 D). */
+function sessionWaitFilter(quiet: boolean, shownKeys: readonly string[] | undefined) {
+  const shown = new Set<string>(Array.isArray(shownKeys) ? shownKeys : [])
+  return (a: Pick<AlertCandidate, 'kind' | 'key' | 'dismissed'>): boolean =>
+    !a.dismissed && (!quiet || a.kind === 'stock_zero' || shown.has(a.key))
+}
+
+export function pickTodaySurfaces<P = unknown>({ hasHero, alerts, stockUpsell, nudge, quiet = false, shownKeys }: TodaySurfacesInput<P>): TodaySurfaces<P> {
   const valid = (Array.isArray(alerts) ? alerts : []).filter((a) => a && rankOf(a.kind) >= 0 && typeof a.key === 'string')
   const sorted = [...valid].sort(compareCandidates)
-  const alert = sorted.find((a) => !a.dismissed && (!quiet || a.kind === 'stock_zero')) ?? null
+  const passes = sessionWaitFilter(quiet, shownKeys)
+  const alert = sorted.find(passes) ?? null
 
   // PO smoke 125 (20/11, revê S-23): sempre há um 2º candidato — o próximo da régua, com ou sem hero e
   // qualquer que seja o 1º. Quem decide se ele aparece (orçamento, acima/abaixo do widget) é o
-  // `composeTodayCards`; o que ele não mostrar acende a casa por lá. Na espera da sessão (`quiet`) só
-  // `stock_zero` passa, aqui também.
-  const companion = alert
-    ? sorted.find((a) => a !== alert && !a.dismissed && (!quiet || a.kind === 'stock_zero')) ?? null
-    : null
+  // `composeTodayCards`; o que ele não mostrar acende a casa por lá. Na espera da sessão (`quiet`) vale o
+  // mesmo filtro do principal.
+  const companion = alert ? sorted.find((a) => a !== alert && passes(a)) ?? null : null
 
   const suppressed: SuppressedAlert[] = []
   for (const a of sorted) {
@@ -160,22 +168,31 @@ export function pickTodaySurfaces<P = unknown>({ hasHero, alerts, stockUpsell, n
 }
 
 export interface SessionGate {
-  /** Chave do aviso mostrado nesta sessão (null = nenhum ainda). */
-  shownKey: string | null
+  /** Chaves dos avisos mostrados nesta sessão — principal e companheiro (128 D). Vazio = nenhum ainda. */
+  shownKeys: readonly string[]
   quiet: boolean
 }
 
-export const OPEN_GATE: SessionGate = { shownKey: null, quiet: false }
+export const OPEN_GATE: SessionGate = { shownKeys: [], quiet: false }
 
 /**
- * Transição da espera de sessão (S-06), pura: o aviso mostrado deixou de estar ATIVO (resolvido,
- * dispensado ou trocou de degrau) ⇒ silêncio até o próximo foreground. Primeiro aviso da sessão ⇒
- * memoriza. Devolve o MESMO objeto quando nada muda (o chamador compara por referência).
+ * Transição da espera de sessão (S-06), pura: algum aviso mostrado deixou de estar ATIVO (resolvido,
+ * dispensado ou trocou de degrau) ⇒ silêncio até o próximo foreground. Avisos visíveis novos ⇒
+ * memoriza (todos: principal e companheiro — 128 D, senão resolver um esconde o outro). Devolve o
+ * MESMO objeto quando nada muda (o chamador compara por referência).
+ * @param visibleKeys - chaves na tela agora (`null` = posição vazia)
  */
-export function nextSessionGate(gate: SessionGate, rawAlertKey: string | null, activeKeys: ReadonlySet<string>): SessionGate {
+export function nextSessionGate(
+  gate: SessionGate,
+  visibleKeys: ReadonlyArray<string | null | undefined>,
+  activeKeys: ReadonlySet<string>,
+): SessionGate {
   if (gate.quiet) return gate
-  if (gate.shownKey && !activeKeys.has(gate.shownKey)) return { shownKey: gate.shownKey, quiet: true }
-  if (rawAlertKey && rawAlertKey !== gate.shownKey) return { shownKey: rawAlertKey, quiet: false }
+  if (gate.shownKeys.some((k) => !activeKeys.has(k))) return { shownKeys: gate.shownKeys, quiet: true }
+  const fresh = (Array.isArray(visibleKeys) ? visibleKeys : []).filter(
+    (k): k is string => typeof k === 'string' && k.length > 0 && !gate.shownKeys.includes(k),
+  )
+  if (fresh.length > 0) return { shownKeys: [...gate.shownKeys, ...fresh], quiet: false }
   return gate
 }
 

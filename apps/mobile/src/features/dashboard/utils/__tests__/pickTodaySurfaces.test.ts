@@ -161,21 +161,52 @@ describe('pickTodaySurfaces — espera de sessão (quiet)', () => {
 describe('nextSessionGate', () => {
   const keys = (...k: string[]) => new Set(k)
   it('1º aviso da sessão ⇒ memoriza', () => {
-    expect(nextSessionGate(OPEN_GATE, 'push', keys('push'))).toEqual({ shownKey: 'push', quiet: false })
+    expect(nextSessionGate(OPEN_GATE, ['push'], keys('push'))).toEqual({ shownKeys: ['push'], quiet: false })
   })
   it('aviso mostrado continua ativo ⇒ mesmo objeto (sem re-render)', () => {
-    const g = { shownKey: 'push', quiet: false }
-    expect(nextSessionGate(g, 'push', keys('push', 'stock_low:m1'))).toBe(g)
+    const g = { shownKeys: ['push'], quiet: false }
+    expect(nextSessionGate(g, ['push'], keys('push', 'stock_low:m1'))).toBe(g)
   })
   it('resolvido ou dispensado (saiu dos ativos) ⇒ silêncio', () => {
-    expect(nextSessionGate({ shownKey: 'push', quiet: false }, 'stock_low:m1', keys('stock_low:m1'))).toEqual({ shownKey: 'push', quiet: true })
+    expect(nextSessionGate({ shownKeys: ['push'], quiet: false }, ['stock_low:m1'], keys('stock_low:m1'))).toEqual({ shownKeys: ['push'], quiet: true })
   })
   it('silêncio é estável até o foreground (quem reabre é o AppState)', () => {
-    const g = { shownKey: 'push', quiet: true }
-    expect(nextSessionGate(g, 'oem', keys('oem'))).toBe(g)
+    const g = { shownKeys: ['push'], quiet: true }
+    expect(nextSessionGate(g, ['oem'], keys('oem'))).toBe(g)
   })
   it('sem aviso ⇒ nada muda', () => {
-    expect(nextSessionGate(OPEN_GATE, null, keys())).toBe(OPEN_GATE)
+    expect(nextSessionGate(OPEN_GATE, [null], keys())).toBe(OPEN_GATE)
+  })
+  // 128 D (PO-D1): principal + companheiro visíveis são lembrados juntos.
+  it('principal e companheiro ⇒ memoriza os dois', () => {
+    expect(nextSessionGate(OPEN_GATE, ['stock_zero:a', 'stock_low:b'], keys('stock_zero:a', 'stock_low:b'))).toEqual({
+      shownKeys: ['stock_zero:a', 'stock_low:b'],
+      quiet: false,
+    })
+  })
+})
+
+// 128 D (AC-D1/AC-D2): resolver o principal não leva junto o companheiro que já estava na tela.
+describe('128 D — espera de sessão não esconde o que já estava visível', () => {
+  const A = { kind: 'stock_zero' as const, key: 'A' }
+  const B = { kind: 'stock_low' as const, key: 'B' }
+  const C = { kind: 'push' as const, key: 'push' }
+  it('A resolvido ⇒ quiet, B (já mostrado) vira principal', () => {
+    const shown = nextSessionGate(OPEN_GATE, ['A', 'B'], new Set(['A', 'B']))
+    const after = nextSessionGate(shown, ['B'], new Set(['B']))
+    expect(after.quiet).toBe(true)
+    const r = pickTodaySurfaces({ ...base, quiet: true, shownKeys: after.shownKeys, alerts: [B] })
+    expect(r.alert?.key).toBe('B')
+  })
+  it('alerta inédito C continua esperando o foreground', () => {
+    const r = pickTodaySurfaces({ ...base, quiet: true, shownKeys: ['A', 'B'], alerts: [C, B] })
+    expect(r.alert?.key).toBe('B')
+    expect(r.companion).toBeNull()
+    expect(r.suppressed.map((s) => s.key)).toEqual(['push'])
+  })
+  it('sem shownKeys, quiet segue só com stock_zero (S-06 intacta)', () => {
+    expect(pickTodaySurfaces({ ...base, quiet: true, alerts: [B, C] }).alert).toBeNull()
+    expect(pickTodaySurfaces({ ...base, quiet: true, alerts: [A, B] }).alert?.key).toBe('A')
   })
 })
 
@@ -189,9 +220,9 @@ describe('S-11 — bateria dispensada ("Não mostrar de novo") sinaliza a casa',
 
 describe('S-18 — espera de sessão também no promo', () => {
   it('upsell mostrado e dispensado ⇒ silêncio; o nudge não sobe até o próximo foreground', () => {
-    const shown = nextSessionGate(OPEN_GATE, 'stock_upsell', new Set(['stock_upsell', 'nudge']))
-    expect(shown).toEqual({ shownKey: 'stock_upsell', quiet: false })
-    const afterDismiss = nextSessionGate(shown, 'nudge', new Set(['nudge']))
+    const shown = nextSessionGate(OPEN_GATE, ['stock_upsell'], new Set(['stock_upsell', 'nudge']))
+    expect(shown).toEqual({ shownKeys: ['stock_upsell'], quiet: false })
+    const afterDismiss = nextSessionGate(shown, ['nudge'], new Set(['nudge']))
     expect(afterDismiss.quiet).toBe(true)
   })
 })

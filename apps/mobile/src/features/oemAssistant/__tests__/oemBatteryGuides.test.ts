@@ -2,17 +2,15 @@
 
 import {
   CHECKLISTS,
-  FULL_SCREEN_GUIDES,
+  FULL_SCREEN_COPY,
   getChecklistCopy,
-  getFullScreenGuide,
-  guideToPlainText,
   type OemChecklistCopy,
 } from '../oemBatteryGuides'
 import { classifyOem } from '@platform/device/oemFamily'
 
-const fullScreenTexts = Object.values(FULL_SCREEN_GUIDES).flatMap((g) => [g.title, g.intro, ...g.steps])
+const fullScreenTexts = [...Object.values(FULL_SCREEN_COPY)]
 const checklistTexts = (c: OemChecklistCopy) => [
-  ...Object.values(c.items).flatMap((i) => [i.title, i.instruction]),
+  ...Object.values(c.items).flatMap((i) => [i.title, i.action, i.instruction]),
   ...c.tips,
 ]
 const ALL_TEXTS = [...fullScreenTexts, ...Object.values(CHECKLISTS).flatMap(checklistTexts)]
@@ -59,14 +57,6 @@ describe('getChecklistCopy', () => {
   })
 })
 
-describe('getFullScreenGuide', () => {
-  it('xiaomi tem roteiro próprio; demais caem no genérico', () => {
-    expect(getFullScreenGuide('xiaomi')).toBe(FULL_SCREEN_GUIDES.xiaomi)
-    expect(getFullScreenGuide('samsung')).toBe(FULL_SCREEN_GUIDES.generic)
-    expect(getFullScreenGuide(null)).toBe(FULL_SCREEN_GUIDES.generic)
-  })
-})
-
 describe('copy', () => {
   it('nenhum texto contém marcação crua (D-1/PO-9)', () => {
     for (const t of ALL_TEXTS) expect(t).not.toMatch(/[*<>]/)
@@ -80,9 +70,24 @@ describe('copy', () => {
     for (const t of ALL_TEXTS) expect(t).not.toMatch(/garant/i)
   })
 
-  it('guideToPlainText numera os passos', () => {
-    expect(guideToPlainText(FULL_SCREEN_GUIDES.generic)).toBe(
-      'Para o alarme funcionar na tela bloqueada:\n\n1. Toque em "Abrir configurações" abaixo.\n2. Ligue "Notificações em tela cheia".'
-    )
+  // 128 A (RC2 D-3): o resultado é medido e dito na tela — nada de pôr a verificação na pessoa.
+  it('sheet de tela cheia: sem "pode fechar esta janela"; resultado explícito', () => {
+    for (const t of fullScreenTexts) expect(t).not.toMatch(/fechar esta janela/i)
+    expect(FULL_SCREEN_COPY.granted).toMatch(/^Pronto/)
+    expect(FULL_SCREEN_COPY.dismiss).toBe('Agora não')
+  })
+})
+
+describe('128 C-6 — Xiaomi: chaves de "Outras permissões"', () => {
+  it('tela cheia e tela de bloqueio apontam para "Outras permissões" com os rótulos verbatim', () => {
+    const x = CHECKLISTS.xiaomi.items
+    expect(x.fullScreen.instruction).toMatch(/"Outras permissões".*"Abrir novas janelas enquanto executa em segundo plano"/)
+    expect(x.lockScreen.instruction).toMatch(/"Outras permissões".*"Mostrar na Tela de bloqueio"/)
+  })
+  it('"Notificações na Tela de bloqueio" (ilegível) é dica sem estado, não item', () => {
+    expect(CHECKLISTS.xiaomi.tips.some((t) => t.includes('"Notificações na Tela de bloqueio"'))).toBe(true)
+  })
+  it('fora do Xiaomi a tela cheia segue nas notificações do app', () => {
+    expect(CHECKLISTS.generic.items.fullScreen.instruction).toMatch(/notificações do app/)
   })
 })

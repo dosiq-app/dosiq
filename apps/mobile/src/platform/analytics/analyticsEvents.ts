@@ -69,6 +69,11 @@ export const EVENTS = {
   // 054: resposta ao diálogo de Alertas Críticos do iOS (só quando ele de fato apareceu).
   CRITICAL_ALERT_PERMISSION_GRANTED: 'critical_alert_permission_granted', // surface
   CRITICAL_ALERT_PERMISSION_DENIED: 'critical_alert_permission_denied',   // surface
+  // 128 A (RC2 D-6): sheet de tela cheia do alarme crítico (Android). Só oem_family (enum OemFamily),
+  // nunca texto livre. granted_after_settings = voltou dos Ajustes com a permissão lida como liberada.
+  FULL_SCREEN_GUIDE_SHOWN: 'full_screen_guide_shown',                     // oem_family, surface
+  FULL_SCREEN_SETTINGS_OPENED: 'full_screen_settings_opened',             // oem_family, surface
+  FULL_SCREEN_GRANTED_AFTER_SETTINGS: 'full_screen_granted_after_settings', // oem_family, surface
   NOTIFICATION_PREFERENCE_CHANGED: 'notification_preference_changed', // new_preference
   PUSH_NOTIFICATION_TAPPED: 'push_notification_tapped',               // kind: kind do servidor, verbatim (enum fechado)
   // 065 AD-8: o lembrete é UM só para a pessoa, qualquer que seja o canal. `source` é a origem do

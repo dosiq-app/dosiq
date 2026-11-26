@@ -9,10 +9,12 @@ import type { DeviceFacts } from '@platform/device/deviceProbe'
 import type { OemFamily } from '@platform/device/oemFamily'
 import { getChecklistCopy, type CheckId } from './oemBatteryGuides'
 
+// `fullScreenAllowed`/`criticalArmedIds` opcionais: quem não os lê (ex.: dublês antigos) não ganha o item.
 export type ChecklistFacts = Pick<
   DeviceFacts,
   'notificationsAllowed' | 'backgroundRestricted' | 'batteryOptimized' | 'hibernationEnabled'
->
+> &
+  Partial<Pick<DeviceFacts, 'fullScreenAllowed' | 'lockScreenAllowed' | 'criticalArmedIds'>>
 
 /** `manual` = fato não lido (`null`) num ajuste que existe em todo Android: passo neutro, fora da contagem. */
 export type ChecklistItemState = 'done' | 'pending' | 'manual'
@@ -20,6 +22,8 @@ export type ChecklistItemState = 'done' | 'pending' | 'manual'
 export interface ChecklistItem {
   id: CheckId
   title: string
+  /** Título de ação (○/manual). */
+  action: string
   instruction: string
   state: ChecklistItemState
 }
@@ -32,6 +36,21 @@ export interface Checklist {
 }
 
 const known = (v: boolean | null | undefined): v is boolean => v !== null && v !== undefined
+
+/**
+ * 128 A (RC2 D-9): tela cheia só para quem tem alarme crítico armado (triggers do notifee = só dose
+ * crítica). `null` ⇒ manual: nem ✓ nem ○ (INV-3 · INV-7). Sem crítico armado ⇒ sem item (null).
+ */
+function pushFullScreen(facts: ChecklistFacts | null, push: (id: CheckId, state: ChecklistItemState) => void): void {
+  const armed = facts?.criticalArmedIds
+  if (!Array.isArray(armed) || armed.length === 0) return
+  const allowed = facts?.fullScreenAllowed
+  if (!known(allowed)) push('fullScreen', 'manual')
+  else push('fullScreen', allowed ? 'done' : 'pending')
+  // 128 C-6: só Xiaomi/HyperOS lê "Mostrar na Tela de bloqueio"; ilegível ⇒ sem item (padrão ligado).
+  const lock = facts?.lockScreenAllowed
+  if (known(lock)) push('lockScreen', lock ? 'done' : 'pending')
+}
 
 export function buildChecklist(family: OemFamily, facts: ChecklistFacts | null): Checklist {
   const copy = getChecklistCopy(family)
@@ -67,6 +86,7 @@ export function buildChecklist(family: OemFamily, facts: ChecklistFacts | null):
   // Hibernação `null` some: pode ser FEATURE_NOT_AVAILABLE (Android antigo, ajuste inexistente) —
   // "confira" ali mandaria caçar tela fantasma (PO 2026-11-11).
   if (known(hibernation)) push('hibernation', measured(!hibernation))
+  pushFullScreen(facts, push)
 
   return { items, pending: items.filter((i) => i.state === 'pending').length, tips: copy.tips }
 }

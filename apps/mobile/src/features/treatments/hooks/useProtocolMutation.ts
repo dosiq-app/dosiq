@@ -21,7 +21,7 @@ import { useNavigation } from '@react-navigation/native'
 import { useMutation } from '@shared/hooks/useMutation'
 import { SURFACES, ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
 import { useToast } from '@shared/components/feedback/Toast'
-import { triggerAlarmResync } from '@platform/alarms/alarmResyncBus'
+import { resyncAlarmsAndWait } from '@platform/alarms/alarmResyncBus'
 import { protocolService } from '../services/protocolService'
 
 const PROTOCOLS_CACHE_KEY = '@dosiq/protocols-snapshot'
@@ -34,6 +34,18 @@ const STOCK_CACHE_KEY = '@dosiq/stock-snapshot'
 function resumeMessage(protocol) {
   const next = getNextOccurrence(protocol)
   return next ? `Tratamento ativo · próxima dose ${describeNextOccurrence(next)}` : 'Tratamento ativo'
+}
+
+
+/**
+ * 128 C-8 (smoke g06/POCO 2026-11-26): grava e REAGENDA os alarmes antes de devolver — o toast de
+ * sucesso só sai depois. Com o toast antes do resync, a pessoa minimizava e travava o celular, o
+ * Android parava o JS e a dose recém-editada ficava sem alarme. FR-006: horários, dose, pausa.
+ */
+async function saveThenResync<T>(save: () => Promise<T>): Promise<T> {
+  const result = await save()
+  await resyncAlarmsAndWait()
+  return result
 }
 
 export function useProtocolMutation() {
@@ -59,7 +71,6 @@ export function useProtocolMutation() {
     ],
     onSuccess: () => {
       show('Tratamento criado', { variant: 'success' })
-      triggerAlarmResync() // FR-006: reagenda alarmes c/ a nova agenda
     },
     onError: (err: any) => show(err?.message ?? 'Erro ao criar tratamento', { variant: 'error' }),
   })
@@ -82,7 +93,6 @@ export function useProtocolMutation() {
     ],
     onSuccess: () => {
       show('Tratamento atualizado', { variant: 'success' })
-      triggerAlarmResync() // FR-006: horários/dose podem ter mudado
     },
     onError: (err: any) => show(err?.message ?? 'Erro ao atualizar tratamento', { variant: 'error' }),
   })
@@ -90,7 +100,9 @@ export function useProtocolMutation() {
   const create = useCallback(
     async (payload, { goBack = false, measureSource = null, doseSource = null, dosePlausible = null } = {}) => {
       const result = await mutationCreate.mutate(() =>
-        protocolService.create(payload, { surface: SURFACES.MOBILE, entryPoint: ENTRY_POINTS.TREATMENT_FORM, measureSource, doseSource, dosePlausible })
+        saveThenResync(() =>
+          protocolService.create(payload, { surface: SURFACES.MOBILE, entryPoint: ENTRY_POINTS.TREATMENT_FORM, measureSource, doseSource, dosePlausible })
+        )
       )
       if (result && goBack) navigation.goBack()
       return result
@@ -101,7 +113,7 @@ export function useProtocolMutation() {
   const update = useCallback(
     async (id, payload, { goBack = false, previous = null, measureSource = null } = {}) => {
       const result = await mutationUpdate.mutate(() =>
-        protocolService.update(id, payload, { surface: SURFACES.MOBILE, previous, measureSource })
+        saveThenResync(() => protocolService.update(id, payload, { surface: SURFACES.MOBILE, previous, measureSource }))
       )
       if (result && goBack) navigation.goBack()
       return result
@@ -131,7 +143,7 @@ export function useProtocolMutation() {
           TODAY_CACHE_KEY,
           STOCK_CACHE_KEY,
         ]).catch(() => {})
-        triggerAlarmResync() // FR-006: pausar/retomar muda os alarmes futuros
+        await resyncAlarmsAndWait() // FR-006 + 128 C-8: alarmes prontos antes do toast
         show(nextValue ? resumeMessage(result) : 'Tratamento pausado', { variant: 'success' })
         return result
       } catch (err) {

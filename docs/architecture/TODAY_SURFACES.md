@@ -160,15 +160,17 @@ O árbitro (`pickTodaySurfaces`) ordena os elegíveis e entrega **dois candidato
 próximo da régua (`companion`), com ou sem hero e qualquer que seja o 1º (PO smoke 125, 20/11 — revê a S-23,
 que só mandava o 2º atrás de um vermelho; o aviso do Ozivy "acabando" sumia atrás de lembretes desligados).
 Os demais ficam suprimidos e acendem a casa. Quem decide se o 2º aparece é a régua da §2.1
-(`composeTodayCards`): o que ela não mostra também acende a casa. Na espera da sessão (`quiet`) só sem
-estoque passa, inclusive como 2º. Ordem: degrau da §2.1 (`tierOfCandidate`) e, no mesmo degrau, sem estoque ›
+(`composeTodayCards`): o que ela não mostra também acende a casa. Na espera da sessão (`quiet`) passam sem
+estoque e o que já estava na tela, inclusive como 2º (128 D). Ordem: degrau da §2.1 (`tierOfCandidate`) e, no mesmo degrau, sem estoque ›
 lembretes › acabando › próxima compra › baixo › bateria › atualização.
 
 - Na 1ª carga, o espaço do alerta espera o estoque carregar (senão o técnico aparece e é trocado).
 - Vários remédios no mesmo **nível de estoque** (sem estoque · acabando · baixo): **um card de grupo** (smoke 125 2a, 22/11) — título com a contagem ("Sem estoque de 2 remédios"), nomes numa linha ("A, B e mais N" a partir de 4) e só a dose mais cedo; o botão abre a aba Estoque (não há um remédio para travar o form). A dispensa vale para o conjunto: volta quando outro remédio entra no grupo. Antes, vencia o de menos dias e os outros ficavam escondidos — dois "Sem estoque" ocupavam os 2 lugares de cima. Compra (105) não agrupa.
-- **Um aviso por sessão:** depois que a pessoa resolve ou dispensa o aviso mostrado, o espaço
-  fica vazio — sem o próximo da régua e sem promo — até o app voltar do segundo plano. Só "sem
-  estoque com dose em 24 h" fura a espera. Os demais seguem com o sinal na casa.
+- **Nada novo na mesma sessão:** depois que a pessoa resolve ou dispensa um aviso mostrado, nenhum aviso
+  **inédito** sobe — sem o próximo da régua e sem promo — até o app voltar do segundo plano. O que **já
+  estava na tela** (principal e companheiro) continua: resolveu o principal, o companheiro sobe para o
+  lugar principal (128 D — antes sumia junto, regressão da interação S-06 × companheiro fixo do smoke 125).
+  Só "sem estoque com dose em 24 h" fura a espera. Os demais seguem com o sinal na casa.
 - O promo segue a mesma espera, separada: fechou o upsell ⇒ o nudge só aparece no próximo
   foreground.
 - O estoque **escala** com o tempo (baixo → acabando → sem estoque com dose próxima).

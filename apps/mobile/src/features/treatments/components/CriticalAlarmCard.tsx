@@ -4,6 +4,8 @@ import { View, Text, Switch, Pressable, Linking, Platform, StyleSheet } from 're
 import * as LucideIcons from 'lucide-react-native'
 const { BellRing, BellOff, CheckCircle2, AlertTriangle, ChevronRight } = LucideIcons as any
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
+import FullScreenGuideSheet from '@treatments/components/FullScreenGuideSheet'
+import { useFullScreenCheck } from '@treatments/hooks/useFullScreenCheck'
 import { useCriticalAlarmDeviceStatus } from '@platform/alarms/useCriticalAlarmDeviceStatus'
 import { requestPushOrOpenSettings } from '@platform/notifications/pushPermission'
 import { PERMISSION_ENTRY_POINTS } from '@platform/analytics/analyticsEvents'
@@ -38,7 +40,7 @@ interface BandCopy {
   tone: 'blocked' | 'degraded' | 'active'
   title: string
   body?: string
-  action?: 'settings' | 'request' | 'request_push'
+  action?: 'settings' | 'request' | 'request_push' | 'full_screen'
 }
 
 /** Texto e tom da faixa por estado. `null` = sem faixa (leitura falhou: não afirmar nada). */
@@ -91,6 +93,17 @@ function bandFor(status: CriticalAlarmDeviceStatus, scope: 'treatment' | 'global
           action: 'settings',
         }
       }
+      // 128 A (PO 2026-11-24): sem "Toque para…" — confunde com o "Toca" do início; o › diz que leva aos Ajustes.
+      if (reason === 'full_screen') {
+        return {
+          tone: 'degraded',
+          title: 'Alarme sem tela cheia',
+          body: global
+            ? 'Os alarmes tocam, mas não aparecem como despertador com o celular bloqueado.'
+            : 'Toca, mas não aparece como despertador com o celular bloqueado.',
+          action: 'full_screen',
+        }
+      }
       // C-28: o modo normal também não furou o Foco no smoke (depende de ajuste do usuário no iOS).
       const mute = global ? 'Os alarmes ficam mudos no silencioso e no Foco.' : 'Fica mudo no silencioso e no Foco.'
       return fix === 'request'
@@ -108,9 +121,22 @@ const TONE = {
   degraded: { Icon: AlertTriangle, color: colors.status.warning },
 }
 
-function StatusBand({ band, onRequestPermission, onRequestPush }: { band: BandCopy; onRequestPermission?: () => void; onRequestPush?: () => void }) {
+function StatusBand({
+  band,
+  onRequestPermission,
+  onRequestPush,
+  onFullScreen,
+}: {
+  band: BandCopy
+  onRequestPermission?: () => void
+  onRequestPush?: () => void
+  onFullScreen?: () => void
+}) {
   let onPress: (() => void) | undefined
   if (band.action === 'settings') onPress = () => void openAlarmChannelSettings()
+  // 128 C-9 (PO, smoke POCO 2026-11-26): a faixa abre o MESMO sheet do toggle — os Ajustes sozinhos não
+  // dizem o que mudar; o sheet mostra só a chave que falta, o destino da marca e relê na volta.
+  else if (band.action === 'full_screen') onPress = onFullScreen
   else if (band.action === 'request') onPress = onRequestPermission
   else if (band.action === 'request_push') onPress = onRequestPush
   const { Icon, color } = TONE[band.tone]
@@ -156,6 +182,7 @@ export default function CriticalAlarmCard({
   const { status, refresh } = useCriticalAlarmDeviceStatus(global || criticalAlarm)
   const band = global || criticalAlarm ? bandFor(status, scope) : null
   // C-33: pede o push no ponto de intenção (diálogo do SO); sem diálogo possível ⇒ Ajustes.
+  const fullScreen = useFullScreenCheck()
   const requestPush = async () => {
     await requestPushOrOpenSettings({ supabase, entryPoint: PERMISSION_ENTRY_POINTS.CRITICAL_ALARM }).catch(() => Linking.openSettings())
     refresh()
@@ -192,7 +219,22 @@ export default function CriticalAlarmCard({
           />
         )}
       </View>
-      {band ? <StatusBand band={band} onRequestPermission={onRequestPermission} onRequestPush={requestPush} /> : null}
+      {band ? (
+        <StatusBand
+          band={band}
+          onRequestPermission={onRequestPermission}
+          onRequestPush={requestPush}
+          onFullScreen={() => void fullScreen.check()}
+        />
+      ) : null}
+      <FullScreenGuideSheet
+        visible={fullScreen.visible}
+        family={fullScreen.family}
+        rows={fullScreen.rows}
+        recheckResult={fullScreen.recheckResult}
+        onOpenSettings={fullScreen.openSettings}
+        onDismiss={fullScreen.dismiss}
+      />
     </View>
   )
 }
