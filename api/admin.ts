@@ -20,6 +20,7 @@ import {
   handleUpdatePruneTexts,
 } from './admin/_handlers/prune.js';
 import { handleGetGrowthAnalytics } from './admin/_handlers/growth.js';
+import { handleReactivation } from './admin/_handlers/reactivation.js';
 import { DLQStatus } from '../server/services/deadLetterQueue.js';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -218,7 +219,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: authResult.error });
   }
 
-  // resource: 'dlq' | 'feedbacks' | 'nudges' | 'health' | 'versionGate' | 'prune' | 'growth'
+  // resource: 'dlq' | 'feedbacks' | 'nudges' | 'health' | 'versionGate' | 'prune' | 'growth' | 'reactivation'
   // action: 'retry' | 'discard' | 'resolve'
   const { resource, action, scope } = req.query;
 
@@ -230,6 +231,11 @@ export default async function handler(req, res) {
     // spec 115: painel de crescimento/wedge — só leitura
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed for growth' });
     return handleGetGrowthAnalytics(req, res, supabase);
+  }
+
+  if (resource === 'reactivation') {
+    // spec 126: push one-shot de reativação — GET variants/simula, POST simula ou envia (com confirmação). Nunca por cron.
+    return handleReactivation(req, res, supabase);
   }
 
   if (resource === 'prune') {

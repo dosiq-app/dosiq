@@ -38,7 +38,16 @@ interface DispatchNotificationParams {
   kind: string
   data: Record<string, unknown> & { critical_alarm?: boolean }
   channels?: string[]
-  context?: { correlationId?: string; isRetry?: boolean; details?: Record<string, unknown> }
+  context?: {
+    correlationId?: string
+    isRetry?: boolean
+    details?: Record<string, unknown>
+    /**
+     * Aguarda a gravação do log antes de retornar. O default (fire-and-forget) serve aos crons; quem
+     * usa o log como prova de "já recebeu" precisa dele escrito antes de a função serverless terminar.
+     */
+    awaitLog?: boolean
+  }
   repositories: {
     devices: { listActiveByUser(userId: string, provider?: string): Promise<NotificationDevice[]>; deactivateByToken(token: string): Promise<void> }
     preferences: {
@@ -157,18 +166,17 @@ export async function dispatchNotification({ userId, kind, data, channels, conte
   const normalized = normalizeChannelResults(results);
 
   // Sprint 8.4: Um único log por evento (não por canal) — evita duplicatas na inbox
-  ;(async () => {
-    await logNotificationEvent({
-      userId,
-      kind,
-      finalPayload,
-      results,
-      validChannels,
-      isSuppressed,
-      correlationId,
-      context: ctx
-    })
-  })()
+  const logWrite = logNotificationEvent({
+    userId,
+    kind,
+    finalPayload,
+    results,
+    validChannels,
+    isSuppressed,
+    correlationId,
+    context: ctx
+  })
+  if (context?.awaitLog === true) await logWrite
 
   logger.info('Notificação concluída', {
     correlationId,

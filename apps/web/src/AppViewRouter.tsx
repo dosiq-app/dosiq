@@ -23,6 +23,7 @@ const FeedbackAdmin = lazy(() => import('./views/admin/FeedbackAdmin'))
 const NudgesAdmin = lazy(() => import('./views/admin/NudgesAdmin'))
 const VersionGateAdmin = lazy(() => import('./views/admin/VersionGateAdmin'))
 const PruneAdmin = lazy(() => import('./views/admin/PruneAdmin'))
+const ReactivationAdmin = lazy(() => import('./views/admin/ReactivationAdmin'))
 const GrowthAdmin = lazy(() => import('./views/admin/GrowthAdmin'))
 const Dashboard = lazy(() => import('./views/Dashboard'))
 const NotificationInbox = lazy(() => import('./views/NotificationInbox'))
@@ -61,6 +62,7 @@ const VIEW_MAP = {
   'admin-nudges': (props) => <NudgesAdmin onBack={() => props.setCurrentView('account-settings')} />,
   'admin-version-gate': (props) => <VersionGateAdmin onBack={() => props.setCurrentView('account-settings')} />,
   'admin-prune': (props) => <PruneAdmin onBack={() => props.setCurrentView('account-settings')} />,
+  'admin-reactivation': (props) => <ReactivationAdmin onBack={() => props.setCurrentView('account-settings')} />,
   'admin-growth': (props) => <GrowthAdmin onBack={() => props.setCurrentView('account-settings')} />,
   notifications: (props) => (
     <NotificationInbox

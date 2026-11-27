@@ -133,7 +133,9 @@ export const kindSchema = z.enum([
   // supressão por consentimento (CONSENT_LIFECYCLE_KINDS) justamente por não tratar dado de saúde.
   'consent_prune_notice',
   // 107 US-2 — alerta diário ao ADMIN_USER_ID sobre a fila de exclusão. Só contagens (S-7).
-  'prune_admin_alert'
+  'prune_admin_alert',
+  // 126 — push one-shot de reativação, disparado só pelo operador. Copy fixa e neutra (INV-1).
+  'reactivation_notice'
 ]);
 
 /**
@@ -161,6 +163,26 @@ export const pruneAdminAlertDataSchema = z.object({
   /** Cadastros não confirmados em 24 h quando acima do limite (spec 123 FR-013); 0 = sem pico. Opcional: payload antigo segue válido. */
   unconfirmed24h: z.number().int().nonnegative().default(0),
 });
+
+/**
+ * Variantes aprovadas do aviso de reativação. Texto FIXO no código: o disparo escolhe a letra e nunca
+ * recebe texto livre — é o que permite à copy atravessar a redação sem B (nenhum remédio, condição,
+ * dose ou tratamento; título ≤ 40 e corpo ≤ 110 caracteres, corte da tela de bloqueio do iOS).
+ */
+export const REACTIVATION_VARIANTS = Object.freeze({
+  A: { title: 'O dosiq ficou mais fácil', body: 'Agora o app ajuda a conferir sua rotina em poucos toques. Dá uma olhada?' },
+  B: { title: 'A gente melhorou o cadastro', body: 'Se algo não bateu da última vez, agora dá para ajustar rapidinho no app.' },
+  C: { title: 'Leva 1 minuto', body: 'Confira se sua rotina no dosiq está do jeito certo.' },
+  D: { title: 'Bom te ver de volta?', body: 'Seu histórico continua salvo. Quando quiser, é só abrir.' },
+  E: { title: 'Uma mensagem do Coelho', body: 'Mudei o dosiq com base em quem usou. Queria que você visse.' },
+} as const)
+
+export const reactivationVariantSchema = z.enum(['A', 'B', 'C', 'D', 'E'])
+
+/** Só a letra da variante: não há campo onde um texto livre ou dado clínico caiba. */
+export const reactivationNoticeDataSchema = z.object({
+  variant: reactivationVariantSchema,
+}).strict()
 
 // Schemas para ações interativas (Gate 4 preliminar)
 // 029 F5 (T025): `start_step`/`not_yet` são as 2 ações do medicine_switch, espelhando o card do

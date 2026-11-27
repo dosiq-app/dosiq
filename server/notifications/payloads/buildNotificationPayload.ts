@@ -34,7 +34,8 @@ import {
   buildPrescriptionAlertPayload,
   buildDlqDigestPayload,
   buildConsentPruneNoticePayload,
-  buildPruneAdminAlertPayload
+  buildPruneAdminAlertPayload,
+  buildReactivationNoticePayload
 } from './_payloadBuilders.js';
 
 type Kind = z.infer<typeof kindSchema>;
@@ -96,6 +97,7 @@ const PAYLOAD_BUILDERS: Record<string, (data: NotificationEventData) => { title:
   dlq_digest: (data) => buildDlqDigestPayload(data as never),
   consent_prune_notice: (data) => buildConsentPruneNoticePayload(data as never),
   prune_admin_alert: (data) => buildPruneAdminAlertPayload(data as never),
+  reactivation_notice: (data) => buildReactivationNoticePayload(data as never),
 };
 
 // Auxiliar para direcionar a construção do payload conforme o kind.
@@ -296,6 +298,8 @@ function getNavigationMetadata(kind: Kind, data: NotificationEventData, protocol
     // 'today' seria jogar um titular REVOGADO na tela que o gate mantém bloqueada — o aviso pede
     // uma ação e o toque não levaria a lugar nenhum.
     consent_prune_notice: { screen: 'privacy-data', params: {} },
+    // Hoje é o único destino que toda a frota trata (inclusive a 0.34.x); explícito, não por default.
+    reactivation_notice: { screen: 'today', params: {} },
   }
 
   // 105 (FR-013 reescrito, C-12): destino = detalhe do tratamento de origem. O app decide a tela final

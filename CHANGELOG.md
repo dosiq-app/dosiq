@@ -7,6 +7,15 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Push único de reativação disparado pelo admin (spec 126)
+
+- **Backend / Web** (`Added`, **minor** `apps/web/package.json` 4.41.1 → **4.42.0**; mobile sem mudança e sem bump — a frota 0.34.x/0.35 já abre o Hoje e mede o toque pelo `kind`; `Store Note Readiness: N/A`):
+  - **Novo tipo de notificação `reactivation_notice`:** aviso de reativação com texto fixo escolhido entre 5 variantes aprovadas (sem remédio, condição, dose ou tratamento). O toque abre o Hoje. O texto chega igual com ou sem a autorização de transferência internacional, porque não carrega dado de saúde.
+  - **Disparo pelo admin (`resource=reactivation`):** recebe a lista de contas (até 100 por disparo), a versão mínima do app e a variante. `GET` (ou `POST` com `simulate: true`, para coorte grande) simula e lista quem receberia e o motivo de cada conta pulada; `POST` envia, exige `confirm: 'ENVIAR'` e devolve enviados × pulados. Nunca sai de cron.
+  - **Painel no admin web ("Reativação (push único)", em Configurações › Admin):** colar a coorte em qualquer formato (vírgula, linha, aspas de CSV/JSON); o painel limpa, remove repetidos e mostra os inválidos. Também mostra o texto da variante com a contagem de caracteres e a simulação com os pulados por motivo. O envio só libera depois de simular exatamente os mesmos campos e digitar `ENVIAR`. O resultado destaca as contas enviadas sem registro no histórico.
+  - **Guia operacional:** `docs/operations/GUIA_PUSH_REATIVACAO.md` (pré-requisitos, coorte, variantes, motivos de pulo, verificação e problemas).
+  - **Uma tentativa por conta:** quem já tem esse aviso no histórico de notificações (entregue ou não) é pulado. Quem está em horário silencioso (inclusive se a janela abrir no meio do envio), revogou o consentimento, desligou o push nas preferências ou não tem aparelho ativo na versão mínima também é pulado, mas sem gastar a tentativa. Só os aparelhos da conta na versão mínima recebem. O envio aguarda a gravação no histórico e aponta qualquer conta enviada sem registro.
+
 ### Guardrails de qualidade, limpeza de queries/timers mobile e testes de propriedade no core (LHF)
 
 - **Mobile / Core / Tooling** (`Changed`, **`no-user-impact`** — sem bump em `apps/web/package.json`; canal mobile:  **patch** `APP_VERSION` 0.34.39 → **0.34.40**; build interno do trem v0.35 — loja em 0.35.0, 100% JS/TS sem alteração visível ao usuário; `Store Note Readiness: N/A`, `R-314`):

@@ -12,6 +12,8 @@ import {
   dlqDigestDataSchema,
   consentPruneNoticeDataSchema,
   pruneAdminAlertDataSchema,
+  reactivationNoticeDataSchema,
+  REACTIVATION_VARIANTS,
   doseReminderByPlanDataSchema,
   doseReminderMiscDataSchema
 } from './_payloadSchemas.js';
@@ -449,4 +451,13 @@ export function buildPruneAdminAlertPayload(
   if (unconfirmed24h > 0) partes.push(`${unconfirmed24h} cadastros sem confirmação em 24 h`);
   const plain = `${partes.join(' · ')}. Abra o admin web para decidir.`;
   return { title, body: escapeMarkdownV2(plain), pushBody: plain };
+}
+
+/** Aviso de reativação (spec 126): copy fixa da variante, sem dado de saúde (INV-1). */
+export function buildReactivationNoticePayload(
+  data: z.input<typeof reactivationNoticeDataSchema>
+): NotificationPayload {
+  const { variant } = reactivationNoticeDataSchema.parse(data);
+  const { title, body } = REACTIVATION_VARIANTS[variant];
+  return { title, body: escapeMarkdownV2(body), pushBody: body };
 }
