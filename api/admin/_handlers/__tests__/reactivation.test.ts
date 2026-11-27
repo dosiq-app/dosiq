@@ -1,4 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
+
+// O dispatcher importa o log, que cria o cliente Supabase na carga do módulo; sem env (CI) ele lança.
+vi.mock('../../../../server/services/supabase.js', () => ({ supabase: {} }))
 import {
   handleReactivation,
   parseReactivationInput,
