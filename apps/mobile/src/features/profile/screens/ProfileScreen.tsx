@@ -284,7 +284,7 @@ export default function ProfileScreen() {
               accessibilityLabel={`Avaliar na ${storeName}`}
               accessibilityHint={`Abre a ${storeName}`}
             >
-              <View style={styles.otherLabelContainer}>
+              <View style={[styles.otherLabelContainer, styles.otherLabelShrink]}>
                 <Text style={styles.otherLabel} numberOfLines={1} textBreakStrategy="simple">
                   {`Avaliar na ${storeName}`}
                 </Text>
@@ -656,6 +656,10 @@ const styles = StyleSheet.create({
   otherLabelContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  otherLabelShrink: {
+    flexShrink: 1,
+    marginRight: spacing[2],
   },
   newBadge: {
     backgroundColor: colors.supplement[50],
