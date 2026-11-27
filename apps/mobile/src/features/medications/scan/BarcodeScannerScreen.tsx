@@ -17,7 +17,9 @@ import { CameraView, useCameraPermissions } from 'expo-camera'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 (ver TreatmentsScreen.tsx)
 import * as LucideIcons from 'lucide-react-native'
 import { CmedPresentationStep } from '@medications/components/CmedPresentationStep'
-import { useCmedIndex } from '@shared/hooks/useCmedIndex'
+import { useCmedIndex, type CmedIndexLoadInfo } from '@shared/hooks/useCmedIndex'
+import { indexLoadedPayload } from '@medications/utils/indexLoadedPayload'
+import { getEanLookup } from '@dosiq/core'
 import { ROUTES } from '@navigation/routes'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
@@ -139,14 +141,8 @@ function ScannerVisor({ cameraOn, preparing, torch, onTorch, onBarcode, onClose,
 }
 
 // PO-8: tempo de carga do índice no campo (mesmo evento do sheet de busca).
-function logIndexLoaded(info) {
-  logEvent(EVENTS.MEDICINE_INDEX_LOADED, {
-    surface: SURFACES.MOBILE,
-    source: info.source,
-    duration_ms: info.durationMs,
-    status: info.status,
-    row_count: info.rowCount,
-  })
+function logIndexLoaded(info: CmedIndexLoadInfo) {
+  logEvent(EVENTS.MEDICINE_INDEX_LOADED, { surface: SURFACES.MOBILE, ...indexLoadedPayload(info) })
 }
 
 // Passo 2 restrito às linhas do EAN (FR-026): escolher a concentração antes de preencher.
@@ -241,6 +237,9 @@ export default function BarcodeScannerScreen() {
     logEvent(EVENTS.SCAN_OPENED, { surface: SURFACES.MOBILE, entry_point: entryPoint })
   }, [entryPoint])
 
+  // Mapa EAN → linhas montado logo após o índice ficar pronto, fora da 1ª leitura do código.
+  useEffect(() => void (cmed.index && getEanLookup(cmed.index)), [cmed.index])
+
   useEffect(() => {
     // Volta dos Ajustes: o hook do Expo só lê a permissão ao montar — relê para sair do "bloqueada".
     const sub = AppState.addEventListener('change', (next) => {
@@ -279,11 +278,11 @@ export default function BarcodeScannerScreen() {
   // Handlers
   const handleBarcode = useCallback(
     ({ data }: { data: string }) => {
-      if (lockedRef.current || !cmed.index || !cmed.lookup) return
+      if (lockedRef.current || !cmed.index) return
       lockedRef.current = true
       const ean = String(data ?? '').trim()
       scannedEanRef.current = ean
-      const resolution = resolveScannedEan(cmed.index, cmed.lookup, ean)
+      const resolution = resolveScannedEan(cmed.index, getEanLookup(cmed.index), ean)
       const result = resolution.kind === 'choose' ? 'multiple' : resolution.kind
       logEvent(EVENTS.SCAN_RESULT, { surface: SURFACES.MOBILE, result })
       selectionTap()
@@ -291,7 +290,7 @@ export default function BarcodeScannerScreen() {
       else if (resolution.kind === 'choose') dispatch({ type: 'choose', title: resolution.title, options: resolution.options })
       else dispatch({ type: 'not_found' })
     },
-    [cmed.index, cmed.lookup, returnDraft, scannedEanRef],
+    [cmed.index, returnDraft, scannedEanRef],
   )
 
   const handlePick = useCallback(

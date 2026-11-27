@@ -16,8 +16,6 @@ const NUMBER_COLS = ['d', 'nc', 'q', 'amb'] as const
 
 /** Uma apresentação comercial (schema lógico, prompt A §5.1). */
 export interface CmedRow {
-  /** EANs da linha como vieram no arquivo (sem filtro de checksum). */
-  e: string[]
   p: string
   s: string
   a: string
@@ -41,6 +39,11 @@ export interface CmedRow {
 export interface CmedIndex {
   n: number
   rows: CmedRow[]
+  /**
+   * Coluna crua de EANs por linha (`'a|b'`, `''` quando ausente), sem filtro de checksum.
+   * Só o mapa EAN lê; ele é montado sob demanda (`getEanLookup`), não na carga.
+   */
+  eanCol: string[]
   /** Chave de busca sem acento, gerada na carga (DF-2). */
   productKeys: string[]
   substanceKeys: string[]
@@ -102,39 +105,78 @@ export function decodeCmedIndex(raw: unknown): CmedDecodeResult {
     dicts[key] = d
   }
 
-  const col = (key: string) => cols[key] as unknown[]
+  // Colunas em locais antes do laço: no Hermes, ler por closure a cada campo custa mais que o decode.
+  const eCol = cols.e as unknown[]
+  const pCol = cols.p as unknown[]
+  const sCol = cols.s as unknown[]
+  const aCol = cols.a as unknown[]
+  const rCol = cols.r as unknown[]
+  const lCol = cols.l as unknown[]
+  const kCol = cols.k as unknown[]
+  const cCol = cols.c as unknown[]
+  const tCol = cols.t as unknown[]
+  const uCol = cols.u as unknown[]
+  const fCol = cols.f as unknown[]
+  const dCol = cols.d as unknown[]
+  const ncCol = cols.nc as unknown[]
+  const qCol = cols.q as unknown[]
+  const dsCol = cols.ds as unknown[]
+  const ambCol = cols.amb as unknown[]
   const lvCol = optionalColumn(cols, 'lv', n)
+  const dl = dicts.l
+  const dk = dicts.k
+  const dc = dicts.c
+  const dcn = dicts.cn
+  const dt = dicts.t
+  const du = dicts.u
+  const df = dicts.f
+
+  // Produto e substância se repetem muito (26 mil linhas, ~8 mil strings): normaliza cada uma uma vez.
+  const normalized = new Map<string, string>()
+  const normalize = (text: string): string => {
+    let key = normalized.get(text)
+    if (key === undefined) {
+      key = normalizeText(text)
+      normalized.set(text, key)
+    }
+    return key
+  }
+
   const rows: CmedRow[] = new Array(n)
+  const eanCol: string[] = new Array(n)
   const productKeys: string[] = new Array(n)
   const substanceKeys: string[] = new Array(n)
   for (let i = 0; i < n; i += 1) {
-    const eRaw = col('e')[i]
-    const cIdx = col('c')[i]
-    const row: CmedRow = {
-      e: typeof eRaw === 'string' && eRaw ? eRaw.split('|').filter(Boolean) : [],
-      p: String(col('p')[i] ?? ''),
-      s: String(col('s')[i] ?? ''),
-      a: String(col('a')[i] ?? ''),
-      r: String(col('r')[i] ?? ''),
-      l: dictValue(dicts.l, col('l')[i]),
-      k: dictValue(dicts.k, col('k')[i]),
-      c: dictValue(dicts.c, cIdx),
-      cn: dictValue(dicts.cn, cIdx),
-      t: dictValue(dicts.t, col('t')[i]),
-      u: dictValue(dicts.u, col('u')[i]),
-      f: dictValue(dicts.f, col('f')[i]),
-      d: numberOrNull(col('d')[i]),
-      nc: numberOrNull(col('nc')[i]),
-      q: numberOrNull(col('q')[i]),
-      ds: typeof col('ds')[i] === 'string' ? (col('ds')[i] as string) : null,
-      amb: col('amb')[i] === 1 || col('amb')[i] === true,
+    const eRaw = eCol[i]
+    const cIdx = cCol[i]
+    const dsRaw = dsCol[i]
+    const ambRaw = ambCol[i]
+    const p = String(pCol[i] ?? '')
+    const sub = String(sCol[i] ?? '')
+    rows[i] = {
+      p,
+      s: sub,
+      a: String(aCol[i] ?? ''),
+      r: String(rCol[i] ?? ''),
+      l: dictValue(dl, lCol[i]),
+      k: dictValue(dk, kCol[i]),
+      c: dictValue(dc, cIdx),
+      cn: dictValue(dcn, cIdx),
+      t: dictValue(dt, tCol[i]),
+      u: dictValue(du, uCol[i]),
+      f: dictValue(df, fCol[i]),
+      d: numberOrNull(dCol[i]),
+      nc: numberOrNull(ncCol[i]),
+      q: numberOrNull(qCol[i]),
+      ds: typeof dsRaw === 'string' ? dsRaw : null,
+      amb: ambRaw === 1 || ambRaw === true,
       lv: positiveOrNull(lvCol[i]),
     }
-    rows[i] = row
-    productKeys[i] = normalizeText(row.p)
-    substanceKeys[i] = normalizeText(row.s)
+    eanCol[i] = typeof eRaw === 'string' ? eRaw : ''
+    productKeys[i] = normalize(p)
+    substanceKeys[i] = normalize(sub)
   }
-  return { ok: true, index: { n, rows, productKeys, substanceKeys } }
+  return { ok: true, index: { n, rows, eanCol, productKeys, substanceKeys } }
 }
 
 /** Dígito verificador do EAN-13 (pesos 1,3 alternados). */
@@ -150,14 +192,30 @@ export type EanLookup = Map<string, number[]>
 /** EAN-13 válido → linhas (um EAN pode apontar para N linhas). Inválido fica fora (E1). */
 export function buildEanLookup(index: CmedIndex): EanLookup {
   const lookup: EanLookup = new Map()
-  index.rows.forEach((row, rowIdx) => {
-    for (const ean of row.e) {
+  const { eanCol } = index
+  for (let rowIdx = 0; rowIdx < index.n; rowIdx += 1) {
+    const raw = eanCol[rowIdx]
+    if (!raw) continue
+    for (const ean of raw.split('|')) {
       if (!isValidEan13(ean)) continue
       const list = lookup.get(ean)
       if (!list) lookup.set(ean, [rowIdx])
       else if (!list.includes(rowIdx)) list.push(rowIdx)
     }
-  })
+  }
+  return lookup
+}
+
+// Um mapa por índice carregado: sobrevive à remontagem da tela e some junto com o índice.
+const eanLookups = new WeakMap<CmedIndex, EanLookup>()
+
+/** Mapa EAN → linhas sob demanda (só o scanner precisa), montado uma vez por índice. */
+export function getEanLookup(index: CmedIndex): EanLookup {
+  let lookup = eanLookups.get(index)
+  if (!lookup) {
+    lookup = buildEanLookup(index)
+    eanLookups.set(index, lookup)
+  }
   return lookup
 }
 

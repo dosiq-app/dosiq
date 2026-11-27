@@ -7,6 +7,14 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Busca e leitor de código de barras ficam prontos mais rápido; tempo da carga por fase (spec 129, Fatia A)
+
+- **Mobile / Core** (`Changed`, **patch** `APP_VERSION` 0.34.41 → **0.34.42**; build interno do trem v0.35, loja em 0.35.0; canal: **build de loja** (corte da v0.35, decisão D-1 do PO; 100% JS/TS, sem tela nova), R-314; `Store Note Readiness`: entra como "busca de medicamentos mais rápida em aparelhos mais simples"):
+  - **Carga do índice de apresentações mais leve:** o Passo 2 da busca deixa de montar o mapa de códigos de barras, que só o leitor usa; o leitor monta esse mapa uma vez, logo depois que o índice fica pronto, e reaproveita enquanto o índice estiver em memória. A leitura do arquivo trata cada nome de produto e de substância uma única vez, e os códigos de barras ficam crus até o leitor precisar deles. O medicamento salvo não muda: paridade de 26.642/26.642 apresentações e rascunhos de cadastro na base 1.3.0, e os 27.676 códigos de barras válidos apontam para as mesmas apresentações.
+  - **Primeira carga pela rede:** a busca fica pronta assim que o índice baixado é lido; a gravação em disco para a próxima abertura acontece depois, sem segurar a tela.
+  - **Aviso de preparo:** a espera fixa de 50 ms antes de ler o arquivo vira "esperar o aviso ser desenhado" (dois quadros), mantendo o aviso visível antes do trabalho pesado nos aparelhos lentos.
+  - **Analytics:** `medicine_index_loaded` ganha o tempo de cada fase (`yield_ms`, `read_ms`, `parse_ms`, `decode_ms` no disco; `fetch_ms`, `decode_ms`, `write_ms` na rede; `ean_ms` só no build de linha de base). `duration_ms`, `source`, `status` e `row_count` mantêm o significado; na rede, `duration_ms` vai até o índice pronto e o evento sai depois da gravação.
+
 ### Push único de reativação disparado pelo admin (spec 126)
 
 - **Backend / Web** (`Added`, **minor** `apps/web/package.json` 4.41.1 → **4.42.0**; mobile sem mudança e sem bump — a frota 0.34.x/0.35 já abre o Hoje e mede o toque pelo `kind`; `Store Note Readiness: N/A`):

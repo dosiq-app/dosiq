@@ -205,6 +205,7 @@ export {
   decodeCmedIndex,
   isValidEan13,
   buildEanLookup,
+  getEanLookup,
   resolveEan,
   searchCmedByName,
   findRowsByProductName,

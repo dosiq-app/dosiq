@@ -4,7 +4,7 @@
 
 import React from 'react'
 import { render, fireEvent, act } from '@testing-library/react-native'
-import { decodeCmedIndex, buildEanLookup } from '@dosiq/core'
+import { decodeCmedIndex } from '@dosiq/core'
 import fixture from '../../../../../../../packages/core/src/services/cmed/__tests__/fixtures/cmed-fixture.json'
 import BarcodeScannerScreen from '../BarcodeScannerScreen'
 
@@ -13,7 +13,7 @@ const mockNav = { popTo: jest.fn(), goBack: jest.fn(), navigate: jest.fn(), repl
 const mockFocus = { current: true }
 const mockRoute = { current: { params: { entryPoint: 'medicine_form' } } }
 const mockLogEvent = jest.fn()
-const mockCmed = { current: { status: 'ready', index: null as any, lookup: null as any } }
+const mockCmed = { current: { status: 'ready', index: null as any } }
 
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => mockNav,
@@ -35,7 +35,7 @@ function loadIndex(mutate?: (raw: any) => void) {
   mutate?.(raw)
   const result = decodeCmedIndex(raw)
   if (result.ok === false) throw new Error('fixture não decodificou')
-  mockCmed.current = { status: 'ready', index: result.index, lookup: buildEanLookup(result.index) }
+  mockCmed.current = { status: 'ready', index: result.index }
 }
 
 function scan(data: string) {
