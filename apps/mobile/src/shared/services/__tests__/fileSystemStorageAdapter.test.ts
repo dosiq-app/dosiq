@@ -114,6 +114,25 @@ describe('_fileSystemStorageAdapter — dado em disco, manifest no AsyncStorage 
     expect(await adapter.read('cmedIndex')).toEqual({ manifest: { version: 'x' }, data: { n: 4 } })
   })
 
+  it('com opts.timings: mesmo retorno e tempos de leitura/parse ≥ 0', async () => {
+    const adapter = createFileSystemStorageAdapter()
+    await adapter.write('cmedIndex', { manifest: { version: 't' }, data: index })
+    const timings: { readMs?: number; parseMs?: number } = {}
+    expect(await adapter.read('cmedIndex', { timings })).toEqual({ manifest: { version: 't' }, data: index })
+    expect(timings.readMs).toBeGreaterThanOrEqual(0)
+    expect(timings.parseMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('com opts.timings e arquivo truncado: null, sem lançar, sem tempo de parse', async () => {
+    mockDisk.set(`${DIR}/cmedIndex.9.json`, '{"v":1,')
+    mockStore.set(`${FILE_MANIFEST_KEY_PREFIX}cmedIndex`, '{"manifest":{},"dataFile":"cmedIndex.9.json"}')
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const timings: { readMs?: number; parseMs?: number } = {}
+    expect(await createFileSystemStorageAdapter().read('cmedIndex', { timings })).toBeNull()
+    expect(timings.parseMs).toBeUndefined()
+    warn.mockRestore()
+  })
+
   it('sem manifest ⇒ null', async () => {
     expect(await createFileSystemStorageAdapter().read('cmedIndex')).toBeNull()
   })

@@ -23,6 +23,7 @@ import {
 } from '@dosiq/core'
 import { useMedicineDatabase, MIN_SEARCH_CHARS } from '@shared/hooks/useMedicineDatabase'
 import { useCmedIndex } from '@shared/hooks/useCmedIndex'
+import { indexLoadedPayload } from '@medications/utils/indexLoadedPayload'
 import { logEvent } from '@platform/analytics/productAnalytics'
 import { EVENTS, SURFACES } from '@platform/analytics/analyticsEvents'
 import { selectionTap } from '@shared/utils/haptics'
@@ -85,14 +86,7 @@ export function useMedicineSearchFlow({ active, onSelect, linkTarget = null }: S
   const { search, isReady } = useMedicineDatabase()
   const cmed = useCmedIndex({
     enabled: active && needIndex,
-    onLoaded: (info) =>
-      logEvent(EVENTS.MEDICINE_INDEX_LOADED, {
-        surface: SURFACES.MOBILE,
-        source: info.source,
-        duration_ms: info.durationMs,
-        status: info.status,
-        row_count: info.rowCount,
-      }),
+    onLoaded: (info) => logEvent(EVENTS.MEDICINE_INDEX_LOADED, { surface: SURFACES.MOBILE, ...indexLoadedPayload(info) }),
   })
 
   // Memos

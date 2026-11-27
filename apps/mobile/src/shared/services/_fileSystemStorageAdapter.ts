@@ -26,6 +26,13 @@ function anvisaDirectory() {
   return new Directory(Paths.cache, 'anvisa')
 }
 
+/** Tempos da leitura, preenchidos só quando a etapa conclui (ms do relógio JS). */
+export interface StorageReadTimings {
+  /** Ponteiro no AsyncStorage + texto do arquivo (inclui a ponte nativa). */
+  readMs?: number
+  parseMs?: number
+}
+
 function belongsTo(fileKey: string, name: string) {
   return DATA_FILE_PATTERN.test(name) && name.startsWith(`${fileKey}.`)
 }
@@ -33,16 +40,25 @@ function belongsTo(fileKey: string, name: string) {
 export function createFileSystemStorageAdapter() {
   return {
     // read(fileKey) → { manifest, data } | null. Qualquer falha ⇒ null (nunca lança).
-    async read(fileKey: string) {
+    // `opts.timings`, quando passado, recebe os tempos de leitura e parse.
+    async read(fileKey: string, opts?: { timings?: StorageReadTimings }) {
       if (!FILE_KEY_PATTERN.test(fileKey)) return null
       try {
+        const startedAt = performance.now()
         const raw = await AsyncStorage.getItem(`${FILE_MANIFEST_KEY_PREFIX}${fileKey}`)
         if (!raw) return null
         const stored = JSON.parse(raw) as { manifest?: unknown; dataFile?: unknown }
         if (typeof stored?.dataFile !== 'string' || !belongsTo(fileKey, stored.dataFile)) return null
         const file = new File(anvisaDirectory(), stored.dataFile)
         if (!file.exists) return null
-        return { manifest: stored.manifest, data: JSON.parse(await file.text()) }
+        const text = await file.text()
+        const readAt = performance.now()
+        const data = JSON.parse(text)
+        if (opts?.timings) {
+          opts.timings.readMs = readAt - startedAt
+          opts.timings.parseMs = performance.now() - readAt
+        }
+        return { manifest: stored.manifest, data }
       } catch (cacheErr) {
         console.warn('[fileSystemStorageAdapter] cache read falhou:', (cacheErr as Error)?.message)
         return null

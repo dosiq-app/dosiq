@@ -6,11 +6,9 @@ import {
   shouldRefreshCache,
   resolveDataUrl,
   decodeCmedIndex,
-  buildEanLookup,
   type CmedIndex,
-  type EanLookup,
 } from '@dosiq/core'
-import { createFileSystemStorageAdapter } from '@shared/services/_fileSystemStorageAdapter'
+import { createFileSystemStorageAdapter, type StorageReadTimings } from '@shared/services/_fileSystemStorageAdapter'
 import { ANVISA_BASE_URL } from '@shared/hooks/useMedicineDatabase'
 
 // Carga sob demanda do índice CMED (066 Slice B · FR-022/FR-023 · ADR-107).
@@ -22,7 +20,8 @@ import { ANVISA_BASE_URL } from '@shared/hooks/useMedicineDatabase'
 //
 // Fluxo (2 fases, como o useMedicineDatabase):
 //   1. cache em disco → decodifica → `ready` imediato se íntegro
-//   2. manifest remoto → shouldRefreshCache → baixa, grava (best-effort) e troca o índice
+//   2. manifest remoto → shouldRefreshCache → baixa, troca o índice e grava depois (best-effort)
+// O mapa EAN → linhas não é montado aqui: só o scanner precisa (`getEanLookup` do core).
 // Estados mapeiam 1:1 para as telas da spec: preparing = f1-prep · offline = x-off ·
 // failed = x-idx · version = x-ver.
 
@@ -31,7 +30,6 @@ export type CmedIndexStatus = 'idle' | 'preparing' | 'ready' | 'offline' | 'fail
 interface CmedIndexState {
   status: CmedIndexStatus
   index: CmedIndex | null
-  lookup: EanLookup | null
 }
 
 interface CachedManifest {
@@ -53,8 +51,8 @@ const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 dias
 
 const storageAdapter = createFileSystemStorageAdapter()
 
-const IDLE: CmedIndexState = { status: 'idle', index: null, lookup: null }
-const PREPARING: CmedIndexState = { status: 'preparing', index: null, lookup: null }
+const IDLE: CmedIndexState = { status: 'idle', index: null }
+const PREPARING: CmedIndexState = { status: 'preparing', index: null }
 
 // Cache de sessão (C-C6): só índice íntegro entra; o manifest acompanha para a revalidação.
 let memory: { state: CmedIndexState; manifest: CachedManifest | undefined } | null = null
@@ -77,26 +75,55 @@ function initialState(enabled: boolean): CmedIndexState {
 // Tempo da carga para o PO-8 (066) em release e no campo — o console não chega ao logcat em release.
 // O evento é emitido por quem monta o hook (`onLoaded`): o hook é strict island e o wrapper de
 // analytics não é.
-export interface CmedIndexLoadInfo {
+// Fases (ms, relógio JS) para separar I/O, parse e CPU de decode no aparelho real. Ausente = a
+// fase não rodou nesta carga. `durationMs` segue sendo a carga inteira até o índice pronto.
+export interface CmedIndexLoadPhases {
+  yieldMs?: number
+  readMs?: number
+  parseMs?: number
+  fetchMs?: number
+  decodeMs?: number
+  eanMs?: number
+  writeMs?: number
+}
+
+export interface CmedIndexLoadInfo extends CmedIndexLoadPhases {
   source: 'disk' | 'network'
   durationMs: number
   status: CmedIndexStatus
   rowCount: number
 }
 
-// Cede um quadro antes do trabalho pesado (ler/parsear ~4 MB na thread JS): o aviso de preparo
-// pinta primeiro (C-C5 — no LG K8 a tela parecia travada sem aviso).
+// Espera o aviso de preparo ser pintado antes do trabalho pesado (ler/parsear ~4 MB na thread JS):
+// no LG K8 a tela parecia travada sem o aviso. O 1º quadro aplica o estado; o 2º garante que ele
+// foi desenhado. Sem rAF no ambiente, cede um tick.
 function yieldFrame(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 50))
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== 'function') {
+      setTimeout(resolve, 0)
+      return
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
 }
 
-// Decodifica uma vez e já monta o lookup EAN → linhas; falha vira o estado de erro da tela.
-function toState(raw: unknown): CmedIndexState {
+// Decodifica uma vez; falha vira o estado de erro da tela.
+function toState(raw: unknown, phases: CmedIndexLoadPhases): CmedIndexState {
+  const startedAt = performance.now()
   const decoded = decodeCmedIndex(raw)
+  phases.decodeMs = performance.now() - startedAt
   if (decoded.ok === false) {
-    return { status: decoded.reason === 'version' ? 'version' : 'failed', index: null, lookup: null }
+    return { status: decoded.reason === 'version' ? 'version' : 'failed', index: null }
   }
-  return { status: 'ready', index: decoded.index, lookup: buildEanLookup(decoded.index) }
+  return { status: 'ready', index: decoded.index }
+}
+
+function roundPhases(phases: CmedIndexLoadPhases): CmedIndexLoadPhases {
+  const out: CmedIndexLoadPhases = {}
+  for (const [key, value] of Object.entries(phases) as [keyof CmedIndexLoadPhases, number | undefined][]) {
+    if (typeof value === 'number') out[key] = Math.max(0, Math.round(value))
+  }
+  return out
 }
 
 // fetchJson lança `HTTP <status> em <url>` quando o servidor responde; o resto é rede/timeout.
@@ -132,10 +159,16 @@ export function useCmedIndex({
     if (!enabled) return undefined
     let canceled = false
 
-    function reportLoaded(source: 'disk' | 'network', startedAt: number, loaded: CmedIndexState) {
+    function reportLoaded(
+      source: 'disk' | 'network',
+      durationMs: number,
+      loaded: CmedIndexState,
+      phases: CmedIndexLoadPhases,
+    ) {
       onLoadedRef.current?.({
+        ...roundPhases(phases),
         source,
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs: Math.round(durationMs),
         status: loaded.status,
         rowCount: loaded.index?.n ?? 0,
       })
@@ -150,21 +183,28 @@ export function useCmedIndex({
         cached = { manifest: memory.manifest }
         cachedState = memory.state
       } else {
+        const diskPhases: CmedIndexLoadPhases = {}
         await yieldFrame()
+        diskPhases.yieldMs = performance.now() - t0
         if (canceled) return
         // 1. Cache em disco
-        cached = (await storageAdapter.read(FILE_KEY)) as { manifest: CachedManifest; data: unknown } | null
+        const timings: StorageReadTimings = {}
+        cached = (await storageAdapter.read(FILE_KEY, { timings })) as { manifest: CachedManifest; data: unknown } | null
+        diskPhases.readMs = timings.readMs
+        diskPhases.parseMs = timings.parseMs
         if (canceled) return
-        cachedState = cached ? toState(cached.data) : null
+        cachedState = cached ? toState(cached.data, diskPhases) : null
         if (cachedState?.status === 'ready') {
           memory = { state: cachedState, manifest: cached?.manifest }
           setState(cachedState)
-          reportLoaded('disk', t0, cachedState)
+          reportLoaded('disk', performance.now() - t0, cachedState, diskPhases)
         }
       }
       const hasData = cachedState?.status === 'ready'
 
       // 2. Revalida no remoto
+      const netPhases: CmedIndexLoadPhases = {}
+      const tNet = performance.now()
       try {
         const remoteManifest = (await fetchJson(`${baseUrl}/manifest.json`)) as CachedManifest
         if (canceled) return
@@ -177,33 +217,36 @@ export function useCmedIndex({
         // Sem cache íntegro (hasData false) shouldRefreshCache é sempre true.
         if (!refresh) return
         const remoteData = await fetchJson(resolveDataUrl(baseUrl, remoteManifest, FILE_KEY))
+        netPhases.fetchMs = performance.now() - tNet
         if (canceled) return
-        const nextState = toState(remoteData)
+        const nextState = toState(remoteData, netPhases)
+        // Índice novo inválido não derruba um cache íntegro já na tela.
+        if (nextState.status === 'ready' || !hasData) setState(nextState)
+        // Pronto = estado na tela; a gravação em disco vem depois e não segura a busca.
+        const durationMs = performance.now() - t0
         if (nextState.status === 'ready') {
-          memory = { state: nextState, manifest: { ...remoteManifest, cachedAt: getNow().toISOString() } }
+          const manifest = { ...remoteManifest, cachedAt: getNow().toISOString() }
+          memory = { state: nextState, manifest }
+          const writeAt = performance.now()
           try {
-            await storageAdapter.write(FILE_KEY, {
-              manifest: { ...remoteManifest, cachedAt: getNow().toISOString() },
-              data: remoteData,
-            })
+            await storageAdapter.write(FILE_KEY, { manifest, data: remoteData })
           } catch (writeErr) {
             // Sem disco a sessão segue com o índice em memória; a próxima abertura baixa de novo.
             console.warn('[useCmedIndex] gravação do cache falhou:', (writeErr as Error)?.message)
           }
+          netPhases.writeMs = performance.now() - writeAt
         }
-        if (canceled) return
-        // Índice novo inválido não derruba um cache íntegro já na tela.
-        if (nextState.status === 'ready' || !hasData) setState(nextState)
-        if (!hasData) reportLoaded('network', t0, nextState)
+        // A carga terminou com o índice na tela: o evento sai mesmo se a tela desmontou na gravação.
+        if (!hasData) reportLoaded('network', durationMs, nextState, netPhases)
       } catch (fetchErr) {
         if (canceled || hasData) return
         if (cachedState) {
           setState(cachedState)
           return
         }
-        const failed: CmedIndexState = { status: isHttpError(fetchErr) ? 'failed' : 'offline', index: null, lookup: null }
+        const failed: CmedIndexState = { status: isHttpError(fetchErr) ? 'failed' : 'offline', index: null }
         setState(failed)
-        reportLoaded('network', t0, failed)
+        reportLoaded('network', performance.now() - t0, failed, netPhases)
       }
     }
 

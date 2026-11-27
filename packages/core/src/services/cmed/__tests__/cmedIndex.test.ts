@@ -5,6 +5,7 @@ import {
   decodeCmedIndex,
   isValidEan13,
   buildEanLookup,
+  getEanLookup,
   resolveEan,
   searchCmedByName,
   findRowsByProductName,
@@ -14,6 +15,8 @@ import {
   groupForPicker,
 } from '../cmedIndex'
 import type { CmedIndex } from '../cmedIndex'
+import { medicineDraftFromRow } from '../cmedMedicine'
+import { decodeCmedIndexReference, buildEanLookupReference } from './cmedIndexReference'
 
 afterEach(() => {
   vi.clearAllMocks()
@@ -31,11 +34,24 @@ describe('decodeCmedIndex', () => {
     const index = decodeFixture()
     expect(index.n).toBe(fixtureRows.length)
     index.rows.forEach((row, i) => {
-      const expected = fixtureRows[i]
-      expect(row).toEqual({ ...expected, e: row.e })
-      // o EAN de checksum inválido fica na linha decodificada; quem filtra é o lookup
-      if (expected.e.length > 0) expect(row.e).toEqual(expected.e)
+      const { e, ...expected } = fixtureRows[i]
+      expect(row).toEqual(expected)
+      // a coluna crua guarda o EAN de checksum inválido (o rows.json do pipeline já o omite); quem filtra é o lookup
+      expect(index.eanCol[i]).toBe(fixture.cols.e[i])
+      if (e.length > 0) expect(index.eanCol[i]).toBe(e.join('|'))
     })
+  })
+
+  it.each([
+    ['número', 42],
+    ['null', null],
+  ])('EAN cru não-string (%s) ⇒ coluna vazia, nada no lookup', (_label, value) => {
+    const raw = structuredClone(fixture) as { cols: { e: unknown[] } }
+    raw.cols.e[8] = value
+    const result = decodeCmedIndex(raw)
+    if (result.ok === false) throw new Error('não decodificou')
+    expect(result.index.eanCol[8]).toBe('')
+    expect(buildEanLookup(result.index).has('7896004778402')).toBe(false)
   })
 
   it('normaliza amb 0/1 para booleano', () => {
@@ -121,12 +137,82 @@ describe('buildEanLookup + resolveEan', () => {
     expect(resolveEan(lookup, index, ean)).toEqual({ kind: 'not_found' })
   })
 
+  it('separadores vazios (`a||b`, borda) não viram EAN', () => {
+    const raw = structuredClone(fixture)
+    raw.cols.e[8] = '|7896004778402||7896004795232|'
+    const result = decodeCmedIndex(raw)
+    if (result.ok === false) throw new Error('não decodificou')
+    const lk = buildEanLookup(result.index)
+    expect(lk.get('7896004778402')).toEqual([8])
+    expect(lk.get('7896004795232')).toEqual([8])
+    expect(lk.has('')).toBe(false)
+  })
+
   it('EAN repetido na mesma linha entra uma vez', () => {
     const raw = structuredClone(fixture)
     raw.cols.e[8] = '7896004778402|7896004778402'
     const result = decodeCmedIndex(raw)
     if (result.ok === false) throw new Error('não decodificou')
     expect(buildEanLookup(result.index).get('7896004778402')).toEqual([8])
+  })
+})
+
+describe('getEanLookup — mapa sob demanda, um por índice (129 FR-002)', () => {
+  it('mesmo índice ⇒ mesma instância; índice novo ⇒ mapa novo com o mesmo conteúdo', () => {
+    const a = decodeFixture()
+    const b = decodeFixture()
+    expect(getEanLookup(a)).toBe(getEanLookup(a))
+    expect(getEanLookup(b)).not.toBe(getEanLookup(a))
+    expect([...getEanLookup(b)]).toEqual([...buildEanLookup(a)])
+  })
+
+  it('índice vazio (n=0) ⇒ mapa vazio', () => {
+    const empty = decodeCmedIndex({
+      v: 1,
+      n: 0,
+      dict: { l: [], k: [], c: [], cn: [], t: [], u: [], f: [] },
+      cols: Object.fromEntries(['e', 'p', 's', 'a', 'r', 'ds', 'l', 'k', 'c', 't', 'u', 'f', 'd', 'nc', 'q', 'amb'].map((k) => [k, []])),
+    })
+    if (empty.ok === false) throw new Error(empty.reason)
+    expect(getEanLookup(empty.index).size).toBe(0)
+  })
+})
+
+describe('paridade com o decode de referência (129 PO-4/PO-5 · INV-1)', () => {
+  const variants: [string, (raw: typeof fixture) => void][] = [
+    ['fixture curada', () => {}],
+    ['EAN duplicado na linha', (raw) => { raw.cols.e[8] = '7896004778402|7896004778402' }],
+    ['produto repetido como substância', (raw) => { raw.cols.s[3] = raw.cols.p[3] }],
+    ['com lv curado (113)', (raw) => {
+      const lv: unknown[] = new Array(raw.n).fill(null)
+      lv[5] = 1.5
+      lv[6] = 0
+      ;(raw.cols as Record<string, unknown>).lv = lv
+    }],
+  ]
+
+  it.each(variants)('%s: linhas, chaves, EANs e rascunhos idênticos', (_label, mutate) => {
+    const raw = structuredClone(fixture)
+    mutate(raw)
+    const next = decodeCmedIndex(structuredClone(raw))
+    const ref = decodeCmedIndexReference(structuredClone(raw))
+    if (next.ok === false || ref.ok === false) throw new Error('não decodificou')
+    expect(next.index.n).toBe(ref.index.n)
+    next.index.rows.forEach((row, i) => {
+      const { e, ...refRow } = ref.index.rows[i]
+      expect(row).toEqual(refRow)
+      expect(next.index.eanCol[i].split('|').filter(Boolean)).toEqual(e)
+      expect(medicineDraftFromRow(row)).toEqual(medicineDraftFromRow({ ...refRow }))
+    })
+    expect(next.index.productKeys).toEqual(ref.index.productKeys)
+    expect(next.index.substanceKeys).toEqual(ref.index.substanceKeys)
+    expect([...buildEanLookup(next.index)]).toEqual([...buildEanLookupReference(ref.index, isValidEan13)])
+  })
+
+  it('recusas idênticas (version/shape)', () => {
+    for (const raw of [{ ...structuredClone(fixture), v: 2 }, null, { v: 1, n: 1, cols: {}, dict: {} }]) {
+      expect(decodeCmedIndex(raw)).toEqual(decodeCmedIndexReference(raw))
+    }
   })
 })
 

@@ -12,7 +12,7 @@ import fixture from '../../../../../../../packages/core/src/services/cmed/__test
 const mockSearch = jest.fn()
 const mockLogEvent = jest.fn()
 const mockCmedCalls: any[] = []
-const mockCmed = { current: { status: 'ready', index: null as any, lookup: null } }
+const mockCmed = { current: { status: 'ready', index: null as any } }
 
 jest.mock('@shared/hooks/useMedicineDatabase', () => ({
   // O mínimo real vem do módulo: sem ele o mock apagaria a regra (066 E, C-8).
@@ -22,7 +22,7 @@ jest.mock('@shared/hooks/useMedicineDatabase', () => ({
 jest.mock('@shared/hooks/useCmedIndex', () => ({
   useCmedIndex: (opts: any) => {
     mockCmedCalls.push(opts)
-    return opts?.enabled ? mockCmed.current : { status: 'idle', index: null, lookup: null }
+    return opts?.enabled ? mockCmed.current : { status: 'idle', index: null }
   },
 }))
 jest.mock('@platform/analytics/productAnalytics', () => ({
@@ -65,7 +65,7 @@ afterEach(() => {
   jest.clearAllMocks()
   jest.clearAllTimers()
   mockCmedCalls.length = 0
-  mockCmed.current = { status: 'ready', index: null, lookup: null }
+  mockCmed.current = { status: 'ready', index: null }
 })
 
 describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
@@ -79,7 +79,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('o índice não é pedido ao abrir nem ao digitar, só depois do toque num nome (C-C5)', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     const { getByLabelText } = renderSheet([DIVALPROATO])
     expect(mockCmedCalls.every((o) => o.enabled === false)).toBe(true)
     fireEvent.press(getByLabelText(DIVALPROATO.name))
@@ -87,7 +87,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('nome com 2+ concentrações abre o passo 2; a escolha devolve o rascunho dela', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     const { getByText, getByLabelText, onSelect } = renderSheet([DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     expect(onSelect).not.toHaveBeenCalled()
@@ -102,7 +102,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('quantidades diferentes na mesma concentração pulam o passo 2 (C5.1 R-4)', () => {
-    mockCmed.current = { status: 'ready', index: indexFrom(), lookup: null }
+    mockCmed.current = { status: 'ready', index: indexFrom() }
     const { getByLabelText, queryByText, onSelect } = renderSheet([DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     expect(queryByText('Qual embalagem você tem?')).toBeNull()
@@ -111,7 +111,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('genérico: sem laboratório nem registro no rascunho (D11)', () => {
-    mockCmed.current = { status: 'ready', index: indexFrom((raw) => { raw.cols.ds[14] = raw.cols.ds[11]; raw.cols.d[14] = raw.cols.d[11] }), lookup: null }
+    mockCmed.current = { status: 'ready', index: indexFrom((raw) => { raw.cols.ds[14] = raw.cols.ds[11]; raw.cols.d[14] = raw.cols.d[11] }) }
     const { getByLabelText, onSelect } = renderSheet([CLOPIDOGREL])
     fireEvent.press(getByLabelText(CLOPIDOGREL.name))
     const draft = onSelect.mock.calls[0][0].cmedDraft
@@ -121,7 +121,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('"‹" volta à busca com o texto preservado', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     const { getByLabelText, getByDisplayValue, queryByText, onSelect } = renderSheet([DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     fireEvent.press(getByLabelText('Voltar'))
@@ -132,7 +132,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('voltar do Android no passo 2 volta à busca, sem fechar o sheet (C-C9)', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     const { getByLabelText, getByDisplayValue, queryByText, UNSAFE_getByType, onClose } = renderSheet([DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     act(() => UNSAFE_getByType(Modal).props.onRequestClose())
@@ -145,7 +145,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('toque duplo num resultado conta uma escolha só (C-C9)', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     const { getByLabelText } = renderSheet([DIVALPROATO])
     const row = getByLabelText(DIVALPROATO.name)
     fireEvent.press(row)
@@ -154,7 +154,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('"Minha embalagem não está aqui" preenche só com o item', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     const { getByText, getByLabelText, onSelect } = renderSheet([DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     fireEvent.press(getByText('Minha embalagem não está aqui'))
@@ -163,7 +163,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
 
   it('nome sem embalagem na CMED cai no fallback defensivo (preenche como hoje)', () => {
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
-    mockCmed.current = { status: 'ready', index: indexFrom(), lookup: null }
+    mockCmed.current = { status: 'ready', index: indexFrom() }
     const { getByLabelText, onSelect } = renderSheet([SEM_CMED])
     fireEvent.press(getByLabelText(SEM_CMED.name))
     expect(onSelect).toHaveBeenCalledWith({ anvisaItem: SEM_CMED })
@@ -172,7 +172,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it.each(['offline', 'failed', 'version'])('índice %s não bloqueia: preenche como hoje (INV-3)', (status) => {
-    mockCmed.current = { status, index: null, lookup: null }
+    mockCmed.current = { status, index: null }
     const { getByLabelText, onSelect } = renderSheet([DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     expect(onSelect).toHaveBeenCalledWith({ anvisaItem: DIVALPROATO })
@@ -180,7 +180,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('índice preparando: passo 2 mostra o aviso e a saída', () => {
-    mockCmed.current = { status: 'preparing', index: null, lookup: null }
+    mockCmed.current = { status: 'preparing', index: null }
     const { getByText, getByLabelText, onSelect } = renderSheet([DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     expect(getByText('Buscando na lista completa de embalagens da ANVISA...')).toBeTruthy()
@@ -190,7 +190,7 @@ describe('MedicineAnvisaSheet — busca 2C (066 Slice C)', () => {
   })
 
   it('eventos: abertura, seleção com posição e tamanho da busca — nunca o texto nem o nome (R-042)', () => {
-    mockCmed.current = { status: 'ready', index: indexFrom(), lookup: null }
+    mockCmed.current = { status: 'ready', index: indexFrom() }
     const { getByLabelText } = renderSheet([CLOPIDOGREL, DIVALPROATO])
     fireEvent.press(getByLabelText(DIVALPROATO.name))
     expect(eventProps('medicine_search_opened')[0]).toEqual({ surface: 'mobile', entry_point: 'medicine_form' })
@@ -277,7 +277,7 @@ describe('mínimo de letras da busca (066 E, C-8)', () => {
     })
 
     it('volta do passo 2 pede foco de novo (AC-6.2)', () => {
-      mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+      mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
       const { getByLabelText } = renderSheet([DIVALPROATO])
       fireEvent.press(getByLabelText(DIVALPROATO.name))
       expect(focusSpy).not.toHaveBeenCalled()
@@ -290,7 +290,7 @@ describe('mínimo de letras da busca (066 E, C-8)', () => {
 // 119 B (FR-008 / RC3 E-1): a sugestão do campo e o convite de vínculo abrem o MESMO passo 2.
 describe('abertura direta (119 B — sugestão do campo / vínculo)', () => {
   it('initialItem abre na escolha da caixa; a escolha devolve o mesmo rascunho do toque na lista', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     mockSearch.mockReturnValue([])
     const onSelect = jest.fn()
     const { getByText } = render(<MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} entryPoint="catalog_suggestion" />)
@@ -304,7 +304,7 @@ describe('abertura direta (119 B — sugestão do campo / vínculo)', () => {
   })
 
   it('"‹" no passo 2 aberto direto volta à busca com o nome do item', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     mockSearch.mockReturnValue([])
     const { getByLabelText, getByDisplayValue } = render(<MedicineAnvisaSheet open onSelect={jest.fn()} initialItem={DIVALPROATO} />)
     fireEvent.press(getByLabelText('Voltar'))
@@ -329,7 +329,7 @@ describe('abertura direta (119 B — sugestão do campo / vínculo)', () => {
 describe('linkTarget', () => {
   // Rascunho real da caixa única do Divalproato (o que o form receberia sem vínculo).
   function singleDraft() {
-    mockCmed.current = { status: 'ready', index: indexFrom(), lookup: null }
+    mockCmed.current = { status: 'ready', index: indexFrom() }
     const onSelect = jest.fn()
     render(<MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} />)
     return onSelect.mock.calls[0][0].cmedDraft
@@ -358,7 +358,7 @@ describe('linkTarget', () => {
   })
 
   it('"‹" com a caixa selecionada desfaz a seleção e não devolve nada', () => {
-    mockCmed.current = { status: 'ready', index: indexFrom(), lookup: null }
+    mockCmed.current = { status: 'ready', index: indexFrom() }
     const onSelect = jest.fn()
     const { getByText, getByLabelText, queryByTestId } = render(
       <MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} linkTarget={{ medicine: { name: 'Outro', presentation: 'comprimido' } }} />,
@@ -383,7 +383,7 @@ describe('linkTarget', () => {
   })
 
   it('sem linkTarget (form, onboarding, scanner, seletor): nenhuma conferência; 2+ concentrações escolhem no toque', () => {
-    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS(), lookup: null }
+    mockCmed.current = { status: 'ready', index: TWO_STRENGTHS() }
     const onSelect = jest.fn()
     const { getByText, queryByTestId } = render(<MedicineAnvisaSheet open onSelect={onSelect} initialItem={DIVALPROATO} />)
     fireEvent.press(getByText('500 mg'))

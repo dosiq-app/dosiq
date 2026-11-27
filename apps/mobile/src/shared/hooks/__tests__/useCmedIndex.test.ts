@@ -1,15 +1,36 @@
 // Fronteiras mockadas: adapter em disco (Map) e fetch. Núcleo cmed e helpers do core são os reais.
 const mockCache = new Map<string, { manifest: unknown; data: unknown }>()
 const mockWriteFail = { on: false }
+const mockReads = { count: 0 }
+const mockWriteGate: { wait: Promise<void> | null } = { wait: null }
 jest.mock('@shared/services/_fileSystemStorageAdapter', () => ({
   createFileSystemStorageAdapter: () => ({
-    read: jest.fn(async (k: string) => mockCache.get(k) ?? null),
+    read: jest.fn(async (k: string, opts?: { timings?: { readMs?: number; parseMs?: number } }) => {
+      mockReads.count += 1
+      const hit = mockCache.get(k) ?? null
+      if (hit && opts?.timings) {
+        opts.timings.readMs = 7
+        opts.timings.parseMs = 3
+      }
+      return hit
+    }),
     write: jest.fn(async (k: string, v: { manifest: unknown; data: unknown }) => {
+      if (mockWriteGate.wait) await mockWriteGate.wait
       if (mockWriteFail.on) throw new Error('ENOSPC')
       mockCache.set(k, v)
     }),
   }),
 }))
+
+// Mapa EAN espionado: a carga do índice não pode montá-lo (129 PO-3).
+jest.mock('@dosiq/core', () => {
+  const actual = jest.requireActual('@dosiq/core')
+  return {
+    ...actual,
+    buildEanLookup: jest.fn(actual.buildEanLookup),
+    getEanLookup: jest.fn(actual.getEanLookup),
+  }
+})
 
 jest.mock('@dosiq/core/utils/dateUtils', () => {
   const actual = jest.requireActual('@dosiq/core/utils/dateUtils')
@@ -18,6 +39,7 @@ jest.mock('@dosiq/core/utils/dateUtils', () => {
 
 import { renderHook, waitFor } from '@testing-library/react-native'
 import fixture from '@dosiq/core/services/cmed/__tests__/fixtures/cmed-fixture.json'
+import { buildEanLookup, getEanLookup } from '@dosiq/core'
 import { useCmedIndex, resetCmedIndexMemory, handleCmedAppState } from '../useCmedIndex'
 
 global.fetch = jest.fn() as unknown as typeof fetch
@@ -50,6 +72,8 @@ describe('useCmedIndex — carga sob demanda do índice CMED (FR-023)', () => {
   beforeEach(() => {
     mockCache.clear()
     mockWriteFail.on = false
+    mockWriteGate.wait = null
+    mockReads.count = 0
     resetCmedIndexMemory()
   })
   afterEach(() => {
@@ -72,17 +96,89 @@ describe('useCmedIndex — carga sob demanda do índice CMED (FR-023)', () => {
     )
     await waitFor(() => expect(result.current.status).toBe('ready'))
     rerender({ enabled: false })
-    expect(result.current).toEqual({ status: 'idle', index: null, lookup: null })
+    expect(result.current).toEqual({ status: 'idle', index: null })
   })
 
-  it('sem cache: preparing → baixa, grava em disco, ready com lookup', async () => {
+  it('sem cache: preparing → baixa, grava em disco, ready sem montar o mapa EAN (129 PO-3)', async () => {
     routeFetch({ 'manifest.json': () => ok(remoteManifest), 'cmedIndex.json': () => ok(fixture) })
     const { result } = render()
     expect(result.current.status).toBe('preparing')
     await waitFor(() => expect(result.current.status).toBe('ready'))
     expect(result.current.index?.n).toBe((fixture as { n: number }).n)
-    expect(result.current.lookup?.size).toBeGreaterThan(0)
+    expect(result.current).not.toHaveProperty('lookup')
+    expect(buildEanLookup).not.toHaveBeenCalled()
+    expect(getEanLookup).not.toHaveBeenCalled()
     expect(mockCache.get('cmedIndex')?.manifest).toMatchObject({ version: '1.1.11', cachedAt: '2026-10-13T12:00:00.000Z' })
+  })
+
+  it('carga do disco também não monta o mapa EAN (129 PO-3)', async () => {
+    seedCache()
+    routeFetch({ 'manifest.json': () => ok(remoteManifest) })
+    const { result } = render()
+    await waitFor(() => expect(result.current.status).toBe('ready'))
+    expect(buildEanLookup).not.toHaveBeenCalled()
+    expect(getEanLookup).not.toHaveBeenCalled()
+  })
+
+  it('rede: índice pronto antes da gravação em disco terminar (129 FR-008)', async () => {
+    let release: () => void = () => {}
+    mockWriteGate.wait = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    routeFetch({ 'manifest.json': () => ok(remoteManifest), 'cmedIndex.json': () => ok(fixture) })
+    const onLoaded = jest.fn()
+    const { result } = render({ onLoaded })
+    try {
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+      expect(mockCache.has('cmedIndex')).toBe(false)
+      expect(onLoaded).not.toHaveBeenCalled()
+    } finally {
+      release()
+    }
+    await waitFor(() => expect(onLoaded).toHaveBeenCalledTimes(1))
+    expect(mockCache.has('cmedIndex')).toBe(true)
+    const info = onLoaded.mock.calls[0][0]
+    expect(info.writeMs).toBeGreaterThanOrEqual(0)
+  })
+
+  it('leitura do disco só começa depois de dois quadros (129 PO-7 · C-C5)', async () => {
+    const frames: FrameRequestCallback[] = []
+    const rafSpy = jest
+      .spyOn(global, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => frames.push(cb))
+    try {
+      seedCache()
+      routeFetch({ 'manifest.json': () => ok(remoteManifest) })
+      const { result } = render()
+      expect(result.current.status).toBe('preparing')
+      await waitFor(() => expect(frames).toHaveLength(1))
+      expect(mockReads.count).toBe(0)
+      frames.shift()?.(0)
+      expect(frames).toHaveLength(1)
+      expect(mockReads.count).toBe(0)
+      frames.shift()?.(16)
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+    } finally {
+      rafSpy.mockRestore()
+    }
+  })
+
+  it('rede: desmontar durante a gravação ainda emite o evento da carga concluída (129 FR-008)', async () => {
+    let release: () => void = () => {}
+    mockWriteGate.wait = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    routeFetch({ 'manifest.json': () => ok(remoteManifest), 'cmedIndex.json': () => ok(fixture) })
+    const onLoaded = jest.fn()
+    const { result, unmount } = render({ onLoaded })
+    try {
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+      unmount()
+    } finally {
+      release()
+    }
+    await waitFor(() => expect(onLoaded).toHaveBeenCalledTimes(1))
+    expect(onLoaded.mock.calls[0][0].source).toBe('network')
   })
 
   it('onLoaded (PO-8): rede → source network com tempo e linhas; disco → source disk', async () => {
@@ -99,6 +195,65 @@ describe('useCmedIndex — carga sob demanda do índice CMED (FR-023)', () => {
     const second = render({ onLoaded })
     await waitFor(() => expect(second.result.current.status).toBe('ready'))
     expect(onLoaded).toHaveBeenCalledWith(expect.objectContaining({ source: 'disk', status: 'ready' }))
+  })
+
+  describe('fases da carga (129 PO-1)', () => {
+    const PHASES = ['yieldMs', 'readMs', 'parseMs', 'fetchMs', 'decodeMs', 'eanMs', 'writeMs'] as const
+    // Relógio controlado: cada leitura avança 5 ms.
+    let clock = 0
+    let nowSpy: jest.SpyInstance
+    beforeEach(() => {
+      clock = 0
+      nowSpy = jest.spyOn(performance, 'now').mockImplementation(() => (clock += 5))
+    })
+    afterEach(() => nowSpy.mockRestore())
+
+    function phaseSum(info: Record<string, number | undefined>) {
+      return PHASES.reduce((sum, key) => sum + (info[key] ?? 0), 0)
+    }
+
+    it('disco: yield, leitura, parse e decode ≥ 0, soma ≤ duration_ms; campos antigos iguais', async () => {
+      seedCache()
+      routeFetch({ 'manifest.json': () => ok(remoteManifest) })
+      const onLoaded = jest.fn()
+      const { result } = render({ onLoaded })
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+      const info = onLoaded.mock.calls[0][0]
+      expect(info).toMatchObject({ source: 'disk', status: 'ready', rowCount: (fixture as { n: number }).n })
+      for (const key of ['yieldMs', 'readMs', 'parseMs', 'decodeMs'] as const) {
+        expect(info[key]).toBeGreaterThanOrEqual(0)
+      }
+      expect(info.eanMs).toBeUndefined()
+      expect(info.readMs).toBe(7)
+      expect(info.parseMs).toBe(3)
+      expect(info.fetchMs).toBeUndefined()
+      expect(info.writeMs).toBeUndefined()
+      expect(phaseSum(info)).toBeLessThanOrEqual(info.durationMs + PHASES.length)
+    })
+
+    it('rede: fetch, decode e gravação ≥ 0, sem fases de disco, soma ≤ duration_ms', async () => {
+      routeFetch({ 'manifest.json': () => ok(remoteManifest), 'cmedIndex.json': () => ok(fixture) })
+      const onLoaded = jest.fn()
+      const { result } = render({ onLoaded })
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+      const info = onLoaded.mock.calls[0][0]
+      expect(info.source).toBe('network')
+      for (const key of ['fetchMs', 'decodeMs', 'writeMs'] as const) {
+        expect(info[key]).toBeGreaterThanOrEqual(0)
+      }
+      expect(info.readMs).toBeUndefined()
+      expect(phaseSum(info)).toBeLessThanOrEqual(info.durationMs + PHASES.length)
+    })
+
+    it('rede caiu sem cache: offline sem fases de decode', async () => {
+      fetchMock.mockRejectedValue(new TypeError('Network request failed'))
+      const onLoaded = jest.fn()
+      const { result } = render({ onLoaded })
+      await waitFor(() => expect(result.current.status).toBe('offline'))
+      const info = onLoaded.mock.calls[0][0]
+      expect(info.decodeMs).toBeUndefined()
+      expect(info.durationMs).toBeGreaterThanOrEqual(0)
+    })
   })
 
   it('2ª abertura na mesma sessão: ready no 1º render, sem ler o disco nem reportar carga (C-C6)', async () => {
