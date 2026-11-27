@@ -20,9 +20,21 @@ export interface FormInputProps {
   secureTextEntry?: boolean
   multiline?: boolean
   numberOfLines?: number
+  /** Altura mínima da caixa multilinha (px); sem valor, o padrão do componente. */
+  multilineMinHeight?: number
   maxLength?: number
   returnKeyType?: any
   onSubmitEditing?: any
+}
+
+const MULTILINE_PADDING_V = 12
+
+function multilineHeightStyles(multiline?: boolean, minHeight?: number) {
+  if (!multiline || !minHeight) return { container: null, input: null }
+  return {
+    container: { minHeight },
+    input: { minHeight: minHeight - MULTILINE_PADDING_V * 2 },
+  }
 }
 
 export default function FormInput({
@@ -44,10 +56,12 @@ export default function FormInput({
   secureTextEntry,
   multiline,
   numberOfLines,
+  multilineMinHeight,
   maxLength,
   returnKeyType,
   onSubmitEditing,
 }: FormInputProps) {
+  const heightStyles = multilineHeightStyles(multiline, multilineMinHeight)
   const [focused, setFocused] = useState(false)
   // Animated.Value criado uma única vez (lazy init via useState)
   const [borderColorAnim] = useState(() => new Animated.Value(0))
@@ -104,12 +118,17 @@ export default function FormInput({
         style={[
           styles.inputContainer,
           multiline && styles.inputContainerMultiline,
+          heightStyles.container,
           disabled && styles.inputContainerDisabled,
           { borderColor },
         ]}
       >
         <TextInput
-          style={[styles.input, multiline && styles.inputMultiline]}
+          style={[
+            styles.input,
+            multiline && styles.inputMultiline,
+            heightStyles.input,
+          ]}
           value={value}
           placeholder={placeholder}
           placeholderTextColor={colors.text.muted}
@@ -185,7 +204,7 @@ const styles = StyleSheet.create({
   inputContainerMultiline: {
     height: undefined,
     minHeight: 96,
-    paddingVertical: 12,
+    paddingVertical: MULTILINE_PADDING_V,
   },
   inputContainerDisabled: {
     backgroundColor: colors.neutral[50],

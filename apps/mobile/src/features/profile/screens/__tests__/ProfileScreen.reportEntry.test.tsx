@@ -35,6 +35,7 @@ jest.mock('@platform/updates/bundleInfo', () => ({
   formatChannelLabel: () => '',
 }))
 jest.mock('@features/_dev/components/DevBadge', () => () => null)
+jest.mock('@shared/components/feedback/Toast', () => ({ useToast: () => ({ show: jest.fn() }) }))
 jest.mock('@platform/supabase/nativeSupabaseClient', () => ({ supabase: { auth: {} } }))
 
 import ProfileScreen from '../ProfileScreen'

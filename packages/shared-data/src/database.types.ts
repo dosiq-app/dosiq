@@ -1574,6 +1574,7 @@ export type Database = {
           state: string | null
           stock_paused_at: string | null
           stock_tracking_enabled: boolean
+          store_review_clicked_at: string | null
           telegram_chat_id: string | null
           timezone: string | null
           updated_at: string | null
@@ -1607,6 +1608,7 @@ export type Database = {
           state?: string | null
           stock_paused_at?: string | null
           stock_tracking_enabled?: boolean
+          store_review_clicked_at?: string | null
           telegram_chat_id?: string | null
           timezone?: string | null
           updated_at?: string | null
@@ -1640,6 +1642,7 @@ export type Database = {
           state?: string | null
           stock_paused_at?: string | null
           stock_tracking_enabled?: boolean
+          store_review_clicked_at?: string | null
           telegram_chat_id?: string | null
           timezone?: string | null
           updated_at?: string | null

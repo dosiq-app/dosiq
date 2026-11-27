@@ -480,6 +480,7 @@ escada que termina em manutenção **não encerra**, e marcar `weaning_complete`
 |---|---|---|---|---|
 | `profile_updated` | ✅ mobile (#842) | perfil salvo | `{}` — ⚠️ sem `surface`/`field` | investimento/ativação (preencheu perfil?) |
 | `mode_changed` | ✅ mobile (#842) | muda `complexity_override` (densidade) | `mode: simple\|complex\|auto` — ⚠️ sem `surface` | troca de persona; **re-registra a super property `mode`** (§3.2) |
+| `store_review_link_tapped` | ✅ mobile (047 A) | toque em "Avaliar na App Store/Google Play" (Perfil › Sobre o dosiq ou topo de Problema ou sugestão) | `placement: profile_about\|feedback_screen_top`, `surface: mobile` | o atalho permanente gera ida à loja? onde converte mais? (a loja não informa se a pessoa avaliou — cruzar com a contagem de avaliações) |
 
 > **Nunca** nome/data de nascimento/cidade/telefone (§6) — só que a *ação* ocorreu, no máximo o
 > `field` alterado como enum. Settings de notificação já vivem em `notification_preference_changed`
