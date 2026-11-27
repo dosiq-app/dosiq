@@ -40,7 +40,9 @@ export function isTransferRedacted(settings: TransferRedactionSettings | null | 
  */
 // 105 (FR-017 · ADR-120): `supply_reminder` entra com a prova de schema — `supplyReminderDataSchema`
 // é `.strict()` e não tem campo de remédio, dose ou plano.
-export const TRANSFER_NEUTRAL_KINDS = Object.freeze(['consent_prune_notice', 'prune_admin_alert', 'supply_reminder'])
+// 126: `reactivation_notice` entra com a mesma prova — `reactivationNoticeDataSchema` é `.strict()` e só
+// carrega a letra de uma variante fixa no código (REACTIVATION_VARIANTS), sem texto livre.
+export const TRANSFER_NEUTRAL_KINDS = Object.freeze(['consent_prune_notice', 'prune_admin_alert', 'supply_reminder', 'reactivation_notice'])
 
 // 120 B (decisão PO 13/11): sem possessivo (INV-3).
 const DOSE_GENERIC = { title: '💊 Hora do remédio', body: 'Abra o dosiq para ver a dose.' }

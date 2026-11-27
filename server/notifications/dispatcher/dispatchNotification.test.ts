@@ -665,3 +665,29 @@ describe('dispatchNotification — supply_reminder (105)', () => {
     expect(mockBot.sendMessage).not.toHaveBeenCalled()
   })
 })
+
+describe('126 — context.awaitLog', () => {
+  afterEach(() => { vi.clearAllMocks(); vi.clearAllTimers() })
+
+  it('com awaitLog, o log já foi gravado quando o dispatch retorna', async () => {
+    const { notificationLogRepository } = await import('../repositories/notificationLogRepository.js')
+    let resolveCreate: (v: unknown) => void = () => {}
+    let written = false
+    ;(notificationLogRepository.create as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise((r) => { resolveCreate = (v) => { written = true; r(v) } }),
+    )
+    const pending = dispatchNotification({
+      userId: 'user-126', kind: 'reactivation_notice', data: { variant: 'A' }, channels: [],
+      context: { correlationId: 'c-126', awaitLog: true },
+      repositories: mockRepositories as never, bot: mockBot as never, expoClient: mockExpoClient as never,
+    })
+    let settled = false
+    pending.then(() => { settled = true })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(settled).toBe(false)
+    resolveCreate({ id: 'log-126' })
+    await pending
+    expect(written).toBe(true)
+    expect(notificationLogRepository.create).toHaveBeenCalledWith(expect.objectContaining({ notification_type: 'reactivation_notice' }))
+  })
+})
