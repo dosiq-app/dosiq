@@ -100,13 +100,8 @@ export async function getStockData(userId) {
 // FASE 3 S3.2 G2 — composição das factories de @dosiq/core
 // ───────────────────────────────────────────────────────────────────────────
 
-// TODO(040-strict): apps/mobile pina @supabase/supabase-js 2.91.0 vs ^2.90.1 na
-// factory do core — tipos nominais do client divergem entre versões (private
-// 'supabaseUrl' não bate estruturalmente). Fix real = alinhar versão (fora do lote).
-const typedClient = nativeSupabaseClient as any
-
-const stockRepo = createStockRepository({ client: typedClient, getUserId })
-const purchaseRepo = createPurchaseRepository({ client: typedClient, getUserId })
+const stockRepo = createStockRepository({ client: nativeSupabaseClient, getUserId })
+const purchaseRepo = createPurchaseRepository({ client: nativeSupabaseClient, getUserId })
 
 // ── Casca de analytics (spec 065 PR C2 / TC-3) ─────────────────────────────────────────────────
 // `stock_added` = COMPRA (decisão PO 26/09, analysis-prC2 G-2). Saldo inicial já é `stock_opt_in`

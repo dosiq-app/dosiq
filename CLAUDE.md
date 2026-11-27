@@ -30,6 +30,8 @@ server/bot/        Telegram bot
 .agent/            DEVFLOW — rules/APs/ADRs/journal
 ```
 
+⚠️ `apps/web` está em modo manutenção (feature-frozen): NUNCA use arquivos de `apps/web/` como `Mirror:` para código novo em `apps/mobile` ou `@dosiq/core`.
+
 ## Path Aliases (`apps/web/vite.config.js`)
 
 ```
@@ -47,6 +49,7 @@ Componentes `PascalCase.tsx` · hooks `usePascal` · constantes `SCREAMING_SNAKE
 **Ordem React (TDZ):** States → Memos → Effects → Handlers.
 **Imports:** React/libs → componentes → hooks/utils → services/schemas → CSS.
 Migrations documentadas em: `./docs/migrations/`
+**Higiene de código:** PROIBIDO comentário de diário de obra (spec/fatia/smoke/RC6) no código — só invariante atemporal de domínio/SO. PROIBIDO novo `eslint-disable` de hooks/sintaxe ou `supabase.from()` direto em `screens/` e `components/`.
 
 ## TypeScript — regime e gate
 
@@ -136,6 +139,7 @@ Factory em `@dosiq/core/repositories/` (DI de `client`/`getUserId`/selects); val
 
 ## DEVFLOW C5 — antes do commit
 
+- **Linter/Test-first, Prose-last:** erro sintático repetível → regra em `eslint.config.js`; cálculo puro → teste/`fast-check` no `@dosiq/core`; só vira `AP-NNN`/`R-NNN` em prosa o que for contrato cross-camada/banco/nativo não verificável por AST.
 - Bug não-trivial → `AP-NNN` · padrão novo → `R-NNN` · decisão → `ADR-NNN` (índices + detail em `.agent/memory/`)
 - Entrega → journal (`.agent/memory/journal/YYYY-WWW.jsonl`) + `state.json` (counter)
 - `plans/` é **local-only** (gitignored) — refs em docs marcam "(local-only, não versionado)"

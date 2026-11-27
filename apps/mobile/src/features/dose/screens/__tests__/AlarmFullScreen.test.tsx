@@ -11,24 +11,17 @@ import { formatMedicineConcentration, formatDoseItem } from '@dosiq/core'
 
 // --- Mocks de módulo ---
 
-const mockIn = jest.fn()
-jest.mock('@platform/supabase/nativeSupabaseClient', () => ({
-  supabase: {
-    from: jest.fn(() => ({
-      select: jest.fn(() => ({ in: (...a) => mockIn(...a) })),
-    })),
-  },
-}))
-
 const mockCancelAlarm = jest.fn()
 jest.mock('@platform/alarms/alarmService', () => ({
   cancelAlarm: (...a) => mockCancelAlarm(...a),
   scheduleSnooze: jest.fn(),
 }))
 
+const mockFetchDoseInstanceStatuses = jest.fn()
 jest.mock('@platform/alarms/quickDoseRegistration', () => ({
   registerTaken: jest.fn(),
   registerSkip: jest.fn(),
+  fetchDoseInstanceStatuses: (...a) => mockFetchDoseInstanceStatuses(...a),
 }))
 
 jest.mock('lucide-react-native', () => ({
@@ -74,7 +67,7 @@ const SINGLE = {
 beforeEach(() => {
   jest.clearAllMocks()
   mockAnchors = {}
-  mockIn.mockResolvedValue({ data: [{ id: 'inst-1', status: 'pending' }], error: null })
+  mockFetchDoseInstanceStatuses.mockResolvedValue([{ id: 'inst-1', status: 'pending' }])
 })
 
 afterEach(() => {
@@ -84,7 +77,7 @@ afterEach(() => {
 
 describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
   it('status ≠ pending → cancela alarme e fecha sozinho', async () => {
-    mockIn.mockResolvedValue({ data: [{ id: 'inst-1', status: 'taken' }], error: null })
+    mockFetchDoseInstanceStatuses.mockResolvedValue([{ id: 'inst-1', status: 'taken' }])
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
     await waitFor(() => expect(mockCancelAlarm).toHaveBeenCalledWith('inst-1'))
@@ -96,7 +89,7 @@ describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
     scheduleSnooze.mockImplementationOnce(() => new Promise(() => {})) // setSnoozedUntil preso
     const nav = makeNav()
     const { getByText } = render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     fireEvent.press(getByText('Soneca 5 min', { exact: false }))
     expect(scheduleSnooze).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(nav.goBack).toHaveBeenCalledTimes(1), { timeout: SNOOZE_CLOSE_CAP_MS + 1000 })
@@ -105,7 +98,7 @@ describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
   it('status pending → não fecha nem cancela', async () => {
     const nav = makeNav()
     const { getByText } = render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     expect(mockCancelAlarm).not.toHaveBeenCalled()
     expect(nav.goBack).not.toHaveBeenCalled()
     expect(getByText('Selozok', { exact: false })).toBeTruthy()
@@ -115,9 +108,9 @@ describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
   it('103 C-1: tela aberta (pending) + escrita resolve a dose ⇒ revalida e fecha sozinha', async () => {
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(1))
     expect(nav.goBack).not.toHaveBeenCalled()
-    mockIn.mockResolvedValue({ data: [{ id: 'inst-1', status: 'taken' }], error: null })
+    mockFetchDoseInstanceStatuses.mockResolvedValue([{ id: 'inst-1', status: 'taken' }])
     emitDoseChanged()
     await waitFor(() => expect(nav.goBack).toHaveBeenCalledTimes(1))
     expect(mockCancelAlarm).toHaveBeenCalledWith('inst-1')
@@ -126,20 +119,20 @@ describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
   it('103 C-1: escrita que mantém pending (Adiar) ⇒ revalida e NÃO fecha', async () => {
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(1))
     emitDoseChanged()
-    await waitFor(() => expect(mockIn).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(2))
     expect(nav.goBack).not.toHaveBeenCalled()
   })
 
   it('RC6 #880: fechamento duplo (botão + revalidação) ⇒ goBack 1× só', async () => {
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalledTimes(1))
-    mockIn.mockResolvedValue({ data: [{ id: 'inst-1', status: 'taken' }], error: null })
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(1))
+    mockFetchDoseInstanceStatuses.mockResolvedValue([{ id: 'inst-1', status: 'taken' }])
     emitDoseChanged()
     emitDoseChanged()
-    await waitFor(() => expect(mockIn).toHaveBeenCalledTimes(3))
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(3))
     await new Promise((r) => setImmediate(r))
     expect(nav.goBack).toHaveBeenCalledTimes(1)
   })
@@ -147,26 +140,26 @@ describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
   it('103 C-1: tela desmontada ⇒ escrita não revalida (unsubscribe)', async () => {
     const nav = makeNav()
     const { unmount } = render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(1))
     unmount()
     emitDoseChanged()
     await new Promise((r) => setImmediate(r))
-    expect(mockIn).toHaveBeenCalledTimes(1)
+    expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(1)
   })
 
   it('falha de leitura → mantém a tela aberta (não esconde alarme legítimo)', async () => {
-    mockIn.mockResolvedValue({ data: null, error: { message: 'net down' } })
+    mockFetchDoseInstanceStatuses.mockResolvedValue([])
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     expect(nav.goBack).not.toHaveBeenCalled()
   })
 
   it('grupo parcial (1 pending) → mantém a tela', async () => {
-    mockIn.mockResolvedValue({
-      data: [{ id: 'a', status: 'taken' }, { id: 'b', status: 'pending' }],
-      error: null,
-    })
+    mockFetchDoseInstanceStatuses.mockResolvedValue([
+      { id: 'a', status: 'taken' },
+      { id: 'b', status: 'pending' },
+    ])
     const nav = makeNav()
     const groupParams = {
       isGrouped: 'true',
@@ -177,15 +170,15 @@ describe('AlarmFullScreen — auto-dismiss (US2/FR-004)', () => {
       ]),
     }
     render(<AlarmFullScreen navigation={nav} route={{ params: groupParams }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     expect(nav.goBack).not.toHaveBeenCalled()
   })
 
   it('grupo todas resolvidas → cancela o id do grupo (ts) + ids individuais e fecha', async () => {
-    mockIn.mockResolvedValue({
-      data: [{ id: 'a', status: 'taken' }, { id: 'b', status: 'skipped_user' }],
-      error: null,
-    })
+    mockFetchDoseInstanceStatuses.mockResolvedValue([
+      { id: 'a', status: 'taken' },
+      { id: 'b', status: 'skipped_user' },
+    ])
     const nav = makeNav()
     const groupParams = {
       isGrouped: 'true',
@@ -210,7 +203,7 @@ describe('AlarmFullScreen — transparência clínica (US3/FR-006/007)', () => {
     const expectedConc = formatMedicineConcentration({ dosage_per_pill: '25', dosage_unit: 'mg', concentration_volume_ml: '' })
     const expectedQty = formatDoseItem({ dosagePerIntake: 2, intakeUnit: '', dosageUnit: 'mg', dosagePerPill: '25', unitsPerMl: '' })
     const { getByText } = render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     expect(getByText(expectedConc)).toBeTruthy()
     expect(getByText(`Dose: ${expectedQty}`)).toBeTruthy()
   })
@@ -229,7 +222,7 @@ describe('AlarmFullScreen — transparência clínica (US3/FR-006/007)', () => {
     }
     const expectedQty = formatDoseItem({ dosagePerIntake: 10, intakeUnit: 'UI', dosageUnit: 'ui/ml', dosagePerPill: '100', unitsPerMl: '100' })
     const { getByText } = render(<AlarmFullScreen navigation={nav} route={{ params: injectable }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     expect(expectedQty).toMatch(/UI/)
     expect(expectedQty).not.toMatch(/un\./)
     expect(getByText(`Dose: ${expectedQty}`)).toBeTruthy()
@@ -241,7 +234,7 @@ describe('AlarmFullScreen — soneca feita fora da tela (054 C-21)', () => {
   it('🔴 âncora de soneca no futuro ⇒ fecha SEM cancelar (a soneca armou o mesmo id)', async () => {
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalledTimes(1))
     mockAnchors = { 'inst-1': Date.now() + 5 * 60 * 1000 }
     emitDoseChanged()
     await waitFor(() => expect(nav.goBack).toHaveBeenCalledTimes(1))
@@ -252,16 +245,19 @@ describe('AlarmFullScreen — soneca feita fora da tela (054 C-21)', () => {
     mockAnchors = { 'inst-1': Date.now() + 5 * 1000 }
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: SINGLE }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     expect(nav.goBack).not.toHaveBeenCalled()
   })
 
   it('grupo: só fecha se TODAS as doses têm soneca futura', async () => {
     mockAnchors = { a: Date.now() + 5 * 60 * 1000 }
-    mockIn.mockResolvedValue({ data: [{ id: 'a', status: 'pending' }, { id: 'b', status: 'pending' }], error: null })
+    mockFetchDoseInstanceStatuses.mockResolvedValue([
+      { id: 'a', status: 'pending' },
+      { id: 'b', status: 'pending' },
+    ])
     const nav = makeNav()
     render(<AlarmFullScreen navigation={nav} route={{ params: { ...SINGLE, isGrouped: 'true', doseInstanceId: '123', doseInstanceIds: 'a,b', groupedDoses: '[]' } }} />)
-    await waitFor(() => expect(mockIn).toHaveBeenCalled())
+    await waitFor(() => expect(mockFetchDoseInstanceStatuses).toHaveBeenCalled())
     expect(nav.goBack).not.toHaveBeenCalled()
   })
 })

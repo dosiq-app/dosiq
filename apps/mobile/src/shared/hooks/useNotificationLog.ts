@@ -259,3 +259,22 @@ export function useNotificationLog(options: UseNotificationLogOptions = {}) {
     refresh: load,
   }
 }
+
+export interface RecentDoseLogRow {
+  id: string
+  protocol_id: string | null
+  taken_at: string | null
+}
+
+export async function fetchRecentDoseLogs(
+  userId: string,
+  sinceIso: string,
+): Promise<{ data: RecentDoseLogRow[]; error: { message: string } | null }> {
+  const { data, error } = await supabase
+    .from('medicine_logs')
+    .select('id, protocol_id, taken_at')
+    .eq('user_id', userId)
+    .gte('taken_at', sinceIso)
+  if (error) return { data: [], error }
+  return { data: data ?? [], error: null }
+}

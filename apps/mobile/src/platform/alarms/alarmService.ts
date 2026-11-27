@@ -97,7 +97,7 @@ export const MAX_SNOOZE_ATTEMPTS = 3
 // da sessão persistida (AsyncStorage) — funciona também no handler headless do Android.
 // Retorna null se não houver sessão → o service trata como evento órfão (não insere).
 const snoozeAudit = createCriticalAuditService({
-  client: supabase as any,
+  client: supabase,
   getUserId: async () => {
     const { data } = await supabase.auth.getUser()
     return data?.user?.id ?? null
@@ -871,7 +871,7 @@ export async function scheduleSnooze({
 
   // Persiste snoozed_until no DB para que syncAlarms não re-agende no próximo sync.
   try {
-    const repo = createDoseInstanceRepository({ client: supabase as any })
+    const repo = createDoseInstanceRepository({ client: supabase })
     await Promise.all(snoozedIds.map((id) => repo.setSnoozedUntil(id, nextTs)))
   } catch (err) {
     if (__DEV__) console.warn('[alarmService] setSnoozedUntil falhou', doseInstanceId, err?.message)

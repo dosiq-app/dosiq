@@ -53,7 +53,8 @@ const baseFields = {
   // a escrita: sob `.passthrough()` o `--strict` aceitaria `incident_count: "muitos"` ou
   // `last_referenced: None` (o valor legado literal) e ficaria verde com lixo nos 611 arquivos.
   incident_count: z.number().int().min(0).optional(),
-  last_referenced: dateStringSchema.optional()
+  last_referenced: dateStringSchema.optional(),
+  automated_by: z.string().min(1, 'automated_by cannot be empty').optional()
 };
 
 const hotSchema = z

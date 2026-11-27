@@ -7,6 +7,13 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Guardrails de qualidade, limpeza de queries/timers mobile e testes de propriedade no core (LHF)
+
+- **Mobile / Core / Tooling** (`Changed`, **`no-user-impact`** — sem bump em `apps/web/package.json`; canal mobile:  **patch** `APP_VERSION` 0.34.39 → **0.34.40**; build interno do trem v0.35 — loja em 0.35.0, 100% JS/TS sem alteração visível ao usuário; `Store Note Readiness: N/A`, `R-314`):
+  - **Camada visual mobile:** extraídas para services/helpers as 4 queries diretas `supabase.from(...)` em `StockDetailScreen`, `PurchaseHistoryScreen`, `AlarmFullScreen` e `NotificationInboxScreen`, e removidos timers soltos (`setTimeout`) em componentes visuais (`DoseWeightPrompt`, `AlarmFullScreen`, `MeasureLogSheet`, `MedicineAnvisaSheet`).
+  - **ESLint AST & catraca:** adicionados seletores proibindo `supabase.from()` direto em UI e `setTimeout` direto em `components/` mobile (zero `ignores` novos) e tetos em `strict-island.sh` contra novos `eslint-disable` de `react-hooks` e `no-restricted-syntax`.
+  - **Tipagem Supabase & Core:** `@supabase/supabase-js` fixado em `2.105.4` exato na raiz e no mobile (instância única deduplicada; mobile sobe de `2.91.0` para a mesma versão que web/`api/` já rodam em produção — web/`api/` sem mudança de runtime; `server/` tem lockfile próprio e fica fora), removidos casts `as any` do cliente Supabase no mobile e adicionada suíte piloto de *property-based testing* (`fast-check`) no `@dosiq/core`.
+
 ### Alarme na tela bloqueada só pede o que falta; Hoje e Tratamentos (spec 128, Fatias A, C e D)
 
 - **Mobile** (`Fixed`/`Changed`, **patch** `APP_VERSION` 0.34.37 → 0.34.38 → **0.34.39**; build interno do trem v0.35 — loja em 0.35.0; canal: **build de loja** — código nativo novo no módulo Android, R-314):

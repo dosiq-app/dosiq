@@ -21,9 +21,8 @@ import MeasureLogSheet from '../MeasureLogSheet'
 
 const VALUE_LABEL_KG = 'Valor da medida em kg'
 
-// O sheet faz reset() num setTimeout(0) ao abrir (MeasureLogSheet: useMeasureSheetState). Esperar
-// esse tick antes de interagir — senão o reset apaga o que o teste digitou (no aparelho, o usuário
-// nunca digita antes dele).
+// O sheet re-semeia o formulário no render em que `open`/edição/tipo mudam (useMeasureSheetState).
+// O tick abaixo só deixa assentar efeitos de montagem antes de interagir.
 const renderSheet = async (props = {}) => {
   const onSaved = jest.fn((p) => Promise.resolve(p))
   const onClose = jest.fn()
@@ -79,5 +78,55 @@ describe('MeasureLogSheet — caracterização (069 A1)', () => {
     fireEvent.press(getByLabelText('Salvar medida'))
     expect(await findByText('Não foi possível salvar. Nada foi gravado — tente novamente.')).toBeTruthy()
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('MeasureLogSheet — re-semeadura do formulário ao abrir', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+    jest.clearAllTimers()
+  })
+
+  const ITEM_A = { id: 'm-a', type: 'peso', value: 72.5, value_secondary: null, context: null, measured_at: null }
+  const ITEM_B = { id: 'm-b', type: 'peso', value: 80, value_secondary: null, context: null, measured_at: null }
+  const valueOf = (utils) => utils.getByLabelText(VALUE_LABEL_KG).props.value
+
+  it('edição abre com o valor do item', async () => {
+    const utils = await renderSheet({ editItem: ITEM_A })
+    expect(valueOf(utils)).toBe('72,5')
+  })
+
+  it('fechar e reabrir em outro item re-semeia os campos', async () => {
+    const utils = await renderSheet({ editItem: ITEM_A })
+    const base = { onClose: utils.onClose, onSaved: utils.onSaved, lockedType: 'peso' }
+    utils.rerender(<MeasureLogSheet {...base} open={false} editItem={ITEM_A} />)
+    utils.rerender(<MeasureLogSheet {...base} open editItem={ITEM_B} />)
+    expect(valueOf(utils)).toBe('80')
+  })
+
+  it('reabrir o MESMO item com valores atualizados re-semeia (open alterna)', async () => {
+    const utils = await renderSheet({ editItem: ITEM_A })
+    const base = { onClose: utils.onClose, onSaved: utils.onSaved, lockedType: 'peso' }
+    utils.rerender(<MeasureLogSheet {...base} open={false} editItem={ITEM_A} />)
+    utils.rerender(<MeasureLogSheet {...base} open editItem={{ ...ITEM_A, value: 70 }} />)
+    expect(valueOf(utils)).toBe('70')
+  })
+
+  it('re-render do pai com o sheet aberto (mesmo item, objeto novo) NÃO apaga o que foi digitado', async () => {
+    const utils = await renderSheet({ editItem: ITEM_A })
+    fireEvent.changeText(utils.getByLabelText(VALUE_LABEL_KG), '73')
+    utils.rerender(
+      <MeasureLogSheet onClose={utils.onClose} onSaved={utils.onSaved} lockedType="peso" open editItem={{ ...ITEM_A }} />
+    )
+    expect(valueOf(utils)).toBe('73')
+  })
+
+  it('reabrir em criação depois de digitar limpa o campo', async () => {
+    const utils = await renderSheet()
+    const base = { onClose: utils.onClose, onSaved: utils.onSaved, lockedType: 'peso' }
+    fireEvent.changeText(utils.getByLabelText(VALUE_LABEL_KG), '90')
+    utils.rerender(<MeasureLogSheet {...base} open={false} />)
+    utils.rerender(<MeasureLogSheet {...base} open />)
+    expect(valueOf(utils)).toBe('')
   })
 })

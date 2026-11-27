@@ -21,6 +21,7 @@ function makeBuilder(result: any) {
     eq:          vi.fn(function (...a) { this._calls.push(['eq', a]); return this }),
     is:          vi.fn(function (...a) { this._calls.push(['is', a]); return this }),
     lte:         vi.fn(function (...a) { this._calls.push(['lte', a]); return this }),
+    gt:          vi.fn(function (...a) { this._calls.push(['gt', a]); return this }),
     in:          vi.fn(function (...a) { this._calls.push(['in', a]); return this }),
     order:       vi.fn(function (...a) { this._calls.push(['order', a]); return this }),
     single:      vi.fn(function ()     { this._calls.push(['single', []]); return Promise.resolve(result) }),
@@ -106,6 +107,35 @@ describe('createStockRepository — parity', () => {
       const badClient = makeClient({ data: [], error: null })
       const repo = createStockRepository({ client: badClient, getUserId: async () => 'not-a-uuid' })
       await expect(repo.getMedicinesWithStockOrActiveProtocol()).rejects.toThrow()
+    })
+  })
+
+  // ── getActiveLotsByMedicine ──
+  describe('getActiveLotsByMedicine', () => {
+    it('lê lotes com saldo > 0 do medicamento, escopado ao usuário', async () => {
+      const lots = [{ id: 's-1', purchase_id: 'p-1', quantity: 3, opened_at: null }]
+      client = makeClient({ data: lots, error: null })
+      const repo = createStockRepository({ client, getUserId })
+      await expect(repo.getActiveLotsByMedicine('med-1')).resolves.toEqual(lots)
+      expect(client.from).toHaveBeenCalledWith('stock')
+      expect(client._builder._calls).toEqual([
+        ['select', ['id, purchase_id, quantity, opened_at']],
+        ['eq', ['medicine_id', 'med-1']],
+        ['eq', ['user_id', FAKE_USER]],
+        ['gt', ['quantity', 0]],
+      ])
+    })
+
+    it('data null ⇒ []', async () => {
+      client = makeClient({ data: null, error: null })
+      const repo = createStockRepository({ client, getUserId })
+      await expect(repo.getActiveLotsByMedicine('med-1')).resolves.toEqual([])
+    })
+
+    it('erro do banco propaga (a tela decide o fallback)', async () => {
+      client = makeClient({ data: null, error: { message: 'boom' } })
+      const repo = createStockRepository({ client, getUserId })
+      await expect(repo.getActiveLotsByMedicine('med-1')).rejects.toEqual({ message: 'boom' })
     })
   })
 

@@ -12,9 +12,9 @@ import { Check, X, Pill, Clock } from 'lucide-react-native'
 import { formatMedicineConcentration, formatDoseItem } from '@dosiq/core'
 import MedicineIcon from '@shared/components/ui/MedicineIcon'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
+import { settleWithin } from '@shared/utils/withTimeout'
 import { ROUTES } from '@navigation/routes'
-import { supabase } from '@platform/supabase/nativeSupabaseClient'
-import { registerTaken, registerSkip } from '@platform/alarms/quickDoseRegistration'
+import { registerTaken, registerSkip, fetchDoseInstanceStatuses } from '@platform/alarms/quickDoseRegistration'
 import { SURFACES, REMINDER_SOURCES } from '@platform/analytics/analyticsEvents'
 import { scheduleSnooze, cancelAlarm } from '@platform/alarms/alarmService'
 import { onDoseChanged } from '@platform/alarms/doseChangedBus'
@@ -57,11 +57,8 @@ function useAlarmAutoDismiss({ isGrouped, doseInstanceId, doseInstanceIds, onClo
         /* âncora ilegível → segue para o banco */
       }
       try {
-        const { data: rows, error } = await supabase
-          .from('dose_instances')
-          .select('id,status')
-          .in('id', ids)
-        if (error || cancelled || !rows || rows.length === 0) return
+        const rows = await fetchDoseInstanceStatuses(ids)
+        if (cancelled || rows.length === 0) return
         if (rows.some((r) => r.status === 'pending')) return
         // O alarme agrupado é agendado com id = timestamp (recebido aqui como doseInstanceId),
         // não com os ids individuais (que só existem como linhas em dose_instances). Incluir o
@@ -217,10 +214,7 @@ export default function AlarmFullScreen({ navigation, route }) {
       // C-B4 (084 B): a parte que importa (cancelar o som, agendar a soneca, âncora) é local e leva
       // <0,2 s; o resto (snoozed_until, auditoria) depende da rede. A tela fecha no que vier primeiro
       // — a soneca termina em segundo plano. Antes: rede presa ⇒ botões travados para sempre.
-      await Promise.race([
-        snoozeTask(),
-        new Promise((resolve) => setTimeout(resolve, SNOOZE_CLOSE_CAP_MS)),
-      ])
+      await settleWithin(snoozeTask(), SNOOZE_CLOSE_CAP_MS)
     } finally {
       close()
     }

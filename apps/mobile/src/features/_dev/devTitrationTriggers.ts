@@ -30,10 +30,10 @@
 // notifee). Disparar o gatilho pelo notifee testaria um caminho que o push real não percorre.
 import * as Notifications from 'expo-notifications'
 import { getRawNow, addDays } from '@dosiq/core'
+import type { Database } from '@dosiq/shared-data'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import { TITRATION_CATEGORY_ID, TITRATION_ACTION } from '@platform/notifications/titrationNotificationActions'
 
-const client = supabase as any
 
 async function getUserId(): Promise<string> {
   const { data } = await supabase.auth.getUser()
@@ -62,7 +62,7 @@ export interface DevSwitchTarget {
  */
 export async function devFindSwitchTarget(): Promise<DevSwitchTarget | null> {
   const userId = await getUserId()
-  const { data, error } = await client
+  const { data, error } = await supabase
     .from('titration_steps')
     .select('id, titration_id, position, status, medicine_id, medicine:medicines(name)')
     .eq('user_id', userId)
@@ -116,7 +116,7 @@ export async function devArmPendingSwitch(daysWaiting = 0): Promise<DevSwitchTar
     )
   }
 
-  const { data: cur, error: curErr } = await client
+  const { data: cur, error: curErr } = await supabase
     .from('titration_steps')
     .select('duration_days')
     .eq('id', target.currentStepId)
@@ -152,7 +152,7 @@ async function normalizeLadder(
   opts: { startedAt: string; pendingStatus?: 'pending_confirmation' | 'upcoming' },
 ): Promise<void> {
   const pendingStatus = opts.pendingStatus ?? 'pending_confirmation'
-  const { data: all, error } = await client
+  const { data: all, error } = await supabase
     .from('titration_steps')
     .select('id, position')
     .eq('titration_id', target.titrationId)
@@ -165,7 +165,7 @@ async function normalizeLadder(
 
   for (const step of all ?? []) {
     const pos = Number(step.position)
-    let patch: Record<string, unknown>
+    let patch: Database['public']['Tables']['titration_steps']['Update']
     if (pos < boundaryPos) {
       // `titration_steps_current_exige_started_check`: só `current` exige started_at; concluída
       // sem data é aceito e não é o alvo do teste.
@@ -177,7 +177,7 @@ async function normalizeLadder(
     } else {
       patch = { status: 'upcoming', started_at: null, ended_at: null }
     }
-    const { error: e } = await client
+    const { error: e } = await supabase
       .from('titration_steps')
       .update(patch)
       .eq('id', step.id)

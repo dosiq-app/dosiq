@@ -20,6 +20,7 @@ import {
   DOSE_ACTIVITY_STATES,
   getRawNow,
   parseISO,
+  parseTimestamp,
 } from '@dosiq/core'
 import {
   buildSurfaceNotification,
@@ -92,8 +93,7 @@ function transitionData(doseItem, atMs) {
 function deliveredOccurredAt(data, fallbackIso) {
   const ms = Number(data?.transitionAt)
   if (!data?.transitionAt || !Number.isFinite(ms)) return fallbackIso
-  // eslint-disable-next-line no-restricted-syntax
-  return new Date(ms).toISOString()
+  return parseTimestamp(ms).toISOString()
 }
 
 /** Entrega (bg|fg) passa pelo mesmo `emitOnce` dos arms (RC3 E3): M2 vira no-op. Fail-open. @private */
@@ -155,15 +155,12 @@ async function scheduleNextBoundary(doseItem, fromMs, discreet) {
   // `pending` antes do registro não pode re-agendar boundary depois do cancel.
   if (await isDoseResolved(doseItem.instanceId)) return
 
-  // `next` é epoch ms (numérico, sem ambiguidade de tz — R-020 visa strings 'YYYY-MM-DD').
-  // eslint-disable-next-line no-restricted-syntax
-  const at = new Date(next)
+  const at = parseTimestamp(next)
   // Spec 084 F-A: as janelas são `[x, y)`; NO instante do boundary a dose ainda está no intervalo
   // anterior. Derivar em `at` exibia o estado velho (upcoming só em T−10, late só no cutoff) e, com a
   // tolerância default (= cap do cronômetro), o END nunca era agendado. O estado é o de logo depois;
   // o cronômetro continua ancorado em `at`.
-  // eslint-disable-next-line no-restricted-syntax
-  const act = deriveDoseActivityState(doseItem, new Date(next + 1))
+  const act = deriveDoseActivityState(doseItem, parseTimestamp(next + 1))
   const transition = transitionData(doseItem, next)
   // Boundary terminal (missed) ou sem estado → encerra a superfície nesse instante.
   if (!act || act.state === DOSE_ACTIVITY_STATES.MISSED || act.state === DOSE_ACTIVITY_STATES.DONE) {

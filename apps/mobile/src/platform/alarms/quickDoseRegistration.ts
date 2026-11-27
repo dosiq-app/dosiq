@@ -34,7 +34,7 @@ import { dismissPushForResolvedDoses } from '@platform/notifications/pushTray'
 // a trilha de uma dose pulada terminava em `alarm_fired` — indistinguível de "tocou e ninguém fez
 // nada", que é exatamente a leitura que a US5 precisa fazer. Fail-open (o service nunca lança).
 const skipAudit = createCriticalAuditService({
-  client: supabase as any,
+  client: supabase,
   getUserId: async () => {
     const { data } = await supabase.auth.getUser()
     return data?.user?.id ?? null
@@ -500,4 +500,15 @@ export async function handleAlarmAction(event) {
 
   const pressActionId = SURFACE_TO_ALARM_ACTION[rawActionId] ?? rawActionId
   return dispatchCanonicalAction(pressActionId, data)
+}
+
+export async function fetchDoseInstanceStatuses(
+  ids: string[],
+): Promise<Array<{ id: string; status: string }>> {
+  const { data, error } = await supabase
+    .from('dose_instances')
+    .select('id,status')
+    .in('id', ids)
+  if (error || !data) return []
+  return data
 }

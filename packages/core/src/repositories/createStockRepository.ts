@@ -8,6 +8,7 @@
 // Métodos (nomes mobile — sem param userId, resolvido via getUserId injetado):
 // - getMedicinesWithStockOrActiveProtocol()  → PO-9: ativos hoje OU saldo > 0 (filtro client-side)
 // - getByMedicine(medicineId)                → stock entries, order created_at desc
+// - getActiveLotsByMedicine(medicineId)      → lotes com saldo > 0 (id, purchase_id, quantity, opened_at)
 // - getStockSummary(medicineId)              → view medicine_stock_summary maybeSingle + default
 // - getStockSummaryMap()                     → mapa medicineId → total_quantity (bulk)
 // - getTotalQuantity(medicineId)             → view first, fallback soma manual
@@ -48,10 +49,19 @@ interface CreateStockRepositoryDeps {
 // num único objeto (pattern canônico de createProtocolRepository). Warning aceito (R-221 SQP).
 // Retorno anotado explicitamente (TS2742 — declaration emit não nomeia o tipo
 // inferido do `.select()` dinâmico sem referenciar caminho interno de @dosiq/shared-data).
+/** Lote com saldo positivo — base do eixo de validade pós-abertura (opened_at). */
+export interface ActiveStockLot {
+  id: string
+  purchase_id: string | null
+  quantity: number
+  opened_at: string | null
+}
+
 export function createStockRepository({ client, getUserId }: CreateStockRepositoryDeps): {
   getMedicinesWithStockOrActiveProtocol(): Promise<any[]>
   getStockOverview(): Promise<any[]>
   getByMedicine(medicineId: string): Promise<any[]>
+  getActiveLotsByMedicine(medicineId: string): Promise<ActiveStockLot[]>
   getStockSummary(medicineId: string): Promise<any>
   getStockSummaryMap(): Promise<Record<string, number>>
   getTotalQuantity(medicineId: string): Promise<number | null>
@@ -199,6 +209,22 @@ export function createStockRepository({ client, getUserId }: CreateStockReposito
         .eq('medicine_id', medicineId)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data || []
+    },
+
+    /**
+     * Lotes com saldo > 0 de um medicamento (sem ordem garantida).
+     */
+    async getActiveLotsByMedicine(medicineId: string): Promise<ActiveStockLot[]> {
+      const userId = await getUserId()
+      const { data, error } = await client
+        .from('stock')
+        .select('id, purchase_id, quantity, opened_at')
+        .eq('medicine_id', medicineId)
+        .eq('user_id', userId)
+        .gt('quantity', 0)
 
       if (error) throw error
       return data || []

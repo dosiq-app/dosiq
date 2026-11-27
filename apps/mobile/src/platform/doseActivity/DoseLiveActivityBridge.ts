@@ -28,6 +28,7 @@ import {
   addDays,
   getTodayLocal,
   formatTimePtBR,
+  parseTimestamp,
 } from '@dosiq/core'
 import { supabase } from '@platform/supabase/nativeSupabaseClient'
 
@@ -80,7 +81,7 @@ async function _clearActivityToken(instanceId) {
  * background quem dirige a LA é o servidor. E só marca a dose como armada quando a LA existe.
  */
 export async function deriveAndDrive({ userId, protocols, tz, prevInstanceId, foreground = true }) {
-  const repo = createDoseInstanceRepository({ client: supabase as any })
+  const repo = createDoseInstanceRepository({ client: supabase })
   const now = getRawNow()
   const instances = await repo.getWindow(userId, addDays(now, -LOOK_BACK_DAYS), addDays(now, LOOK_AHEAD_DAYS))
   // Spec 101 (FR-006): âncora local mesclada — dose adiada fica fora do seletor até `snoozedUntil`, e a LA
@@ -181,7 +182,7 @@ async function fetchEnrichedProtocols(userId, tz) {
 
 /** Resolve o doseItem (CON-029) de um instanceId p/ montar o deeplink da modal. @private */
 async function resolveDoseItem(userId, protocols, tz, instanceId) {
-  const repo = createDoseInstanceRepository({ client: supabase as any })
+  const repo = createDoseInstanceRepository({ client: supabase })
   const now = getRawNow()
   const instances = await repo.getWindow(userId, addDays(now, -LOOK_BACK_DAYS), addDays(now, LOOK_AHEAD_DAYS))
   const items = buildDoseItemsFromInstances(instances, protocols, tz)
@@ -216,8 +217,7 @@ export function snoozeToastMessage(result, { reason = null }: { reason?: string 
   if (!result || !Number.isFinite(result.fireAt)) return 'Não foi possível adiar esta dose agora.'
   // Hora do aparelho, como o próprio alarme e o helper canônico (Hermes sem ICU: sem Intl/timeZone).
   // fireAt é epoch ms — instante absoluto, sem a ambiguidade de 'YYYY-MM-DD' que o R-020 barra.
-  // eslint-disable-next-line no-restricted-syntax
-  return `Alarme reagendado para ${formatTimePtBR(new Date(result.fireAt))}`
+  return `Alarme reagendado para ${formatTimePtBR(parseTimestamp(result.fireAt))}`
 }
 
 /**

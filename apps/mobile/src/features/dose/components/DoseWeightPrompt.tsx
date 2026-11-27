@@ -27,6 +27,7 @@ import { useToast } from '@shared/components/feedback/Toast'
 import { isNetworkError } from '@shared/utils/networkError'
 import { clientUuid } from '@shared/utils/clientUuid'
 import { useOnlineStatus } from '@shared/hooks/useOnlineStatus'
+import { withTimeout, TimeoutError } from '@shared/utils/withTimeout'
 import { colors, spacing, borderRadius } from '@shared/styles/tokens'
 import { markPromptPeriod, type PostDoseStep } from '../services/measurePrompt'
 
@@ -70,14 +71,6 @@ function buildRecord(type, unit, value, valueSec, context) {
 }
 // Teto da gravação (mesmo valor do useMutation — R-168). Rede com perda total faz o iOS esperar ~60 s.
 const SAVE_TIMEOUT_MS = 15_000
-
-class SaveTimeoutError extends Error {}
-
-function withTimeout(promise, ms) {
-  let timer
-  const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new SaveTimeoutError('timeout')), ms) })
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
-}
 
 function formatValue(type, value, valueSecondary) {
   if (type === 'peso') return Number(value).toFixed(1).replace('.', ',')
@@ -203,7 +196,7 @@ const DoseWeightPrompt = forwardRef<DoseWeightPromptHandle, DoseWeightPromptProp
         SAVE_TIMEOUT_MS
       )
     } catch (err) {
-      setFailure(err instanceof SaveTimeoutError || isNetworkError(err) ? 'network' : 'other')
+      setFailure(err instanceof TimeoutError || isNetworkError(err) ? 'network' : 'other')
       setPhase('error')
       return
     }

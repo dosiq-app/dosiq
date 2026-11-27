@@ -30,6 +30,11 @@ MAX_TESTS_PROG_API=0      # programa api/ (testes)
 MAX_TESTS_PROG_SERVER=0   # programa server/ (testes; zerado no lote 6.2)
 MAX_TESTS_PROG_CORE=0     # programa packages/core inteiro (testes de utils/ etc. fora do A_SRC — 53 erros acumularam invisíveis até o fix de 2026-10-31)
 MAX_TESTS_PROG_MOBILE=0   # programa mobile (testes; zerado no lote 6.4 — criticalAuditQueue tipado + 8 mocks/globals corrigidos)
+MAX_HOOK_DISABLES_WEB=12               # eslint-disable react-hooks em apps/web prod (congelada)
+MAX_HOOK_DISABLES_MOBILE=34            # eslint-disable react-hooks em apps/mobile prod
+MAX_HOOK_DISABLES_OTHER=0              # eslint-disable react-hooks em packages/server/api prod
+MAX_RESTRICTED_SYNTAX_DISABLES_WEB=5   # eslint-disable no-restricted-syntax em apps/web prod (congelada)
+MAX_RESTRICTED_SYNTAX_DISABLES_MOBILE=3 # eslint-disable no-restricted-syntax em apps/mobile prod (3 = R-010 hooks)
 
 A_SRC='^(packages/core/src/(types|repositories|services|schemas)|server/notifications|apps/web/src/shared/hooks|apps/mobile/src/shared/hooks)/'
 TESTS='__tests__|\.test\.'
@@ -104,5 +109,18 @@ for P in packages/core/tsconfig.json api/tsconfig.json server/tsconfig.json apps
     *)        check_ceiling "testes programa mobile" "$P_TEST_COUNT" "$MAX_TESTS_PROG_MOBILE" ;;
   esac
 done
+
+count_disables() { # pattern dirs...
+  local pattern="$1"; shift
+  (grep -rnE "$pattern" "$@" --include='*.ts' --include='*.tsx' --exclude-dir=node_modules 2>/dev/null || true) | (grep -vE "$TESTS" || true) | wc -l | tr -d ' '
+}
+
+HOOK_PATTERN='eslint-disable.*(react-hooks/exhaustive-deps|react-hooks/set-state-in-effect)'
+check_ceiling "eslint-disable react-hooks (web)"                 "$(count_disables "$HOOK_PATTERN" apps/web)" "$MAX_HOOK_DISABLES_WEB"
+check_ceiling "eslint-disable react-hooks (mobile)"              "$(count_disables "$HOOK_PATTERN" apps/mobile)" "$MAX_HOOK_DISABLES_MOBILE"
+check_ceiling "eslint-disable react-hooks (packages/server/api)" "$(count_disables "$HOOK_PATTERN" packages server api)" "$MAX_HOOK_DISABLES_OTHER"
+
+check_ceiling "eslint-disable no-restricted-syntax (web)"    "$(count_disables 'eslint-disable.*no-restricted-syntax' apps/web)" "$MAX_RESTRICTED_SYNTAX_DISABLES_WEB"
+check_ceiling "eslint-disable no-restricted-syntax (mobile)" "$(count_disables 'eslint-disable.*no-restricted-syntax' apps/mobile)" "$MAX_RESTRICTED_SYNTAX_DISABLES_MOBILE"
 
 [ "$FAIL" -eq 0 ] && echo "✅ ratchet OK (todos os buckets dentro dos tetos)" || exit 1

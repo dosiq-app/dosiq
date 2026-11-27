@@ -13,12 +13,7 @@ async function getUserId() {
   return user.id
 }
 
-// TODO(040-strict): apps/mobile pina @supabase/supabase-js 2.91.0 vs ^2.90.1 na
-// root — duplicata de instalação quebra nominal typing do client (protected member
-// 'supabaseUrl' não bate estruturalmente). Fix real = alinhar versão (fora do lote).
-const typedClient = supabase as any
-
 export const treatmentPlanService = createTreatmentPlanRepository({
-  client: typedClient,
+  client: supabase,
   getUserId,
 })

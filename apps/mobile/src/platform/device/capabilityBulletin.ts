@@ -50,7 +50,7 @@ async function _emit({ verdict, facts }: CapabilityRead, userId: string | null, 
   const nowMs = Date.now()
   if (!force && (await _throttled(verdict.capable, nowMs))) return
   const audit = createCriticalAuditService({
-    client: supabase as any,
+    client: supabase,
     // Sem userId (soneca headless): dono pela sessão PERSISTIDA — `getSession()` é leitura local;
     // `getUser()` vai ao Auth e, offline, perderia justo o negativo reafirmado (AP-357, RC6 #930).
     getUserId: async () => (await supabase.auth.getSession())?.data?.session?.user?.id ?? null,

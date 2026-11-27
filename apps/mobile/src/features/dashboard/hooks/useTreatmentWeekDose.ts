@@ -60,7 +60,7 @@ const PAST_WINDOW_MS = 8 * 86_400_000
 
 async function loadPastInstances(userId: string, protocolId: string): Promise<any[] | null> {
   try {
-    const repo = createDoseInstanceRepository({ client: supabase as any })
+    const repo = createDoseInstanceRepository({ client: supabase })
     const now = getRawNow()
     // Smoke 124 A: até +24 h — as ocorrências de HOJE (inclusive as que ainda vêm) dizem se há dose hoje.
     const rows = await repo.getWindow(userId, parseTimestamp(now.getTime() - PAST_WINDOW_MS), parseTimestamp(now.getTime() + 86_400_000))
@@ -72,7 +72,7 @@ async function loadPastInstances(userId: string, protocolId: string): Promise<an
 
 async function loadUpcoming(userId: string, protocolId: string, lookaheadDays: number): Promise<any[]> {
   try {
-    const repo = createDoseInstanceRepository({ client: supabase as any })
+    const repo = createDoseInstanceRepository({ client: supabase })
     // RC6: instante real — `getNow` desloca para o relógio de parede do fuso.
     const now = getRawNow()
     const to = parseTimestamp(now.getTime() + lookaheadDays * 86_400_000)
