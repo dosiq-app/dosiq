@@ -3,9 +3,12 @@
 # "✅ Testes críticos passaram" sem rodar nada — sucesso reportado de operação que não
 # ocorreu (AP-325). Se precisar desligar, APAGUE também a mensagem de sucesso:
 # hook silencioso é melhor que hook mentiroso.
-echo "🧪 Executando testes críticos antes do push..."
+echo "🧪 Executando testes críticos antes do push (env do Supabase vazia, como o CI)..."
 
-if ! npm run test:critical; then
+# Env vazia de propósito (AP-370): com o `.env` local, teste que importa módulo que cria o cliente
+# Supabase na carga passa aqui e quebra no CI. Variável definida (mesmo vazia) não é sobrescrita
+# pelo dotenv, então o hook enxerga o mesmo ambiente que o CI.
+if ! VITE_SUPABASE_URL= SUPABASE_URL= SUPABASE_SERVICE_ROLE_KEY= VITE_SUPABASE_ANON_KEY= SUPABASE_ANON_KEY= VERCEL=1 npm run test:critical; then
   echo "❌ Testes críticos falharam. Push abortado."
   exit 1
 fi
