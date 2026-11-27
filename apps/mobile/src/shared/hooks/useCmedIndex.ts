@@ -236,6 +236,7 @@ export function useCmedIndex({
           }
           netPhases.writeMs = performance.now() - writeAt
         }
+        // A carga terminou com o índice na tela: o evento sai mesmo se a tela desmontou na gravação.
         if (!hasData) reportLoaded('network', durationMs, nextState, netPhases)
       } catch (fetchErr) {
         if (canceled || hasData) return

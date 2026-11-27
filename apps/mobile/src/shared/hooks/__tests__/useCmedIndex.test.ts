@@ -128,10 +128,13 @@ describe('useCmedIndex — carga sob demanda do índice CMED (FR-023)', () => {
     routeFetch({ 'manifest.json': () => ok(remoteManifest), 'cmedIndex.json': () => ok(fixture) })
     const onLoaded = jest.fn()
     const { result } = render({ onLoaded })
-    await waitFor(() => expect(result.current.status).toBe('ready'))
-    expect(mockCache.has('cmedIndex')).toBe(false)
-    expect(onLoaded).not.toHaveBeenCalled()
-    release()
+    try {
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+      expect(mockCache.has('cmedIndex')).toBe(false)
+      expect(onLoaded).not.toHaveBeenCalled()
+    } finally {
+      release()
+    }
     await waitFor(() => expect(onLoaded).toHaveBeenCalledTimes(1))
     expect(mockCache.has('cmedIndex')).toBe(true)
     const info = onLoaded.mock.calls[0][0]
@@ -143,18 +146,39 @@ describe('useCmedIndex — carga sob demanda do índice CMED (FR-023)', () => {
     const rafSpy = jest
       .spyOn(global, 'requestAnimationFrame')
       .mockImplementation((cb: FrameRequestCallback) => frames.push(cb))
-    seedCache()
-    routeFetch({ 'manifest.json': () => ok(remoteManifest) })
-    const { result } = render()
-    expect(result.current.status).toBe('preparing')
-    await waitFor(() => expect(frames).toHaveLength(1))
-    expect(mockReads.count).toBe(0)
-    frames.shift()?.(0)
-    expect(frames).toHaveLength(1)
-    expect(mockReads.count).toBe(0)
-    frames.shift()?.(16)
-    await waitFor(() => expect(result.current.status).toBe('ready'))
-    rafSpy.mockRestore()
+    try {
+      seedCache()
+      routeFetch({ 'manifest.json': () => ok(remoteManifest) })
+      const { result } = render()
+      expect(result.current.status).toBe('preparing')
+      await waitFor(() => expect(frames).toHaveLength(1))
+      expect(mockReads.count).toBe(0)
+      frames.shift()?.(0)
+      expect(frames).toHaveLength(1)
+      expect(mockReads.count).toBe(0)
+      frames.shift()?.(16)
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+    } finally {
+      rafSpy.mockRestore()
+    }
+  })
+
+  it('rede: desmontar durante a gravação ainda emite o evento da carga concluída (129 FR-008)', async () => {
+    let release: () => void = () => {}
+    mockWriteGate.wait = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    routeFetch({ 'manifest.json': () => ok(remoteManifest), 'cmedIndex.json': () => ok(fixture) })
+    const onLoaded = jest.fn()
+    const { result, unmount } = render({ onLoaded })
+    try {
+      await waitFor(() => expect(result.current.status).toBe('ready'))
+      unmount()
+    } finally {
+      release()
+    }
+    await waitFor(() => expect(onLoaded).toHaveBeenCalledTimes(1))
+    expect(onLoaded.mock.calls[0][0].source).toBe('network')
   })
 
   it('onLoaded (PO-8): rede → source network com tempo e linhas; disco → source disk', async () => {
