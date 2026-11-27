@@ -22,6 +22,7 @@ const VARIANT_SEGMENT: Record<ReactivationVariant, string> = {
 const SKIP_LABEL: Record<ReactivationSkipReason, string> = {
   already_sent: 'Já recebeu',
   consent_revoked: 'Consentimento revogado (ou ilegível)',
+  push_disabled: 'Push desligado nas preferências',
   no_eligible_device: 'Sem aparelho ativo na versão mínima',
   quiet_hours: 'Horário silencioso agora (pode receber depois)',
 }
@@ -79,6 +80,7 @@ export default function ReactivationAdmin({ onBack }: { onBack: () => void }) {
             value={s.cohortText}
             onChange={(e) => s.setCohortText(e.target.value)}
             rows={6}
+            maxLength={12000}
             placeholder="a9f3e1c2-1111-4222-8333-944455556666"
           />
           <p className="reactivation-admin__muted" data-testid="cohort-summary">
@@ -112,7 +114,7 @@ export default function ReactivationAdmin({ onBack }: { onBack: () => void }) {
 
         <div className="reactivation-admin__field">
           <label htmlFor="reactivation-min">Versão mínima do app (X.Y.Z)</label>
-          <input id="reactivation-min" type="text" value={s.minVersion} onChange={(e) => s.setMinVersion(e.target.value)} />
+          <input id="reactivation-min" type="text" maxLength={16} value={s.minVersion} onChange={(e) => s.setMinVersion(e.target.value)} />
           {!s.versionOk && <p className="reactivation-admin__warn">Versão inválida.</p>}
         </div>
 
@@ -142,7 +144,7 @@ export default function ReactivationAdmin({ onBack }: { onBack: () => void }) {
               <div>
                 <p>Envio real para {s.simulation.would_send.length} conta(s). Não há reenvio: quem receber fica fora de qualquer disparo futuro.</p>
                 <label htmlFor="reactivation-confirm">Digite {CONFIRM_TOKEN} para liberar</label>
-                <input id="reactivation-confirm" type="text" value={s.confirmText} onChange={(e) => s.setConfirmText(e.target.value)} autoComplete="off" />
+                <input id="reactivation-confirm" type="text" maxLength={16} value={s.confirmText} onChange={(e) => s.setConfirmText(e.target.value)} autoComplete="off" />
                 <Button onClick={s.send} variant="primary" disabled={!s.canSend}>
                   <Send size={14} /> {s.loading === 'send' ? 'Enviando…' : 'Enviar'}
                 </Button>

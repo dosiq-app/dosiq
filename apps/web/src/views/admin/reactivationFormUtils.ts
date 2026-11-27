@@ -5,7 +5,7 @@
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const SEMVER_RE = /^\d+\.\d+(\.\d+)?$/
 
-export const COHORT_MAX = 500
+export const COHORT_MAX = 100
 export const CONFIRM_TOKEN = 'ENVIAR'
 export const TITLE_MAX = 40
 export const BODY_MAX = 110

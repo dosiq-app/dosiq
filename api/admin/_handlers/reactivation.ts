@@ -27,12 +27,13 @@ import { getCurrentTime } from '../../../server/utils/dateUtils.js'
 import type { NotificationSettings } from '../../../server/notifications/repositories/notificationPreferenceRepository.js'
 
 export const REACTIVATION_KIND = 'reactivation_notice'
-export const COHORT_MAX = 500
+// Envio é serial (1 push + 1 log por conta): 100 contas cabem com folga no tempo da função.
+export const COHORT_MAX = 100
 export const CONFIRM_TOKEN = 'ENVIAR'
 const CHUNK = 100
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export type SkipReason = 'already_sent' | 'consent_revoked' | 'no_eligible_device' | 'quiet_hours'
+export type SkipReason = 'already_sent' | 'consent_revoked' | 'push_disabled' | 'no_eligible_device' | 'quiet_hours'
 
 export interface ReactivationDevice {
   id: string
@@ -47,6 +48,7 @@ export interface ReactivationSettings {
   consent_revoked_at?: string | null
   international_transfer_granted_at?: string | null
   notification_mode?: string
+  channel_mobile_push_enabled?: boolean
   quiet_hours_enabled?: boolean
   quiet_hours_start?: string | null
   quiet_hours_end?: string | null
@@ -106,6 +108,7 @@ export function createSupabaseReactivationStore(supabase): ReactivationStore {
       for (const part of chunks(userIds)) {
         const { data, error } = await supabase.from('user_settings').select('*').in('user_id', part)
         if (error) {
+          console.error('[Reactivation] user_settings ilegível — contas do bloco puladas', { count: part.length })
           // Fail-closed por conta: sem saber se revogou, a supressão de consentimento pula a conta.
           for (const id of part) map.set(id, { _read_failed: true })
           continue
@@ -127,7 +130,8 @@ export function parseReactivationInput(raw: Record<string, unknown> | undefined)
   const src = raw ?? {}
   const rawIds = typeof src.user_ids === 'string' ? src.user_ids.split(',') : src.user_ids
   if (!Array.isArray(rawIds) || rawIds.length === 0) return { ok: false, error: 'user_ids obrigatório (lista de uids)' }
-  const ids = [...new Set(rawIds.map((v) => String(v).trim()).filter((v) => v.length > 0))]
+  // Minúsculas: o banco devolve uuid em minúsculas e o "já recebeu" compara texto.
+  const ids = [...new Set(rawIds.map((v) => String(v).trim().toLowerCase()).filter((v) => v.length > 0))]
   if (ids.length === 0) return { ok: false, error: 'user_ids obrigatório (lista de uids)' }
   if (ids.length > COHORT_MAX) return { ok: false, error: `coorte acima de ${COHORT_MAX} contas` }
   if (ids.some((id) => !UUID_RE.test(id))) return { ok: false, error: 'user_ids com valor que não é uuid' }
@@ -158,6 +162,7 @@ export async function planReactivation(input: ParsedInput, deps: Pick<Reactivati
     let reason: SkipReason | null = null
     if (sent.has(userId)) reason = 'already_sent'
     else if (isConsentSuppressed(userSettings, REACTIVATION_KIND)) reason = 'consent_revoked'
+    else if (userSettings.channel_mobile_push_enabled === false) reason = 'push_disabled'
     else if (okDevices.length === 0) reason = 'no_eligible_device'
     else if (checkGatePolicy({ userId, kind: REACTIVATION_KIND, settings: userSettings, currentHHMM })) reason = 'quiet_hours'
     if (reason) plan.skipped.push({ user_id: userId, reason })
@@ -175,6 +180,7 @@ function toDispatchSettings(row: ReactivationSettings): NotificationSettings {
     quiet_hours_end: row.quiet_hours_end ?? null,
     digest_time: '23:00',
     timezone: 'America/Sao_Paulo',
+    channel_mobile_push_enabled: row.channel_mobile_push_enabled,
     consent_revoked_at: row.consent_revoked_at ?? null,
     international_transfer_granted_at: row.international_transfer_granted_at ?? null,
     _read_failed: row._read_failed,
@@ -196,11 +202,19 @@ const summarize = (skipped: ReactivationPlan['skipped']) =>
   skipped.reduce<Record<string, number>>((acc, s) => { acc[s.reason] = (acc[s.reason] ?? 0) + 1; return acc }, {})
 
 type Dispatched = Array<{ user_id: string; delivered: number; failed: number }>
+type Deferred = Array<{ user_id: string; reason: SkipReason }>
 
 /** Despacha em série, uma conta por vez, aguardando o log de cada uma (prova de "já recebeu"). */
-async function dispatchEligible(eligible: ReactivationPlan['eligible'], variant: ParsedInput['variant'], d: ReactivationDeps): Promise<Dispatched> {
+async function dispatchEligible(eligible: ReactivationPlan['eligible'], variant: ParsedInput['variant'], d: ReactivationDeps): Promise<{ dispatched: Dispatched; deferred: Deferred }> {
   const dispatched: Dispatched = []
+  const deferred: Deferred = []
   for (const target of eligible) {
+    // O lote é serial: a janela silenciosa pode abrir no meio dele. Reavaliar aqui evita que o
+    // dispatcher grave `silenciada` e gaste a tentativa sem entregar.
+    if (checkGatePolicy({ userId: target.user_id, kind: REACTIVATION_KIND, settings: target.settings, currentHHMM: d.nowHHMM() })) {
+      deferred.push({ user_id: target.user_id, reason: 'quiet_hours' })
+      continue
+    }
     // Repositório por conta: o canal só enxerga os aparelhos que passaram no filtro de versão.
     const devicesRepo = {
       async listActiveByUser() { return target.devices },
@@ -225,7 +239,22 @@ async function dispatchEligible(eligible: ReactivationPlan['eligible'], variant:
     })
     dispatched.push({ user_id: target.user_id, delivered: result.totalDelivered ?? 0, failed: result.totalFailed ?? 0 })
   }
-  return dispatched
+  return { dispatched, deferred }
+}
+
+/**
+ * Prova de escrita: quem foi despachado e não tem linha no log pode receber de novo (INV-2).
+ * Releitura falhou ⇒ os pushes já saíram; todos voltam como não confirmados, nunca como erro 500.
+ */
+async function findUnlogged(dispatched: Dispatched, store: ReactivationStore): Promise<string[]> {
+  if (dispatched.length === 0) return []
+  let logged = new Set<string>()
+  try {
+    logged = await store.alreadySent(dispatched.map((x) => x.user_id))
+  } catch (err) {
+    console.error('[Reactivation] releitura do log falhou', err instanceof Error ? err.message : 'erro')
+  }
+  return dispatched.filter((x) => !logged.has(x.user_id)).map((x) => x.user_id)
 }
 
 export async function handleReactivation(req, res, supabase, deps?: ReactivationDeps) {
@@ -256,14 +285,13 @@ export async function handleReactivation(req, res, supabase, deps?: Reactivation
       return res.status(200).json({ data: { mode: 'simulate', ...base, would_send: plan.eligible.map((e) => e.user_id) } })
     }
 
-    const dispatched = await dispatchEligible(plan.eligible, parsed.value.variant, d)
+    const { dispatched, deferred } = await dispatchEligible(plan.eligible, parsed.value.variant, d)
+    const skipped = [...plan.skipped, ...deferred]
 
-    // Prova de escrita: quem foi despachado e não tem linha no log pode receber de novo (INV-2).
-    const logged = dispatched.length > 0 ? await d.store.alreadySent(dispatched.map((x) => x.user_id)) : new Set<string>()
-    const unlogged = dispatched.filter((x) => !logged.has(x.user_id)).map((x) => x.user_id)
+    const unlogged = await findUnlogged(dispatched, d.store)
     if (unlogged.length > 0) console.error('[Reactivation] enviado sem linha no log', { count: unlogged.length })
 
-    return res.status(200).json({ data: { mode: 'send', ...base, sent: dispatched, unlogged } })
+    return res.status(200).json({ data: { mode: 'send', ...base, skipped, skipped_by_reason: summarize(skipped), sent: dispatched, unlogged } })
   } catch (err) {
     console.error('[Reactivation]', err instanceof Error ? err.message : 'erro')
     return res.status(500).json({ error: 'Internal server error' })

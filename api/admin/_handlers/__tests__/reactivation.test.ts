@@ -86,7 +86,7 @@ describe('126 — entrada', () => {
   })
 
   it('recusa coorte acima do teto e aceita uids repetidos sem duplicar', () => {
-    const many = Array.from({ length: 501 }, (_, i) => `a0000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
+    const many = Array.from({ length: 101 }, (_, i) => `a0000000-0000-4000-8000-${String(i).padStart(12, '0')}`)
     expect(parseReactivationInput({ user_ids: many, variant: 'A', min_version: '0.35.0' }).ok).toBe(false)
     const r = parseReactivationInput({ user_ids: `${ELEG},${ELEG}`, variant: 'A', min_version: '0.35.0' })
     expect(r.ok === true && r.value.userIds).toEqual([ELEG])
@@ -190,6 +190,46 @@ describe('PO-126-1 — coorte de 3: 1 elegível, 1 versão antiga, 1 sem token',
     await handleReactivation(send([ELEG]), r, null, w.deps)
     expect(r.statusCode).toBe(500)
     expect(w.dispatch).not.toHaveBeenCalled()
+  })
+})
+
+describe('126 — achados do RC6 (#980)', () => {
+  it('uid em maiúsculas casa com o log em minúsculas: não reenvia', async () => {
+    const w = world({ logged: [ELEG] })
+    const r = res()
+    await handleReactivation(send([ELEG.toUpperCase()]), r, null, w.deps)
+    expect(r.body.data.skipped).toEqual([{ user_id: ELEG, reason: 'already_sent' }])
+    expect(w.dispatch).not.toHaveBeenCalled()
+  })
+
+  it('push desligado nas preferências é pulado', async () => {
+    const w = world({ settings: { [ELEG]: { channel_mobile_push_enabled: false } } })
+    const r = res()
+    await handleReactivation(send([ELEG]), r, null, w.deps)
+    expect(r.body.data.skipped).toEqual([{ user_id: ELEG, reason: 'push_disabled' }])
+  })
+
+  it('janela silenciosa que abre no meio do lote adia a conta sem gastar a tentativa', async () => {
+    const devices = [ELEG, QUIET].map((user_id) => ({ id: `d-${user_id}`, user_id, push_token: `t-${user_id}`, app_version: '0.35.0' }))
+    const quiet = { quiet_hours_enabled: true, quiet_hours_start: '19:31', quiet_hours_end: '07:00' }
+    const w = world({ devices, settings: { [ELEG]: quiet, [QUIET]: quiet } })
+    const clock = ['19:30', '19:30', '19:31']
+    w.deps.nowHHMM = () => clock.shift() ?? '19:31'
+    const r = res()
+    await handleReactivation(send([ELEG, QUIET]), r, null, w.deps)
+    expect(r.body.data.sent.map((x: { user_id: string }) => x.user_id)).toEqual([ELEG])
+    expect(r.body.data.skipped).toEqual([{ user_id: QUIET, reason: 'quiet_hours' }])
+    expect(w.log.has(QUIET)).toBe(false)
+  })
+
+  it('releitura do log falhou depois do envio: 200 com todos em unlogged', async () => {
+    const w = world()
+    const original = w.store.alreadySent.getMockImplementation()!
+    w.store.alreadySent.mockImplementationOnce(original).mockRejectedValueOnce(new Error('caiu'))
+    const r = res()
+    await handleReactivation(send([ELEG]), r, null, w.deps)
+    expect(r.statusCode).toBe(200)
+    expect(r.body.data.unlogged).toEqual([ELEG])
   })
 })
 

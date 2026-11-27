@@ -50,6 +50,7 @@ export function useReactivationAdminState() {
     setLoading('simulate')
     setMessage(null)
     setResult(null)
+    setSimulation(null)
     setConfirmText('')
     try {
       const data = await reactivationAdminService.simulate(request())

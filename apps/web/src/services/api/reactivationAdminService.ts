@@ -5,7 +5,7 @@
 import { supabase } from '@shared/utils/supabase'
 
 export type ReactivationVariant = 'A' | 'B' | 'C' | 'D' | 'E'
-export type ReactivationSkipReason = 'already_sent' | 'consent_revoked' | 'no_eligible_device' | 'quiet_hours'
+export type ReactivationSkipReason = 'already_sent' | 'consent_revoked' | 'push_disabled' | 'no_eligible_device' | 'quiet_hours'
 
 export interface ReactivationCopy {
   title: string
@@ -57,6 +57,7 @@ async function call<T>(init: { method: 'GET' | 'POST'; body?: string; query?: st
     if (response.status === 401) throw new Error('Não autorizado.')
     throw new Error(body.error || 'Falha na reativação')
   }
+  if (!body || typeof body !== 'object' || body.data == null) throw new Error('Resposta inesperada do servidor')
   return body.data as T
 }
 
