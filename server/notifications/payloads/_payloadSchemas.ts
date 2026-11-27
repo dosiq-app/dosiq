@@ -170,7 +170,7 @@ export const pruneAdminAlertDataSchema = z.object({
  * dose ou tratamento; título ≤ 40 e corpo ≤ 110 caracteres, corte da tela de bloqueio do iOS).
  */
 export const REACTIVATION_VARIANTS = Object.freeze({
-  A: { title: 'O dosiq ficou mais fácil', body: 'Agora o app ajuda a conferir seu tratamento em poucos toques. Dá uma olhada?' },
+  A: { title: 'O dosiq ficou mais fácil', body: 'Agora o app ajuda a conferir sua rotina em poucos toques. Dá uma olhada?' },
   B: { title: 'A gente melhorou o cadastro', body: 'Se algo não bateu da última vez, agora dá para ajustar rapidinho no app.' },
   C: { title: 'Leva 1 minuto', body: 'Confira se sua rotina no dosiq está do jeito certo.' },
   D: { title: 'Bom te ver de volta?', body: 'Seu histórico continua salvo. Quando quiser, é só abrir.' },

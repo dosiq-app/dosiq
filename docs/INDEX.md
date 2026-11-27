@@ -20,7 +20,7 @@ epic: "049"
 
 Bem-vindo à documentação oficial do Dosiq. O projeto adota uma arquitetura **Turborepo (monorepo)** 100% TypeScript, operando com React 19, Vite, Supabase, validação runtime via Zod 4, e processos guiados pelo **DEVFLOW**.
 
-> **73 docs ativos** · **16 docs de arquitetura** · **11 docs de referência** · **12 padrões**
+> **74 docs ativos** · **16 docs de arquitetura** · **11 docs de referência** · **12 padrões**
 
 ---
 
@@ -158,6 +158,7 @@ Procedimentos operacionais de infraestrutura, bancos, publicação nas lojas e c
 | [`operations/GUIA_GOOGLE_PLAY_CONSOLE_MVP_ANDROID.md`](operations/GUIA_GOOGLE_PLAY_CONSOLE_MVP_ANDROID.md) | Configurações iniciais e faixas de teste interno na Google Play Console |
 | [`operations/GUIA_KILL_SWITCH_VERSAO_MINIMA.md`](operations/GUIA_KILL_SWITCH_VERSAO_MINIMA.md) | Ativação, confirmação e desativação do bloqueio de boot por versão mínima |
 | [`operations/GUIA_NUDGE_BANNERS.md`](operations/GUIA_NUDGE_BANNERS.md) | Administração e publicação de banners informativos/avisos do sistema |
+| [`operations/GUIA_PUSH_REATIVACAO.md`](operations/GUIA_PUSH_REATIVACAO.md) | Push único de reativação: coorte, variantes, simulação, envio e verificação pelo admin |
 | [`operations/GUIA_OTA_EAS_UPDATE.md`](operations/GUIA_OTA_EAS_UPDATE.md) | Publicação, rollout escalonado, rollback e versionamento de updates OTA |
 | [`operations/GUIA_RELEASE_TRAIN.md`](operations/GUIA_RELEASE_TRAIN.md) | Release train mobile: builds alpha (TestFlight/closed testing) × fechamento com tag `mobile-v<versão>`, ledger de procedência e `release-tag.sh` |
 | [`operations/GUIA_UPLOAD_ANVISA_SUPABASE_STORAGE.md`](operations/GUIA_UPLOAD_ANVISA_SUPABASE_STORAGE.md) | ETL e upload dos dados da ANVISA para o Supabase Storage |
