@@ -377,6 +377,13 @@ export async function setStockTracking(enabled) {
 }
 
 /**
+ * Grava o toque em "Avaliar na loja". Lança em erro — quem chama decide (a UI não bloqueia).
+ */
+export async function recordStoreReviewClicked() {
+  return profileRepo.recordStoreReviewClicked()
+}
+
+/**
  * Excluir conta (RPC delete_user_account — bloqueia se tratamentos ativos).
  * @returns {Promise<{success: boolean, error: string|null}>}
  */

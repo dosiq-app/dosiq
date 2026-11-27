@@ -120,6 +120,8 @@ export const EVENTS = {
   AI_ASSISTANT_MESSAGE_SENT: 'ai_assistant_message_sent', // has_error: boolean — NUNCA a mensagem nem a resposta
   PROFILE_UPDATED: 'profile_updated',                 // {} — NUNCA display_name/birth_date/city/phone
   MODE_CHANGED: 'mode_changed',                       // mode: 'simple'|'complex'|'auto'
+  // 047 A: toque no botão de avaliar na loja (deep link). A loja não informa se avaliou.
+  STORE_REVIEW_LINK_TAPPED: 'store_review_link_tapped', // placement: STORE_REVIEW_PLACEMENTS, surface: 'mobile'
 
   // Modo dose-only (spec 044, FR-010) — insumo da métrica dos 90 dias (SC-004).
   // Emitidos SÓ pelo stockPreferenceService (origem comum): tela nenhuma loga preferência.
@@ -209,3 +211,10 @@ export const PLACEMENTS = {
   TIMELINE_BANNER: 'timeline_banner',
   TODAY_CARD: 'today_card',
 }
+
+// Onde o botão de avaliar na loja foi tocado (047 A).
+export const STORE_REVIEW_PLACEMENTS = {
+  PROFILE_ABOUT: 'profile_about',
+  FEEDBACK_SCREEN_TOP: 'feedback_screen_top',
+} as const
+export type StoreReviewPlacement = (typeof STORE_REVIEW_PLACEMENTS)[keyof typeof STORE_REVIEW_PLACEMENTS]

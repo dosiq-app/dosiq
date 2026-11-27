@@ -1,8 +1,8 @@
-// apps/mobile/src/features/profile/screens/FeedbackScreen.jsx
-// Tela de formulário móvel nativo para envio de feedback do usuário
+// Tela "Problema ou sugestão": formulário que grava em feedbacks e, no topo, o atalho para
+// avaliar na loja (quem veio só elogiar vai direto à loja).
 
 import React, { useMemo, useCallback } from 'react'
-import { ScrollView, View, Text, Pressable, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView } from 'react-native'
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
@@ -16,7 +16,9 @@ import { supabase } from '@platform/supabase/nativeSupabaseClient'
 import FormInput from '@shared/components/form/FormInput'
 import FormActions from '@shared/components/form/FormActions'
 import { useToast } from '@shared/components/feedback/Toast'
-import { colors, spacing, borderRadius, typography, shadows } from '@shared/styles/tokens'
+import { useStoreReviewLink } from '@profile/hooks/useStoreReviewLink'
+import { STORE_REVIEW_PLACEMENTS } from '@platform/analytics/analyticsEvents'
+import { colors, spacing, borderRadius, typography } from '@shared/styles/tokens'
 
 function formProps(form, name) {
   return {
@@ -39,50 +41,37 @@ function FeedbackHeader({ onGoBack }) {
       >
         <ChevronLeft size={24} color={colors.text.primary} />
       </TouchableOpacity>
-      <Text style={styles.title}>Enviar Feedback</Text>
+      <Text style={styles.title}>Problema ou sugestão</Text>
       <View style={styles.headerSpacer} />
     </View>
   )
 }
 
-function StarSelector({ rating, onSelectRating }) {
-  const stars = []
-  const currentRating = rating || 0
-
-  for (let i = 1; i <= 5; i++) {
-    const isFilled = i <= currentRating
-    stars.push(
-      <TouchableOpacity
-        key={i}
-        onPress={() => onSelectRating(i)}
-        style={styles.starTouch}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityLabel={`Avaliar com ${i} estrela${i > 1 ? 's' : ''}`}
-      >
-        <Star
-          size={36}
-          color={isFilled ? '#fbbf24' : colors.neutral[300]}
-          fill={isFilled ? '#fbbf24' : 'transparent'}
-          strokeWidth={1.5}
-        />
-      </TouchableOpacity>
-    )
-  }
-
+function StoreReviewCard() {
+  const { openStoreReview, storeName } = useStoreReviewLink(STORE_REVIEW_PLACEMENTS.FEEDBACK_SCREEN_TOP)
   return (
-    <View style={styles.starsContainer}>
-      <View style={styles.starsRow}>
-        {stars}
+    <View style={styles.storeCard}>
+      <View style={styles.storeCardTitleRow}>
+        <Star
+          size={16}
+          color={colors.text.secondary}
+          strokeWidth={1.75}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        />
+        <Text style={styles.storeCardTitle}>{`Quer elogiar? Avalie na ${storeName}`}</Text>
       </View>
-      {currentRating > 0 && (
-        <Text style={styles.starsLabel}>
-          {currentRating === 5 ? 'Excelente!' :
-           currentRating === 4 ? 'Muito bom' :
-           currentRating === 3 ? 'Bom / Regular' :
-           currentRating === 2 ? 'Precisa melhorar' : 'Não gostei'}
-        </Text>
-      )}
+      <Text style={styles.storeCardBody}>Leva 10 segundos e ajuda outras pessoas a encontrarem o dosiq.</Text>
+      <TouchableOpacity
+        style={styles.storeCardCta}
+        onPress={openStoreReview}
+        activeOpacity={0.7}
+        accessibilityRole="link"
+        accessibilityLabel={`Avaliar na ${storeName}`}
+        accessibilityHint={`Abre a ${storeName}`}
+      >
+        <Text style={styles.storeCardCtaLabel}>{`Avaliar na ${storeName}`}</Text>
+      </TouchableOpacity>
     </View>
   )
 }
@@ -102,7 +91,7 @@ export default function FeedbackScreen() {
     return {
       subject: '',
       comment: '',
-      rating: null, // inicia vazio (null estrelas)
+      rating: null,
       platform,
       device,
       app_version
@@ -112,10 +101,6 @@ export default function FeedbackScreen() {
   const form = useFormState(feedbackSchema, { initialValues })
 
   // 3. Handlers
-  const handleRatingSelect = useCallback((value) => {
-    form.handleChange('rating', value)
-  }, [form])
-
   const handleSubmit = useCallback(async () => {
     if (!form.validate()) return
 
@@ -132,7 +117,7 @@ export default function FeedbackScreen() {
       const payload = {
         subject: (form.values.subject as string)?.trim() ?? '',
         comment: (form.values.comment as string)?.trim() ?? '',
-        rating: form.values.rating,
+        rating: null,
         platform: form.values.platform,
         device: form.values.device,
         app_version: form.values.app_version
@@ -140,7 +125,7 @@ export default function FeedbackScreen() {
 
       await repo.submitFeedback(payload)
 
-      show('Feedback enviado! Obrigado pela sugestão.', { variant: 'success' })
+      show('Recebemos. Obrigado por avisar!', { variant: 'success' })
       navigation.goBack()
     } catch (err) {
       console.error('[FeedbackScreen] Erro ao enviar feedback:', err)
@@ -159,11 +144,11 @@ export default function FeedbackScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
       <ScrollView style={styles.flex} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <View style={styles.introCard}>
-          <Text style={styles.introTitle}>Sua opinião importa!</Text>
-          <Text style={styles.introBody}>
-            Encontrou algum problema ou tem sugestões de melhoria para o Dosiq? Compartilhe conosco!
-          </Text>
+        <StoreReviewCard />
+
+        <View style={styles.formHeader}>
+          <Text style={styles.formTitle} accessibilityRole="header">Relatar problema ou sugestão</Text>
+          <Text style={styles.formSubtitle}>Conte o que deu errado ou o que podemos melhorar.</Text>
         </View>
 
         <FormInput
@@ -184,28 +169,19 @@ export default function FeedbackScreen() {
           showCharacterCount
           placeholder="Escreva aqui suas sugestões, críticas ou relate um erro com o máximo de detalhes possível..."
           multiline
-          numberOfLines={6}
+          numberOfLines={10}
+          multilineMinHeight={200}
           maxLength={2000}
           autoCapitalize="sentences"
           {...formProps(form, 'comment')}
         />
 
-        {/* Avaliação por Estrelas */}
-        <View style={styles.field}>
-          <Text style={styles.sectionLabel}>Como você avalia nosso app?</Text>
-          <StarSelector rating={form.values.rating} onSelectRating={handleRatingSelect} />
-          {form.errors.rating && (
-            <Text style={styles.errorText}>{form.errors.rating}</Text>
-          )}
-        </View>
       </ScrollView>
 
       <FormActions
-        primaryLabel="Enviar Feedback"
+        primaryLabel="Enviar"
         onPrimary={handleSubmit}
         primaryLoading={loading}
-        secondaryLabel="Cancelar"
-        onSecondary={() => navigation.goBack()}
       />
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -252,66 +228,59 @@ const styles = StyleSheet.create({
     paddingBottom: spacing[12],
     gap: spacing[4],
   },
-  introCard: {
-    backgroundColor: colors.primary[50],
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.primary[200] || colors.primary[100],
-    padding: spacing[4],
-    marginBottom: spacing[2],
+  formHeader: {
+    gap: 4,
+    marginTop: spacing[2],
   },
-  introTitle: {
-    fontSize: 16,
+  formTitle: {
+    fontSize: 17,
     fontWeight: '700',
     color: colors.text.primary,
-    marginBottom: 4,
+    fontFamily: typography.fontFamily.bold,
   },
-  introBody: {
+  formSubtitle: {
     fontSize: 13,
     color: colors.text.secondary,
     lineHeight: 18,
   },
-  field: {
+  storeCard: {
+    backgroundColor: colors.bg.card,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.border.default,
+    padding: spacing[4],
+    gap: spacing[2],
     marginBottom: spacing[2],
   },
-  sectionLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.text.secondary,
-    marginBottom: spacing[3],
-  },
-  starsContainer: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing[2],
-    backgroundColor: colors.bg.card,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing[4],
-    borderWidth: 1.5,
-    borderColor: colors.border.default,
-    ...shadows.sm,
-  },
-  starsRow: {
+  storeCardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: spacing[2],
   },
-  starTouch: {
-    padding: spacing[1],
+  storeCardTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text.primary,
   },
-  starsLabel: {
+  storeCardBody: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    lineHeight: 18,
+  },
+  storeCardCta: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing[4],
+    borderRadius: borderRadius.md,
+    borderWidth: 1.5,
+    borderColor: colors.brand.primary,
+    marginTop: spacing[1],
+  },
+  storeCardCtaLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.brand.primary || colors.text.secondary,
-    marginTop: spacing[2],
-    textAlign: 'center',
-  },
-  errorText: {
-    fontSize: 12,
-    color: colors.status.error,
-    marginTop: 6,
-    textAlign: 'center',
+    color: colors.brand.primary,
   },
 })

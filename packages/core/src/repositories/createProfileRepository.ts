@@ -12,6 +12,7 @@
 // - getProfile()              → linha de perfil (default object se ausente)
 // - updateProfile(input)      → valida + upsert campos de perfil (onConflict user_id)
 // - updateComplexity(value)   → upsert complexity_override ('simple'|'complex'|null)
+// - recordStoreReviewClicked() → upsert do instante do toque em "Avaliar na loja"
 // - deleteAccount()           → RPC delete_user_account (bloqueia se tratamentos ativos)
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -34,7 +35,7 @@ const CONSENT_PROMPT_COLUMNS = 'consent_prompt_sessions, consent_prompt_last_see
 // Literal (não `[].join()`): o supabase-js tipa o retorno a partir da STRING do select —
 // uma string derivada em runtime derruba a inferência para `GenericStringError`.
 // prettier-ignore
-const EXPORT_PROFILE_COLUMNS = 'display_name, birth_date, city, state, phone, timezone, complexity_override, onboarding_completed, emergency_card, telegram_chat_id, notification_preference, notification_mode, digest_time, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, channel_mobile_push_enabled, channel_web_push_enabled, channel_telegram_enabled, stock_tracking_enabled, stock_paused_at, created_at, updated_at'
+const EXPORT_PROFILE_COLUMNS = 'display_name, birth_date, city, state, phone, timezone, complexity_override, onboarding_completed, emergency_card, telegram_chat_id, notification_preference, notification_mode, digest_time, quiet_hours_enabled, quiet_hours_start, quiet_hours_end, channel_mobile_push_enabled, channel_web_push_enabled, channel_telegram_enabled, stock_tracking_enabled, stock_paused_at, store_review_clicked_at, created_at, updated_at'
 
 const COMPLEXITY_VALUES = Object.freeze(['simple', 'complex', null])
 
@@ -214,6 +215,23 @@ export function createProfileRepository({ client, getUserId }: CreateProfileRepo
       const { error } = await client
         .from('user_settings')
         .upsert(row as never, { onConflict: 'user_id' })
+      if (error) throw error
+    },
+
+    /**
+     * Toque no botão de avaliar na loja. Grava o último toque; os gatilhos automáticos de
+     * avaliação só consideram `store_review_clicked_at IS NULL`, então sobrescrever é seguro.
+     * Erro propaga — quem chama decide (a UI nunca bloqueia a abertura da loja por isso).
+     */
+    async recordStoreReviewClicked(): Promise<void> {
+      const userId = await getUserId()
+      const now = getServerTimestamp()
+      const { error } = await client
+        .from('user_settings')
+        .upsert(
+          { user_id: userId, store_review_clicked_at: now, updated_at: now },
+          { onConflict: 'user_id' },
+        )
       if (error) throw error
     },
 

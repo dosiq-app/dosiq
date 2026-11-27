@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, A
 import { useNavigation, useFocusEffect } from '@react-navigation/native'
 // TODO(040-strict): named imports do lucide-react-native batem em TS2305 sob nodenext
 import * as LucideIcons from 'lucide-react-native'
-const { Bell, ChevronRight, Settings: SettingsIcon, UserCircle2, MapPin, Pencil } = LucideIcons as any
+const { Bell, ChevronRight, ExternalLink, Settings: SettingsIcon, UserCircle2, MapPin, Pencil } = LucideIcons as any
 import Constants from 'expo-constants'
 import { useProfile } from '@profile/hooks/useProfile'
 import { logoutUser } from '../services/profileService'
@@ -17,6 +17,8 @@ import SignalDot from '@shared/components/ui/SignalDot'
 import { useHomeSignal } from '@dashboard/state/todaySurfaceSignal'
 import DevBadge from '@features/_dev/components/DevBadge'
 import { useNudges } from '@profile/hooks/useNudges'
+import { useStoreReviewLink } from '@profile/hooks/useStoreReviewLink'
+import { STORE_REVIEW_PLACEMENTS } from '@platform/analytics/analyticsEvents'
 import { colors, spacing, borderRadius, shadows, typography } from '@shared/styles/tokens'
 import { ROUTES } from '@navigation/routes'
 import { useUnreadBadgeCount } from '@shared/hooks/useUnreadBadgeCount'
@@ -45,6 +47,7 @@ export default function ProfileScreen() {
   const [logoutSheetOpen, setLogoutSheetOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const { nudge: profileNudge, dismiss: dismissNudge, handleAction: handleNudgeAction, refresh: refreshNudge } = useNudges('profile')
+  const { openStoreReview, storeName } = useStoreReviewLink(STORE_REVIEW_PLACEMENTS.PROFILE_ABOUT)
 
   const goToEdit = () => (navigation.navigate as any)(ROUTES.PROFILE_EDIT)
   const goToSettings = () => (navigation.navigate as any)(ROUTES.SETTINGS)
@@ -275,13 +278,24 @@ export default function ProfileScreen() {
           <View style={styles.cardNoPadding}>
             <TouchableOpacity
               style={styles.otherRow}
-              onPress={handlePrivacyData}
+              onPress={openStoreReview}
               activeOpacity={0.7}
+              accessibilityRole="link"
+              accessibilityLabel={`Avaliar na ${storeName}`}
+              accessibilityHint={`Abre a ${storeName}`}
             >
               <View style={styles.otherLabelContainer}>
-                <Text style={styles.otherLabel}>Privacidade e dados</Text>
+                <Text style={styles.otherLabel} numberOfLines={1} textBreakStrategy="simple">
+                  {`Avaliar na ${storeName}`}
+                </Text>
               </View>
-              <ChevronRight size={18} color={colors.text.secondary} strokeWidth={1.5} />
+              <ExternalLink
+                size={18}
+                color={colors.text.secondary}
+                strokeWidth={1.5}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              />
             </TouchableOpacity>
             <View style={styles.otherDivider} />
             <TouchableOpacity
@@ -290,7 +304,18 @@ export default function ProfileScreen() {
               activeOpacity={0.7}
             >
               <View style={styles.otherLabelContainer}>
-                <Text style={styles.otherLabel}>Enviar feedback</Text>
+                <Text style={styles.otherLabel}>Relatar problema ou sugestão</Text>
+              </View>
+              <ChevronRight size={18} color={colors.text.secondary} strokeWidth={1.5} />
+            </TouchableOpacity>
+            <View style={styles.otherDivider} />
+            <TouchableOpacity
+              style={styles.otherRow}
+              onPress={handlePrivacyData}
+              activeOpacity={0.7}
+            >
+              <View style={styles.otherLabelContainer}>
+                <Text style={styles.otherLabel}>Privacidade e dados</Text>
               </View>
               <ChevronRight size={18} color={colors.text.secondary} strokeWidth={1.5} />
             </TouchableOpacity>

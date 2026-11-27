@@ -7,6 +7,15 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+### Avaliar na loja pelo Perfil e pela tela de problema ou sugestão; estrelas saem do formulário (spec 047, Fatia A)
+
+- **Mobile / Core / Backend** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.42 → **0.34.43**; build interno do trem v0.35, loja em 0.35.0; canal: **build de loja** (feature nova, R-314; 100% JS/TS + migração, sem dependência nativa); `Store Note Readiness`: entra como "agora dá para avaliar o dosiq na loja direto pelo Perfil"):
+  - **Perfil › Sobre o dosiq:** nova linha "Avaliar na App Store" (iOS) / "Avaliar na Google Play" (Android), primeira da seção, com ícone de link externo. O toque abre a página de escrever avaliação da loja. Se nem o app da loja nem a página no navegador abrirem, aparece "Não foi possível abrir a loja agora.". "Enviar feedback" passa a se chamar "Relatar problema ou sugestão"; a ordem fica Avaliar → Relatar → Privacidade e dados.
+  - **Tela "Problema ou sugestão"** (antes "Enviar Feedback"): o bloco do topo vira o atalho "Quer elogiar? Avalie na App Store/Google Play", com botão de contorno. O seletor de 1 a 5 estrelas sai — ele gravava só no banco do app e fazia quem queria elogiar achar que já tinha avaliado na loja. O formulário ganha o cabeçalho "Relatar problema ou sugestão" (separa do atalho da loja e deixa claro para que serve o Assunto), a caixa de comentário fica maior (até 2.000 caracteres) e o botão Cancelar sai — o voltar do topo já faz isso. O botão vira "Enviar" e a confirmação, "Recebemos. Obrigado por avisar!".
+  - **Clique registrado:** cada toque no botão da loja grava o instante em `user_settings.store_review_clicked_at` (coluna nova, entra no export LGPD) em segundo plano — nunca atrasa nem impede a loja de abrir; falha vai só ao Sentry. Base para o pedido automático do próximo trem não incomodar quem já foi à loja.
+  - **Analytics:** `store_review_link_tapped` com `placement` (`profile_about` | `feedback_screen_top`) e `surface: mobile`. Nenhum dado clínico.
+  - **Banco:** migração `20261127_047_store_review_clicked_at.sql` (só a coluna, sem objeto novo nem grant).
+
 ### Busca e leitor de código de barras ficam prontos mais rápido; tempo da carga por fase (spec 129, Fatia A)
 
 - **Mobile / Core** (`Changed`, **patch** `APP_VERSION` 0.34.41 → **0.34.42**; build interno do trem v0.35, loja em 0.35.0; canal: **build de loja** (corte da v0.35, decisão D-1 do PO; 100% JS/TS, sem tela nova), R-314; `Store Note Readiness`: entra como "busca de medicamentos mais rápida em aparelhos mais simples"):
