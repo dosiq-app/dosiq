@@ -2,6 +2,7 @@
 //
 // Resource do router `api/admin.ts` (auth de admin herdada, sem função nova — R-090). Nunca é chamado
 // por cron (INV-3): só existe como ato do operador.
+//   GET  action=variants: textos das variantes (o painel não duplica a copy).
 //   GET  simula: devolve quem receberia e o motivo de cada pulado, sem enviar (FR-006).
 //   POST com `simulate: true` também simula (coorte grande não cabe na URL do GET).
 //   POST envia: exige `confirm: 'ENVIAR'` no corpo.
@@ -21,7 +22,7 @@ import { satisfiesSemver } from '@dosiq/core/utils'
 import { dispatchNotification } from '../../../server/notifications/dispatcher/dispatchNotification.js'
 import { isConsentSuppressed } from '../../../server/notifications/policies/consentSuppression.js'
 import { checkGatePolicy } from '../../../server/notifications/dispatcher/_dispatchHelpers.js'
-import { reactivationVariantSchema } from '../../../server/notifications/payloads/_payloadSchemas.js'
+import { reactivationVariantSchema, REACTIVATION_VARIANTS } from '../../../server/notifications/payloads/_payloadSchemas.js'
 import { getCurrentTime } from '../../../server/utils/dateUtils.js'
 import type { NotificationSettings } from '../../../server/notifications/repositories/notificationPreferenceRepository.js'
 
@@ -194,8 +195,44 @@ function defaultDeps(supabase): ReactivationDeps {
 const summarize = (skipped: ReactivationPlan['skipped']) =>
   skipped.reduce<Record<string, number>>((acc, s) => { acc[s.reason] = (acc[s.reason] ?? 0) + 1; return acc }, {})
 
+type Dispatched = Array<{ user_id: string; delivered: number; failed: number }>
+
+/** Despacha em série, uma conta por vez, aguardando o log de cada uma (prova de "já recebeu"). */
+async function dispatchEligible(eligible: ReactivationPlan['eligible'], variant: ParsedInput['variant'], d: ReactivationDeps): Promise<Dispatched> {
+  const dispatched: Dispatched = []
+  for (const target of eligible) {
+    // Repositório por conta: o canal só enxerga os aparelhos que passaram no filtro de versão.
+    const devicesRepo = {
+      async listActiveByUser() { return target.devices },
+      async deactivateByToken(token: string) { await d.store.deactivateByToken(token) },
+    }
+    const result = await d.dispatch({
+      userId: target.user_id,
+      kind: REACTIVATION_KIND,
+      data: { variant },
+      channels: ['mobile_push'],
+      context: { correlationId: `reactivation_${target.user_id}`, awaitLog: true },
+      repositories: {
+        devices: devicesRepo,
+        preferences: {
+          async hasTelegramChat() { return false },
+          async getByUserId() { return 'mobile_push' as const },
+          async getSettingsByUserId() { return toDispatchSettings(target.settings) },
+        },
+      },
+      bot: noTelegram,
+      expoClient: d.expoClient,
+    })
+    dispatched.push({ user_id: target.user_id, delivered: result.totalDelivered ?? 0, failed: result.totalFailed ?? 0 })
+  }
+  return dispatched
+}
+
 export async function handleReactivation(req, res, supabase, deps?: ReactivationDeps) {
   if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed for reactivation' })
+  if (req.method === 'GET' && req.query?.action === 'variants') {
+    return res.status(200).json({ data: REACTIVATION_VARIANTS })
+  }
   const fromBody = req.method === 'POST'
   const isSend = fromBody && req.body?.simulate !== true
   const parsed = parseReactivationInput(fromBody ? req.body : req.query)
@@ -209,6 +246,7 @@ export async function handleReactivation(req, res, supabase, deps?: Reactivation
     const plan = await planReactivation(parsed.value, d)
     const base = {
       variant: parsed.value.variant,
+      preview: REACTIVATION_VARIANTS[parsed.value.variant],
       min_version: parsed.value.minVersion,
       cohort: parsed.value.userIds.length,
       skipped: plan.skipped,
@@ -218,32 +256,7 @@ export async function handleReactivation(req, res, supabase, deps?: Reactivation
       return res.status(200).json({ data: { mode: 'simulate', ...base, would_send: plan.eligible.map((e) => e.user_id) } })
     }
 
-    const dispatched: Array<{ user_id: string; delivered: number; failed: number }> = []
-    for (const target of plan.eligible) {
-      // Repositório por conta: o canal só enxerga os aparelhos que passaram no filtro de versão.
-      const devicesRepo = {
-        async listActiveByUser() { return target.devices },
-        async deactivateByToken(token: string) { await d.store.deactivateByToken(token) },
-      }
-      const result = await d.dispatch({
-        userId: target.user_id,
-        kind: REACTIVATION_KIND,
-        data: { variant: parsed.value.variant },
-        channels: ['mobile_push'],
-        context: { correlationId: `reactivation_${target.user_id}`, awaitLog: true },
-        repositories: {
-          devices: devicesRepo,
-          preferences: {
-            async hasTelegramChat() { return false },
-            async getByUserId() { return 'mobile_push' as const },
-            async getSettingsByUserId() { return toDispatchSettings(target.settings) },
-          },
-        },
-        bot: noTelegram,
-        expoClient: d.expoClient,
-      })
-      dispatched.push({ user_id: target.user_id, delivered: result.totalDelivered ?? 0, failed: result.totalFailed ?? 0 })
-    }
+    const dispatched = await dispatchEligible(plan.eligible, parsed.value.variant, d)
 
     // Prova de escrita: quem foi despachado e não tem linha no log pode receber de novo (INV-2).
     const logged = dispatched.length > 0 ? await d.store.alreadySent(dispatched.map((x) => x.user_id)) : new Set<string>()

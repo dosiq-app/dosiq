@@ -234,7 +234,7 @@ export default async function handler(req, res) {
   }
 
   if (resource === 'reactivation') {
-    // spec 126: push one-shot de reativação — GET simula, POST envia (com confirmação). Nunca por cron.
+    // spec 126: push one-shot de reativação — GET variants/simula, POST simula ou envia (com confirmação). Nunca por cron.
     return handleReactivation(req, res, supabase);
   }
 

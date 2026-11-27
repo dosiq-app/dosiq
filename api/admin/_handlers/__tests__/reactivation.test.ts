@@ -98,6 +98,17 @@ describe('126 — entrada', () => {
   })
 })
 
+describe('126 — variantes para o painel', () => {
+  it('GET action=variants devolve os textos sem tocar no banco', async () => {
+    const w = world()
+    const r = res()
+    await handleReactivation({ method: 'GET', query: { action: 'variants' } }, r, null, w.deps)
+    expect(r.statusCode).toBe(200)
+    expect(r.body.data).toEqual(REACTIVATION_VARIANTS)
+    expect(w.store.alreadySent).not.toHaveBeenCalled()
+  })
+})
+
 describe('PO-126-1 — coorte de 3: 1 elegível, 1 versão antiga, 1 sem token', () => {
   it('simulação lista quem receberia, sem enviar', async () => {
     const w = world()
@@ -105,6 +116,7 @@ describe('PO-126-1 — coorte de 3: 1 elegível, 1 versão antiga, 1 sem token',
     await handleReactivation({ method: 'GET', query: { user_ids: `${ELEG},${OLD},${NOTOKEN}`, variant: 'B', min_version: '0.35.0' } }, r, null, w.deps)
     expect(r.statusCode).toBe(200)
     expect(r.body.data.mode).toBe('simulate')
+    expect(r.body.data.preview).toEqual(REACTIVATION_VARIANTS.B)
     expect(r.body.data.would_send).toEqual([ELEG])
     expect(r.body.data.skipped).toEqual([
       { user_id: OLD, reason: 'no_eligible_device' },
