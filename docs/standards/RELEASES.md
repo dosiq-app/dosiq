@@ -1,7 +1,7 @@
 ---
 title: "Releases externos — Notas de loja (dosiq mobile)"
 description: "Releases para as versões dos apps Android e iOS"
-version: "1.2.0"
+version: "1.3.0"
 status: active
 category: standard
 audience:
@@ -12,7 +12,7 @@ tags:
   - changelog
   - versioning
 created_at: "2026-07-15"
-updated_at: "2026-10-22"
+updated_at: "2026-11-27"
 ---
 # Releases externos — Notas de loja (dosiq mobile)
 
@@ -31,6 +31,72 @@ updated_at: "2026-10-22"
 > - Uma release de loja = um bump **minor** de mobile (convenção 0.x — ver `CHANGELOG_AND_RELEASES.md`).
 >   Patches intermediários entram na próxima nota de loja como "estabilidade e correções".
 > - Terminologia de UI: "tratamento" (nunca "protocolo").
+
+---
+
+## v0.35.0 — a publicar — Tela Hoje que acompanha o tratamento, cadastro conferido com a caixa e estoque com dia de compra
+
+> Cobre tudo desde a `0.34.4` publicada (builds internos 0.34.5 → 0.34.43): painel do tratamento na
+> Hoje para dose semanal/mensal com "Já apliquei" e medidas ao lado (121/124), conferência do
+> cadastro contra a caixa e a lista da ANVISA (119/125/127), "próxima compra" no estoque (105/117),
+> aviso de lembretes bloqueados e assistente de bateria Android (120/068), cadastro com código de
+> e-mail (123) e atalho para avaliar na loja (047 A).
+>
+> **Build:** a registrar no ledger (`builds.jsonl`) — iOS e Android do mesmo commit do corte
+> `release/v0.35.0`; tag `mobile-v0.35.N` só na aprovação das duas lojas.
+>
+> **Canônico da copy:** `plans/strategy-2026/release-v035/PMM_EMBALAGEM_V035.md` §2.1/§2.2 (local-only,
+> não versionado). Contagem por script no §8 do PMM.
+>
+> **Assimetria de plataforma:** a nota da Apple detalha o painel da Hoje e a conferência; a do Google
+> fica nos 4 temas (Hoje, conferência, estoque, lembretes) pelo teto de 500 chars.
+>
+> **Fora da copy, de propósito:** atalho para avaliar na loja (047 A), carga mais rápida do índice CMED
+> (129), trilha de capacidade do alarme (082 D2/084 B) e correções internas.
+
+### Apple App Store (pt-BR)
+
+```
+O dosiq agora faz mais do que lembrar a hora. Ele acompanha o tratamento com você e avisa quando algo precisa de atenção.
+
+TELA HOJE NOVA
+- Para caneta semanal, injeção mensal ou remédio que não é todo dia, você vê a dose da vez, quando foi a última, onde aplicou e em qual etapa da dose está.
+- Aplicou antes do dia? Toque em "Já apliquei" e a semana se ajusta.
+- Dá para ver todas as aplicações anteriores, com o dia e o lugar.
+- Peso, glicemia ou pressão aparecem do lado do tratamento.
+- Tem mais de um tratamento? Escolha qual quer ver na tela Hoje.
+
+O APP AVISA QUANDO ALGO NÃO BATE
+- Se a dose cadastrada não bater com a caixa do remédio, o app mostra os dois números, um do lado do outro, e você escolhe o certo. A conferência usa a lista de remédios da ANVISA.
+- Cadastrou a caneta como comprimido, ou a injeção em gotas? O app avisa e pergunta o que está certo.
+- Digitou o nome do remédio na mão? Se ele estiver na lista da ANVISA, o app pergunta se é esse e mostra o que vai mudar antes de você confirmar.
+- Nada muda sem você confirmar.
+
+ESTOQUE
+- O app mostra o dia de comprar de novo e avisa antes de acabar: 14, 7 e 1 dia antes, até você repor.
+- A aba Estoque agora separa os remédios em uso, os programados e os que estão sem tratamento.
+
+LEMBRETES
+- Se o iPhone estiver bloqueando os lembretes, a tela Hoje avisa e mostra como liberar.
+
+CADASTRO MAIS CURTO
+- O cadastro de remédio novo pergunta só o que importa para cada tipo (comprimido, gotas, caneta), confere a dose com a caixa e mostra um resumo antes de salvar. No primeiro acesso, se precisar parar no meio, dá para terminar depois.
+
+Ao atualizar, seus remédios, horários e histórico continuam do jeito que estão.
+
+O dosiq só organiza o que o seu médico receitou. Ele não receita, não sugere e não muda doses.
+```
+
+### Google Play (pt-BR — 458 chars)
+
+```
+O dosiq agora acompanha o tratamento com você:
+- A tela Hoje mostra a dose da vez, onde você aplicou da última vez, as etapas da dose e o seu peso. Vale também para remédio semanal ou mensal
+- Se o cadastro não bater com a caixa do remédio, o app avisa e mostra como arrumar. Só muda se você confirmar
+- O estoque mostra o dia de comprar de novo
+- O app avisa se o celular estiver bloqueando os lembretes
+Seus remédios, horários e histórico continuam iguais.
+```
 
 ---
 

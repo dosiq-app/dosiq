@@ -7,6 +7,10 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ## [Unreleased]
 
+## [Mobile 0.35.0 · Web 4.42.0] — 2026-11-27 — corte do trem v0.35 (loja)
+
+> Cobre 0.34.5 → 0.35.0 (builds internos 0.34.5–0.34.43). Notas de loja: `docs/standards/RELEASES.md` §v0.35.0.
+
 ### Avaliar na loja pelo Perfil e pela tela de problema ou sugestão; estrelas saem do formulário (spec 047, Fatia A)
 
 - **Mobile / Core / Backend** (`Added`/`Changed`, **patch** `APP_VERSION` 0.34.42 → **0.34.43**; build interno do trem v0.35, loja em 0.35.0; canal: **build de loja** (feature nova, R-314; 100% JS/TS + migração, sem dependência nativa); `Store Note Readiness`: entra como "agora dá para avaliar o dosiq na loja direto pelo Perfil"):
@@ -434,6 +438,8 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   - **Desempenho do tick da janela das 10:00:** as leituras da varredura de estoque rodam em paralelo e `user_settings` é lido uma vez por tick para os dois enfileiramentos.
   - Migração `20261105_outbox_supply_reminder_kind.sql` (kind novo na fila) aplicada no QA; em produção **antes** do deploy.
 
+## [Mobile 0.34.1 → 0.34.4] — 0.34.4 publicada nas lojas (builds intermediários 0.34.1–0.34.3)
+
 ### Admin: painel de crescimento e do wedge GLP-1 (spec 115)
 
 - **Web/PWA** (`Added`, **minor** 4.36.0 → 4.37.0 — tela nova no bundle web, só para a conta admin; sem mudança para usuários comuns; canal mobile: nenhum). Nova tela "Crescimento & Wedge" na área de administração: novos usuários, push ativo, distribuição das classes terapêuticas dos tratamentos ativos (GLP-1/antiobesidade × outros antidiabéticos × demais classes × sem código, pelo código EphMRA da classe, não pelo nome) e adoção de titulação, biomarcador, alarme crítico, estoque e data de término — sempre em usuários distintos, com o número absoluto ao lado do percentual e a coorte dos últimos 30 dias. Tabela de contas com as plataformas em que cada conta já entrou (app iOS, app Android, web — vale também para quem saiu da conta no app), busca, filtros de plataforma e push e detalhe dos tratamentos de cada conta, sem nome comercial de medicamento.
@@ -642,6 +648,8 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   para motores de busca e IA: "/glp-1" (guia de titulação e canetas), "/guia/rodizio-aplicacao" (guia de rodízio
   de locais de injeção subcutânea) e "/llms.txt" (documentação canônica para modelos de linguagem), acompanhadas
   de regras de rota no "vercel.json" e mapa de site ("sitemap.xml").
+
+## [Mobile 0.34.0] — publicada em 2026-10-22 (cobre 0.30.2 → 0.34.0; 0.33.x foram builds de TestFlight)
 
 ### Aviso de estoque baixo fala em doses no tratamento semanal (spec 103 G1)
 
@@ -2310,6 +2318,8 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   Doses que ficaram pendentes porque o **tratamento estava pausado** seguem ocultas — essas não são
   decisão sua sobre uma dose, são consequência do estado do tratamento.
 
+## [Mobile 0.30.1] — build de loja de 2026-08-02
+
 ### O alarme de dose crítica volta a abrir em tela cheia no Android
 
 - **Fix** (`patch`, mobile `0.30.1`; iOS não afetado). O alarme tocava, a tela acendia e o app vinha
@@ -2392,6 +2402,8 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 ### Documentação técnica reorganizada e expandida (spec 049, épico completo)
 
 - **Docs** (`no-user-impact` — docs-only, sem alteração de código). Épico 049 (docs-revamp pós-040 TypeScript) concluído em 5 fases: F1 schema YAML + validador, F2 frontmatter em 54 docs, F3 atualização JS→TS em 58 docs, F4 limpeza estrutural (merge getting-started/setup, remoção guides/reports/releases), F5 criação de 14 docs novos + 2 rewrites cobrindo gaps de mobile, monorepo, TypeScript, server notifications, API endpoints, core schemas/repositories e Live Activities. INDEX.md regenerado com catálogo de 73 docs ativos. 73/73 docs validados pelo frontmatter validator.
+
+## [Mobile 0.30.0] — build de loja de 2026-07-28 (e entradas anteriores sem corte de versão)
 
 ### Preferência de estoque sobrevive offline (spec 044, 055-W1.7)
 
@@ -3479,7 +3491,7 @@ Cuidando da sua rotina com carinho e zero complicação. 💙
 
 ---
 
-## [Unreleased]
+## Entradas antigas sem corte de versão (junho/2026; consolidadas no corte da 0.35)
 
 ### Prints reais de alta fidelidade para as landings das ondas 2 a 4 (spec 048 visual)
 
@@ -3755,7 +3767,7 @@ Simples para quem mais precisa. 💙
 
 ---
 
-## [Unreleased]
+## Entradas antigas sem corte de versão (junho/2026; consolidadas no corte da 0.35)
 
 ### Prints reais de alta fidelidade para as landings das ondas 2 a 4 (spec 048 visual)
 
