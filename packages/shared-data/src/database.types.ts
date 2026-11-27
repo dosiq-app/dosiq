@@ -161,6 +161,27 @@ export type Database = {
           },
         ]
       }
+      cmed_class_keys: {
+        Row: {
+          catalog_version: string
+          class_codes: string[]
+          loaded_at: string
+          token: string
+        }
+        Insert: {
+          catalog_version: string
+          class_codes: string[]
+          loaded_at?: string
+          token: string
+        }
+        Update: {
+          catalog_version?: string
+          class_codes?: string[]
+          loaded_at?: string
+          token?: string
+        }
+        Relationships: []
+      }
       consent_copy: {
         Row: {
           body: string
@@ -1790,6 +1811,10 @@ export type Database = {
           detail: string
         }[]
       }
+      admin_load_cmed_class_keys: {
+        Args: { p_expected_count: number; p_rows: Json; p_version: string }
+        Returns: Json
+      }
       apply_manual_stock_adjustment: {
         Args: {
           p_medicine_id: string
@@ -1838,6 +1863,12 @@ export type Database = {
         }
       }
       cleanup_expired_bot_sessions: { Args: never; Returns: number }
+      cmed_class_codes: {
+        Args: { p_ingredient: string; p_name: string }
+        Returns: string[]
+      }
+      cmed_match_key: { Args: { p_text: string }; Returns: string }
+      cmed_match_tokens: { Args: { p_text: string }; Returns: string[] }
       confirm_titration_switch: { Args: { p_step_id: string }; Returns: Json }
       consent_controller_event: {
         Args: { p_action: string; p_consent_type: string; p_user_id: string }
@@ -1903,6 +1934,15 @@ export type Database = {
         Returns: undefined
       }
       generate_telegram_token: { Args: never; Returns: string }
+      get_admin_growth_analytics: {
+        Args: {
+          p_excluded_user_ids?: string[]
+          p_limit?: number
+          p_offset?: number
+          p_since?: string
+        }
+        Returns: Json
+      }
       get_dlq_stats: {
         Args: never
         Returns: {
