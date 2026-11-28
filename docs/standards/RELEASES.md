@@ -34,7 +34,7 @@ updated_at: "2026-11-27"
 
 ---
 
-## v0.35.0 — a publicar — Tela Hoje que acompanha o tratamento, cadastro conferido com a caixa e estoque com dia de compra
+## v0.35.0 — em revisão (2026-11-28) — Tela Hoje que acompanha o tratamento, cadastro conferido com a caixa e estoque com dia de compra
 
 > Cobre tudo desde a `0.34.4` publicada (builds internos 0.34.5 → 0.34.43): painel do tratamento na
 > Hoje para dose semanal/mensal com "Já apliquei" e medidas ao lado (121/124), conferência do
@@ -42,8 +42,10 @@ updated_at: "2026-11-27"
 > aviso de lembretes bloqueados e assistente de bateria Android (120/068), cadastro com código de
 > e-mail (123) e atalho para avaliar na loja (047 A).
 >
-> **Build:** a registrar no ledger (`builds.jsonl`) — iOS e Android do mesmo commit do corte
-> `release/v0.35.0`; tag `mobile-v0.35.N` só na aprovação das duas lojas.
+> **Build:** iOS e Android do mesmo commit `fdb5b92d` (corte `release/v0.35.0`), registrados no ledger
+> em 2026-11-27/28. Testados no TestFlight e no closed testing da Play. **App Store:** em revisão com
+> liberação manual. **Play:** open testing; depois da aprovação do beta, produção com managed
+> publishing e os textos novos de ASO. Tag `mobile-v0.35.0` só com as duas lojas aprovadas.
 >
 > **Canônico da copy:** `plans/strategy-2026/release-v035/PMM_EMBALAGEM_V035.md` §2.1/§2.2 (local-only,
 > não versionado). Contagem por script no §8 do PMM.
